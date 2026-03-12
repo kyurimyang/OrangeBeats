@@ -1,14 +1,14 @@
 import os 
-import resource
-from urllib.parse import uriparse, parse_qs
+from urllib.parse import urlparse, parse_qs
 
 import requests
-from fastapi import FASTAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query
 from dotenv import load_dotenv
 
 load_dotenv()
 
-app = FASTAPI(title = "YouTube API Example")
+app = FastAPI(title = "YouTube API Example")
 
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
-Y
+
+
