@@ -56,7 +56,6 @@ def parse_youtube_target(input_value: str) -> dict[str, str]:
         status_code=400,
         detail=(
             "지원하지 않는 YouTube 입력 형식입니다. "
-            "watch/playlist/youtu.be URL 또는 video_id(11자), playlist_id(PL/UU/LL/OLAK...)를 입력해주세요."
         ),
     )
 
