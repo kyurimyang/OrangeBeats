@@ -4,7 +4,7 @@ from urllib.parse import parse_qs, urlparse
 import requests
 from dotenv import load_dotenv
 from fastapi import HTTPException
-from backend.Pipeline_Params import COMMENT_LIMIT_DEFAULT, COMMENT_LIMIT_MAX
+from backend.Pipeline_Paramas import COMMENT_LIMIT_DEFAULT, COMMENT_LIMIT_MAX
 
 load_dotenv()
 
