@@ -1,7 +1,7 @@
 import json
 import re
 from typing import Any
-from backend.Pipeline_Params import MIN_PATTERN, MIN_TIMESTAMP, MIN_TRACKS
+from backend.Pipeline_Paramas import MIN_PATTERN, MIN_TIMESTAMP, MIN_TRACKS
 
 TIMESTAMP_WITH_TEXT_RE = re.compile(r"^\s*(\d{1,2}:\d{2}(?::\d{2})?)\s+(.+)$")
 TIMESTAMP_ONLY_RE = re.compile(r"^\s*\d{1,2}:\d{2}(?::\d{2})?\s*$")

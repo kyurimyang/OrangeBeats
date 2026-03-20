@@ -3,7 +3,7 @@ import os
 from dotenv import load_dotenv
 from fastapi import HTTPException
 from openai import OpenAI
-from backend.Pipeline_Params import COMMENT_LIMIT_DEFAULT, COMMENT_LIMIT_MAX
+from backend.Pipeline_Paramas import COMMENT_LIMIT_DEFAULT, COMMENT_LIMIT_MAX
 from backend.api.Parser_Utils import normalize_song_candidates, parse_json_from_text
 
 load_dotenv()
