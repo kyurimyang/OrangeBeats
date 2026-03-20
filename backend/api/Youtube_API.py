@@ -4,6 +4,7 @@ from urllib.parse import parse_qs, urlparse
 import requests
 from dotenv import load_dotenv
 from fastapi import HTTPException
+from backend.Pipeline_Params import COMMENT_LIMIT_DEFAULT, COMMENT_LIMIT_MAX
 
 load_dotenv()
 
@@ -54,9 +55,7 @@ def parse_youtube_target(input_value: str) -> dict[str, str]:
 
     raise HTTPException(
         status_code=400,
-        detail=(
-            "지원하지 않는 YouTube 입력 형식입니다. "
-        ),
+        detail="지원하지 않는 YouTube 입력 형식입니다. "
     )
 
 
@@ -121,18 +120,20 @@ def get_playlist_video_ids(playlist_id: str, max_videos: int = 5) -> list[str]:
     return video_ids
 
 
-def get_video_comments(video_id: str, max_comments: int = 20) -> list[str]:
+def get_video_comments(video_id: str, max_comments: int = 50) -> list[str]:
+    # 댓글 수집 정책: 기본 30, 필요 시 최대 50까지만 허용
+    safe_max_comments = max(1, min(max_comments, COMMENT_LIMIT_MAX))
     comments: list[str] = []
     next_page_token = None
 
-    while len(comments) < max_comments:
+    while len(comments) < safe_max_comments:
         try:
             payload = _youtube_get(
                 "commentThreads",
                 {
                     "part": "snippet",
                     "videoId": video_id,
-                    "maxResults": min(100, max_comments - len(comments)),
+                    "maxResults": min(100, safe_max_comments - len(comments)),
                     "order": "relevance",
                     "textFormat": "plainText",
                     "pageToken": next_page_token,
@@ -149,7 +150,7 @@ def get_video_comments(video_id: str, max_comments: int = 20) -> list[str]:
             text = snippet.get("textDisplay", "").strip()
             if text:
                 comments.append(text)
-            if len(comments) >= max_comments:
+            if len(comments) >= safe_max_comments:
                 break
 
         next_page_token = payload.get("nextPageToken")
@@ -162,7 +163,7 @@ def get_video_comments(video_id: str, max_comments: int = 20) -> list[str]:
 def collect_playlist_comments(
     playlist_input: str,
     max_videos: int = 5,
-    max_comments_per_video: int = 20,
+    max_comments_per_video: int = COMMENT_LIMIT_DEFAULT,
 ) -> dict:
     """
     YouTube 입력(URL/ID)을 해석해 댓글을 수집한다.
@@ -176,6 +177,7 @@ def collect_playlist_comments(
     }
     """
     target = parse_youtube_target(playlist_input)
+    safe_max_comments_per_video = max(1, min(max_comments_per_video, COMMENT_LIMIT_MAX))
 
     if target["type"] == "playlist":
         playlist_id = target["id"]
@@ -186,7 +188,7 @@ def collect_playlist_comments(
 
     all_comments: list[str] = []
     for video_id in video_ids:
-        all_comments.extend(get_video_comments(video_id, max_comments=max_comments_per_video))
+        all_comments.extend(get_video_comments(video_id, max_comments=safe_max_comments_per_video))
 
     return {
         "playlist_id": playlist_id,
