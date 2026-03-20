@@ -62,8 +62,9 @@ def parse_youtube_target(input_value: str) -> dict[str, str]:
 
 def extract_playlist_id(playlist_input: str) -> str:
     """
-    playlist URL 또는 playlist ID를 받아 playlist ID로 변환한다.
-    예: https://www.youtube.com/playlist?list=PLxxxx -> PLxxxx
+    입력값을 해석한 뒤 playlist 타입일 때만 playlist ID를 반환한다.
+    - playlist URL/ID면 ID 반환
+    - video URL/ID면 400 에러
     """
     target = parse_youtube_target(playlist_input)
     if target["type"] != "playlist":
@@ -164,7 +165,9 @@ def collect_playlist_comments(
     max_comments_per_video: int = 20,
 ) -> dict:
     """
-    플레이리스트 기준으로 댓글을 수집한다.
+    YouTube 입력(URL/ID)을 해석해 댓글을 수집한다.
+    - playlist 입력이면 영상 목록을 순회하며 댓글 수집
+    - video 입력이면 해당 영상 1개 댓글 수집
     반환 구조:
     {
       "playlist_id": "...",
