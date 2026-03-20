@@ -1,6 +1,6 @@
 # 2026 Paran Playlist AI - 현재 진행 상태
 
-## 지금까지 구현한한 범위
+## 지금까지 구현한 범위
 
 - **YouTube 입력 해석**
   - `watch?v=...` / `watch?v=...&list=RD...` / `playlist?list=...` / `youtu.be/...` 분기 처리
