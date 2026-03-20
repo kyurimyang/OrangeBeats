@@ -21,3 +21,8 @@
   - `COMMENT_LIMIT_DEFAULT`, `COMMENT_LIMIT_MAX`
   - `AUDIO_SAMPLE_SEC_MIN/MAX`, `SPOTIFY_HIGH_CONF/MID_CONF`
 
+## 빠른 테스트 명령 (터미널)
+
+```powershell
+python -c "from backend.api.Youtube_API import collect_playlist_comments; from backend.api.OpenAI_API import extract_song_candidates_from_comments; import json; url='https://www.youtube.com/watch?v=jZcLQRWtv9Y'; y=collect_playlist_comments(url, max_videos=1, max_comments_per_video=30); r=extract_song_candidates_from_comments(y['comments'], comment_limit=30); print(json.dumps({'url': url, 'video_count': len(y['video_ids']), 'comment_count': len(y['comments']), 'songs': r['songs']}, ensure_ascii=False, indent=2))"
+```
