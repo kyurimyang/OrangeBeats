@@ -34,21 +34,21 @@ def parse_youtube_target(input_value: str) -> dict[str, str]:
         if playlist_id and playlist_id.startswith("RD") and video_id:
             return {"type": "video", "id": video_id}
 
-        # 일반 플레이리스트
+        # 케이스 3) list 있음 -> 플레이리스트
         if playlist_id:
             return {"type": "playlist", "id": playlist_id}
 
-        # youtu.be/<video_id> 형태 지원
+        # 케이스 4) youtu.be/<video_id> -> 단일 영상 
         if "youtu.be" in parsed.netloc and parsed.path.strip("/"):
             return {"type": "video", "id": parsed.path.strip("/")}
 
         raise HTTPException(status_code=400, detail="YouTube URL에서 처리 가능한 v/list 파라미터를 찾지 못했습니다.")
 
-    # URL이 아닌 경우: ID prefix 기반 추정
+    # 케이스 5) URL이 아닌 경우: ID prefix 기반 추정
     if value.startswith(("PL", "UU", "LL", "OLAK")):
         return {"type": "playlist", "id": value}
 
-    # 영상 ID는 일반적으로 11자
+    # 케이스 6) 영상 ID는 일반적으로 11자
     if len(value) == 11:
         return {"type": "video", "id": value}
 
