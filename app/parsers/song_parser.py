@@ -1,24 +1,43 @@
 # 텍스트/JSON 파싱, 중복 제거, 성공 판정
 # 설명란/LLM 결과를 곡 리스트로 정리
 
+## 추가
+# - 비음악 텍스트 제거 (URL, 안내문, 일반 문장 등)
+# - artist + title 구조 검증 및 완성도 평가
+# - 중복 제거 및 최종 곡 리스트 생성
+# - 텍스트 기반 단계 성공 여부 판단
+
 import json
 import re
 from typing import Any
 
-from app.constants.pipeline_params import MIN_PATTERN, MIN_TIMESTAMP, MIN_TRACKS
+from app.constants.pipeline_params import (
+    MIN_PATTERN_COUNT,
+    MIN_TIMESTAMP_COUNT,
+    MIN_SONG_COUNT,
+    MIN_COMPLETE_SONG_COUNT,
+    MIN_COMPLETENESS_RATIO,
+    SECTION_KEYWORDS,
+    NATURAL_SENTENCE_HINTS,
+    TITLE_DELIMITERS,
+    NON_MUSIC_LINE_PATTERNS,
+)
+
+# regex 선언
+TIME_PREFIX_REGEX = re.compile(r"^\s*(\d{1,2}:\d{2})(?::\d{2})?\s*[-|]?\s*")
+MULTISPACE_REGEX = re.compile(r"\s+")
+BRACKET_REGEX = re.compile(r"[\[\(\{].*?[\]\)\}]")
+TIMESTAMP_LINE_REGEX = re.compile(r"^(?P<ts>\d{1,2}:\d{2})(?::\d{2})?\s+(?P<body>.+)$")
+TIMESTAMP_PREFIX_ONLY_REGEX = re.compile(r"^\d{1,2}:\d{2}(?::\d{2})?\s+")
+PAIR_REGEX = re.compile(r".+\s[-–—|/]\s.+")
 
 
+# LLM 응답에서 JSON만 추출 후 songs 구조로 정규화
 def parse_json_from_text(text: str) -> dict:
-    """
-    LLM 응답에서 JSON만 추출.
-    실패하면 {"songs": []} 반환.
-    """
     if not text:
         return {"songs": []}
 
     text = text.strip()
-
-    # ```json ... ``` 코드블록 제거
     text = re.sub(r"^```json\s*", "", text)
     text = re.sub(r"^```\s*", "", text)
     text = re.sub(r"\s*```$", "", text)
@@ -27,43 +46,130 @@ def parse_json_from_text(text: str) -> dict:
     if not match:
         return {"songs": []}
 
-    json_str = match.group(0)
-
     try:
-        parsed = json.loads(json_str)
+        parsed = json.loads(match.group(0))
         if isinstance(parsed, dict) and "songs" in parsed:
-            return parsed
-    except json.JSONDecodeError:
+            return normalize_song_candidates(parsed)
+    except:
         pass
 
     return {"songs": []}
 
 
+# 문자열 정리 (괄호 제거 + 공백 정리)
 def _clean_text(value: str) -> str:
-    return re.sub(r"\s+", " ", value).strip(" -–—:|/").strip()
+    value = str(value)
+    value = BRACKET_REGEX.sub("", value)
+    value = re.sub(r"\s+", " ", value)
+    return value.strip(" -–—:|/").strip()
 
 
+# timestamp 제거 + 공백 정리
+def _normalize_line(line: str) -> str:
+    line = line.strip()
+    line = TIME_PREFIX_REGEX.sub("", line)
+    line = MULTISPACE_REGEX.sub(" ", line)
+    return line.strip()
+
+
+# URL, 이메일, 안내문 패턴 포함 여부
+def _contains_non_music_pattern(line: str) -> bool:
+    for pattern in NON_MUSIC_LINE_PATTERNS:
+        if re.search(pattern, line, re.IGNORECASE):
+            return True
+    return False
+
+
+# 축가, playlist 등 섹션 키워드 포함 여부
+def _contains_section_keyword(line: str) -> bool:
+    lower = line.lower()
+    return any(k.lower() in lower for k in SECTION_KEYWORDS)
+
+
+# 자연어 문장인지 판별 (곡 정보 아닌 문장 제거)
+def _looks_like_natural_sentence(line: str) -> bool:
+    lower = line.lower()
+    has_delimiter = any(d in line for d in TITLE_DELIMITERS)
+
+    hint = sum(1 for w in NATURAL_SENTENCE_HINTS if w in lower)
+    punct = sum(lower.count(p) for p in [".", "!", "?", ","])
+    words = len(lower.split())
+
+    if hint >= 2 and not has_delimiter:
+        return True
+    if punct >= 2 and not has_delimiter:
+        return True
+    if words >= 8 and not has_delimiter:
+        return True
+
+    return False
+
+
+# 곡 정보 후보 라인인지 판단
+def _is_valid_music_line(line: str) -> bool:
+    if not line or len(line.strip()) < 3:
+        return False
+
+    normalized = _normalize_line(line)
+
+    if not normalized:
+        return False
+
+    if _contains_non_music_pattern(line) or _contains_non_music_pattern(normalized):
+        return False
+
+    if _contains_section_keyword(normalized):
+        if not any(d in normalized for d in TITLE_DELIMITERS):
+            return False
+
+    if _looks_like_natural_sentence(normalized):
+        return False
+
+    return True
+
+
+# 의미 있는 텍스트인지 판별
+def _is_meaningful_text(text: str) -> bool:
+    text = _clean_text(text)
+    if not text:
+        return False
+    if len(text) <= 1:
+        return False
+    if re.fullmatch(r"[\d\s]+", text):
+        return False
+    return True
+
+
+# 곡 정보 생성 + 완성도 계산
 def _append_song(results: list[dict], artist: str, title: str):
     artist = _clean_text(artist)
     title = _clean_text(title)
 
-    if not title:
+    if not _is_meaningful_text(title):
         return
 
-    if not artist:
-        artist = "unknown"
+    artist_ok = _is_meaningful_text(artist)
+    title_ok = _is_meaningful_text(title)
+
+    score = 0.0
+    if artist_ok:
+        score += 0.5
+    if title_ok:
+        score += 0.5
 
     results.append({
-        "artist": artist,
+        "artist": artist if artist_ok else "",
         "title": title,
+        "artist_exists": artist_ok,
+        "title_exists": title_ok,
+        "is_complete": artist_ok and title_ok,
+        "completeness_score": score,
     })
 
 
-def _split_pair(text: str) -> tuple[str, str] | None:
-    """
-    Song - Artist 같은 단순 분리
-    """
-    separators = [" - ", " – ", " — ", " | ", " / ", ":"]
+# Song - Artist 형태 분리
+def _split_pair(text: str):
+    separators = [" - ", " – ", " — ", " | ", " / ", " : "]
     for sep in separators:
         if sep in text:
             left, right = text.split(sep, 1)
@@ -74,143 +180,132 @@ def _split_pair(text: str) -> tuple[str, str] | None:
     return None
 
 
+# 비정형 텍스트 → 곡 리스트 파싱
 def parse_unstructured_lines_to_json(text: str) -> dict:
-    """
-    설명란 같은 비정형 텍스트를 규칙 기반으로 파싱
-    """
     if not text:
         return {"songs": []}
 
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
-    results: list[dict] = []
-
-    timestamp_regex = re.compile(r"^(?P<ts>\d{1,2}:\d{2})(?::\d{2})?\s+(?P<body>.+)$")
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
+    results = []
 
     for line in lines:
-        # 00:00 Song - Artist
-        ts_match = timestamp_regex.match(line)
-        if ts_match:
-            body = ts_match.group("body").strip()
-            pair = _split_pair(body)
-
-            if pair:
-                left, right = pair
-                # 일단 Song - Artist 기준으로 저장
-                _append_song(results, artist=right, title=left)
-            else:
-                _append_song(results, artist="unknown", title=body)
+        if not _is_valid_music_line(line):
             continue
 
-        # 일반 Song - Artist
-        pair = _split_pair(line)
+        ts_match = TIMESTAMP_LINE_REGEX.match(line)
+        if ts_match:
+            body = _clean_text(ts_match.group("body"))
+
+            if not _is_valid_music_line(body):
+                continue
+
+            pair = _split_pair(body)
+            if pair:
+                l, r = pair
+                _append_song(results, artist=r, title=l)
+            else:
+                _append_song(results, artist="", title=body)
+            continue
+
+        normalized = _normalize_line(line)
+        pair = _split_pair(normalized)
         if pair:
-            left, right = pair
-            _append_song(results, artist=right, title=left)
+            l, r = pair
+            _append_song(results, artist=r, title=l)
 
     return {"songs": deduplicate_songs(results)}
 
 
+# 어떤 입력이 와도 songs 구조로 통일
 def normalize_song_candidates(data: Any) -> dict:
-    """
-    어떤 입력이 와도 {"songs": [...]} 형태로 정리
-    """
     if not data:
         return {"songs": []}
 
-    if isinstance(data, dict):
-        songs = data.get("songs", [])
-    elif isinstance(data, list):
-        songs = data
-    else:
-        return {"songs": []}
-
+    songs = data.get("songs", []) if isinstance(data, dict) else data
     normalized = []
+
     for item in songs:
         if not isinstance(item, dict):
             continue
 
-        artist = _clean_text(str(item.get("artist", "")))
-        title = _clean_text(str(item.get("title", "")))
+        artist = _clean_text(item.get("artist", ""))
+        title = _clean_text(item.get("title", ""))
 
-        if not title:
+        if not _is_meaningful_text(title):
             continue
 
+        artist_ok = _is_meaningful_text(artist)
+        title_ok = _is_meaningful_text(title)
+
+        score = 0.0
+        if artist_ok:
+            score += 0.5
+        if title_ok:
+            score += 0.5
+
         normalized.append({
-            "artist": artist if artist else "unknown",
+            "artist": artist if artist_ok else "",
             "title": title,
+            "artist_exists": artist_ok,
+            "title_exists": title_ok,
+            "is_complete": artist_ok and title_ok,
+            "completeness_score": score,
         })
 
     return {"songs": deduplicate_songs(normalized)}
 
 
+# 중복 곡 제거
 def deduplicate_songs(songs: list[dict]) -> list[dict]:
     seen = set()
     unique = []
 
-    for song in songs:
-        artist = _clean_text(song.get("artist", "")).lower()
-        title = _clean_text(song.get("title", "")).lower()
-
-        if not title:
-            continue
-
-        key = (artist, title)
+    for s in songs:
+        key = (
+            _clean_text(s.get("artist", "")).lower(),
+            _clean_text(s.get("title", "")).lower()
+        )
         if key in seen:
             continue
-
         seen.add(key)
+
         unique.append({
-            "artist": song.get("artist", "unknown"),
-            "title": song.get("title", ""),
+            "artist": s.get("artist", ""),
+            "title": s.get("title", ""),
+            "artist_exists": s.get("artist_exists", False),
+            "title_exists": s.get("title_exists", False),
+            "is_complete": s.get("is_complete", False),
+            "completeness_score": s.get("completeness_score", 0.0),
         })
 
     return unique
 
 
+# timestamp / 패턴 신호 개수 계산
 def count_text_signals(text: str) -> dict:
-    """
-    텍스트 안에 곡 목록처럼 보이는 신호 계산
-    """
     if not text:
-        return {
-            "timestamp_count": 0,
-            "pattern_count": 0,
-        }
+        return {"timestamp_count": 0, "pattern_count": 0}
 
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
 
-    timestamp_count = 0
-    pattern_count = 0
+    t = sum(1 for l in lines if TIMESTAMP_PREFIX_ONLY_REGEX.search(l))
+    p = sum(1 for l in lines if PAIR_REGEX.search(l))
 
-    timestamp_regex = re.compile(r"^\d{1,2}:\d{2}(?::\d{2})?\s+")
-    pair_regex = re.compile(r".+\s[-–—|/]\s.+")
-
-    for line in lines:
-        if timestamp_regex.search(line):
-            timestamp_count += 1
-        if pair_regex.search(line):
-            pattern_count += 1
-
-    return {
-        "timestamp_count": timestamp_count,
-        "pattern_count": pattern_count,
-    }
+    return {"timestamp_count": t, "pattern_count": p}
 
 
+# 텍스트 단계 성공 여부 판단 (구조 기반)
 def is_text_stage_success(source_text: str, confirmed_tracks: list[dict]) -> bool:
-    """
-    현재 단계(설명란/댓글)가 충분히 성공했는지 판단
-    """
-    signals = count_text_signals(source_text)
-    track_count = len(confirmed_tracks)
+    total = len(confirmed_tracks)
+    complete = sum(1 for s in confirmed_tracks if s.get("is_complete"))
 
-    if track_count >= MIN_TRACKS:
-        return True
+    avg = (
+        sum(s.get("completeness_score", 0.0) for s in confirmed_tracks) / total
+        if total else 0.0
+    )
 
-    if signals["timestamp_count"] >= MIN_TIMESTAMP:
-        return True
-
-    if signals["pattern_count"] >= MIN_PATTERN and track_count >= 2:
-        return True
-
-    return False
+    return (
+        total >= MIN_SONG_COUNT
+        and complete >= MIN_COMPLETE_SONG_COUNT
+        and avg >= MIN_COMPLETENESS_RATIO
+    )

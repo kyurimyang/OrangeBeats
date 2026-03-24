@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import youtube
 
-app = FastAPI(title="Paran Playlist AI")
+app = FastAPI(title="Orange Playlist")
 
 app.add_middleware(
     CORSMiddleware,
