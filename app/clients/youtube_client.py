@@ -1,13 +1,6 @@
 # Youtube API 호출
 # Youtube에서 텍스트 긁어오기
 
-#URL 입력
-#→ video인지 playlist인지 판단
-#→ video_id 추출
-#→ 설명란 가져오기
-#→ 댓글 가져오기
-#→ dict로 반환
-
 from urllib.parse import parse_qs, urlparse
 
 import requests
@@ -18,6 +11,7 @@ from app.config import YOUTUBE_API_KEY
 YOUTUBE_API_BASE = "https://www.googleapis.com/youtube/v3"
 
 
+# 입력값이 video URL인지 playlist URL인지 판별하고 id 추출
 def parse_youtube_target(input_value: str) -> dict[str, str]:
     value = input_value.strip()
     parsed = urlparse(value)
@@ -55,22 +49,27 @@ def parse_youtube_target(input_value: str) -> dict[str, str]:
     raise HTTPException(status_code=400, detail="지원하지 않는 형식")
 
 
+# YouTube Data API 공통 GET 요청
 def _youtube_get(path: str, params: dict) -> dict:
     if not YOUTUBE_API_KEY:
         raise HTTPException(status_code=500, detail="API 키 없음")
 
-    response = requests.get(
-        f"{YOUTUBE_API_BASE}/{path}",
-        params={**params, "key": YOUTUBE_API_KEY},
-        timeout=15,
-    )
+    try:
+        response = requests.get(
+            f"{YOUTUBE_API_BASE}/{path}",
+            params={**params, "key": YOUTUBE_API_KEY},
+            timeout=15,
+        )
+    except requests.RequestException:
+        raise HTTPException(status_code=500, detail="YouTube 요청 실패")
 
     if response.status_code >= 400:
         raise HTTPException(status_code=response.status_code, detail="YouTube API 오류")
 
     return response.json()
 
-# 설명란 분석 추가
+
+# video_id 기준 설명란 가져오기
 def get_video_description(video_id: str) -> str:
     payload = _youtube_get(
         "videos",
@@ -87,22 +86,25 @@ def get_video_description(video_id: str) -> str:
     return items[0]["snippet"].get("description", "")
 
 
+# video_id 기준 댓글 가져오기
 def get_video_comments(video_id: str, max_comments: int = 30) -> list[str]:
     comments = []
     next_page_token = None
 
     while len(comments) < max_comments:
         try:
-            payload = _youtube_get(
-                "commentThreads",
-                {
-                    "part": "snippet",
-                    "videoId": video_id,
-                    "maxResults": min(100, max_comments - len(comments)),
-                    "textFormat": "plainText",
-                    "pageToken": next_page_token,
-                },
-            )
+            params = {
+                "part": "snippet",
+                "videoId": video_id,
+                "maxResults": min(100, max_comments - len(comments)),
+                "textFormat": "plainText",
+            }
+
+            if next_page_token:
+                params["pageToken"] = next_page_token
+
+            payload = _youtube_get("commentThreads", params)
+
         except HTTPException:
             return comments
 
@@ -120,20 +122,38 @@ def get_video_comments(video_id: str, max_comments: int = 30) -> list[str]:
     return comments
 
 
-def collect_youtube_texts(url: str) -> dict:
+# playlist의 첫 번째 영상 id 가져오기
+def get_first_video_id_from_playlist(playlist_id: str) -> str:
+    payload = _youtube_get(
+        "playlistItems",
+        {
+            "part": "snippet",
+            "playlistId": playlist_id,
+            "maxResults": 1,
+        },
+    )
+
+    items = payload.get("items", [])
+    if not items:
+        raise HTTPException(status_code=404, detail="플레이리스트에 영상이 없음")
+
+    return items[0]["snippet"]["resourceId"]["videoId"]
+
+
+# 최종적으로 설명란/댓글 텍스트 수집
+def collect_text_sources(url: str) -> dict:
     target = parse_youtube_target(url)
 
     if target["type"] == "playlist":
-        video_ids = [target["id"]]  # 일단 MVP에서는 첫 영상만
+        video_id = get_first_video_id_from_playlist(target["id"])
     else:
-        video_ids = [target["id"]]
-
-    video_id = video_ids[0]
+        video_id = target["id"]
 
     description = get_video_description(video_id)
     comments = get_video_comments(video_id)
 
     return {
+        "input_url": url,
         "video_id": video_id,
         "description": description,
         "comments": comments,
