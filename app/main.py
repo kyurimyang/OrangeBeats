@@ -1,6 +1,5 @@
 #서버 시작 파일
-# python -m uvicorn app.main:app --reload
-
+# `python -m uvicorn app.main:app --reload`
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 

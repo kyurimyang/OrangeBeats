@@ -2,7 +2,7 @@
 # 설명란 분석 실패 -> 댓글로 넘어가기
 
 from app.services.text_analysis import analyze_comments, analyze_description
-from app.services.youtube_service import collect_text_sources
+from app.clients.youtube_client import collect_text_sources
 
 # 유튜브 텍스트 파이프라인 전체 실행
 def run_youtube_text_pipeline(url: str) -> dict:
