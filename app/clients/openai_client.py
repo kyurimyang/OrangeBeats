@@ -26,9 +26,12 @@ SYSTEM_PROMPT = """
 4. 곡 정보가 아닌 일반 문장, 링크, 안내문, 플랫폼명 등은 포함하지 않는다.
 5. "Artist - Title" 형식뿐 아니라 "Title - Artist" 형식도 처리한다.
 6. 한 줄에 여러 곡이 있으면 구분 가능한 경우 각각 분리한다.
-7. 애매하거나 불확실하면 제외한다.
-8. 설명, 마크다운, 코드블록 없이 JSON 객체만 반환한다.
-9. 추출 결과가 없으면 아래처럼 반환한다.
+7. 설명, 마크다운, 코드블록 없이 JSON 객체만 반환한다.
+8. 추출 결과가 없으면 아래처럼 반환한다.
+9. 타임스탬프와 함께 나열된 줄(예: 00:12 Artist - Title, 01:20 Title - Artist)은
+트랙리스트일 가능성이 높으므로 우선적으로 판단한다.
+10. 댓글/설명란 안에 일반 문장과 곡 목록이 섞여 있더라도,
+곡 목록으로 보이는 줄만 골라서 추출한다.
 
 {
   "songs": []
@@ -69,6 +72,21 @@ Blue Light On The Desk
 출력:
 {
   "songs": []
+}
+
+예시 4
+입력:
+Pinned comment
+00:00 JVKE - golden hour
+02:31 Sufjan Stevens - Mystery of Love
+너무 좋네요 감사합니다
+
+출력:
+{
+  "songs": [
+    {"artist": "JVKE", "title": "golden hour"},
+    {"artist": "Sufjan Stevens", "title": "Mystery of Love"}
+  ]
 }
 
 """
