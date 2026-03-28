@@ -2,12 +2,10 @@ import secrets
 from typing import List, Dict
 
 from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import RedirectResponse
 
-from app.config import FRONTEND_URL
-from app.service.spotify_service import (
+from app.services.spotify_service import (
     SpotifyServiceError,
-    creat_playlist_from_song,
+    create_playlist_from_songs,
     exchange_code_for_token,
     get_spotify_login_url,
 )
@@ -46,7 +44,11 @@ def spotify_callback(
             spotify_token_store["latest_refresh_token"] = refresh_token
 
         # 프론트로 보내고 싶으면 쿼리스트링/쿠키 방식으로 조정
-        return RedirectResponse(url=f"{FRONTEND_URL}/spotify/success")
+        return {
+            "message" : "Spotify 로그인 성공",
+            "access_token_saved": True,
+            "refresh_token_saved" : bool(refresh_token)
+        }
     except SpotifyServiceError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
