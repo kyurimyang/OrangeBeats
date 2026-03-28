@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routers import youtube
 from app.routers import spotify
 
-app = FastAPI(title="Orange Playlist")
+app = FastAPI(title="Orange Beats")
 
 app.add_middleware(
     CORSMiddleware,

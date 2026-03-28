@@ -19,19 +19,21 @@ class SpotifyServiceError(Exception):
 def _basic_auth_header() -> str:
     raw = f"{SPOTIFY_CLIENT_ID}:{SPOTIFY_CLIENT_SECRET}"
     encoded = base64.b64encode(raw.encode("utf-8")).decode("utf-8")
-    return f"Basic{encoded}"
+    return f"Basic {encoded}"
 
 # 사용자 Spotify 로그인/권한 동의 페이지 URL 생성
-def get_spotify_login_url() -> str:
-    scope = "playlist-modify-public playlist-modify-private"
+def get_spotify_login_url(state: str) -> str:
+    scope = "user-read-private playlist-modify-public playlist-modify-private"
     params = {
         "client_id" : SPOTIFY_CLIENT_ID,
         "response_type" : "code",
-        "redirect_url" : SPOTIFY_REDIRECT_URI,
+        "redirect_uri" : SPOTIFY_REDIRECT_URI,
         "scope" : scope,
         "state" : state,
         "show_dialog" : "true", 
     }
+    print("SPOTIFY_REDIRECT_URI =", SPOTIFY_REDIRECT_URI)
+    print("authorize params =", params)
     return f"{SPOTIFY_ACCOUNTS_BASE}/authorize?{urlencode(params)}"
 
 # authorization code -> access token 교환
@@ -96,6 +98,8 @@ def create_playlist(
         "public": public,
     }
     resp = requests.post(url, headers=_auth_headers(access_token), json=payload, timeout=20)
+    print("create_playlist status =", resp.status_code)
+    print("create_playlist body =", resp.text)
     if resp.status_code not in (200, 201):
         raise SpotifyServiceError(f"플레이리스트 생성 실패: {resp.status_code} / {resp.text}")
     return resp.json()
@@ -173,7 +177,7 @@ def create_playlist_from_songs(
     access_token: str,
     playlist_name: str,
     songs: List[Dict[str, str]],
-    playlist_description: str = "Created by Paran Playlist AI",
+    playlist_description: str = "Orange Beats",
     public: bool = False,
 ) -> Dict[str, Any]:
   
