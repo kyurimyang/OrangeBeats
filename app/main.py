@@ -1,5 +1,5 @@
-#서버 시작 파일
-# `python -m uvicorn app.main:app --reload`
+#서버 시작 파일python -m uvicorn app.main:app --reload
+# ``
 # 서버 종료 Ctrl + C
 
 from fastapi import FastAPI

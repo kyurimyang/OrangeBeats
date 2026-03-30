@@ -16,13 +16,17 @@ router = APIRouter(prefix="/spotify", tags=["Spotify"])
 spotify_auth_state_store = {}
 spotify_token_store = {}
 
+
 @router.get("/login")
 def spotify_login():
     state = secrets.token_urlsafe(16)
     spotify_auth_state_store[state] = True
 
     login_url = get_spotify_login_url(state=state)
-    return {"login_url": login_url}
+    return {
+        "login_url": login_url,
+        "state": state,
+    }
 
 
 @router.get("/callback")
@@ -35,19 +39,29 @@ def spotify_callback(
 
     try:
         token_data = exchange_code_for_token(code)
+
+        print("token_data =", token_data)
+        print("granted scope =", token_data.get("scope"))
+
         access_token = token_data["access_token"]
         refresh_token = token_data.get("refresh_token")
 
-        # 데모용 저장
-        spotify_token_store["latest_access_token"] = access_token
-        if refresh_token:
-            spotify_token_store["latest_refresh_token"] = refresh_token
+        spotify_token_store[state] = {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+        }
 
-        # 프론트로 보내고 싶으면 쿼리스트링/쿠키 방식으로 조정
+        spotify_auth_state_store.pop(state, None)
+
+        print("callback state =", state)
+        print("token saved =", bool(spotify_token_store.get(state)))
+
         return {
-            "message" : "Spotify 로그인 성공",
+            "message": "Spotify 로그인 성공",
             "access_token_saved": True,
-            "refresh_token_saved" : bool(refresh_token)
+            "refresh_token_saved": bool(refresh_token),
+            "state": state,
+            "scope": token_data.get("scope"),
         }
     except SpotifyServiceError as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -58,6 +72,7 @@ def create_spotify_playlist(payload: Dict):
     """
     요청 body 예시
     {
+      "state": "로그인 후 받은 state",
       "playlist_name": "유튜브 추출 플레이리스트",
       "songs": [
         {"artist": "NewJeans", "title": "Ditto"},
@@ -65,12 +80,29 @@ def create_spotify_playlist(payload: Dict):
       ]
     }
     """
-    access_token = spotify_token_store.get("latest_access_token")
+    state = payload.get("state")
+    if not state:
+        raise HTTPException(status_code=400, detail="state가 필요합니다.")
+
+    token_info = spotify_token_store.get(state)
+    if not token_info:
+        raise HTTPException(status_code=401, detail="유효한 로그인 정보가 없습니다. 다시 로그인해주세요.")
+
+    access_token = token_info.get("access_token")
     if not access_token:
-        raise HTTPException(status_code=401, detail="Spotify 로그인이 먼저 필요합니다.")
+        raise HTTPException(status_code=401, detail="access token이 없습니다. 다시 로그인해주세요.")
+
+    print("=== /create-playlist called ===")
+    print("payload =", payload)
+    print("state =", state)
+    print("token_info exists =", bool(token_info))
 
     playlist_name = payload.get("playlist_name", "새 플레이리스트")
     songs: List[Dict[str, str]] = payload.get("songs", [])
+
+    print("playlist_name =", playlist_name)
+    print("songs =", songs)
+    print("songs count =", len(songs))
 
     if not songs:
         raise HTTPException(status_code=400, detail="songs가 비어 있습니다.")
@@ -81,11 +113,12 @@ def create_spotify_playlist(payload: Dict):
             playlist_name=playlist_name,
             songs=songs,
             playlist_description="Created from YouTube playlist text",
-            public=False,
+            public=True,  # 우선 테스트용: private scope 문제 피하려고 public=True
         )
         return {
             "success": True,
             "result": result,
         }
     except SpotifyServiceError as e:
+        print("SpotifyServiceError =", str(e))
         raise HTTPException(status_code=500, detail=str(e))
