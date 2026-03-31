@@ -140,6 +140,38 @@ def _is_meaningful_text(text: str) -> bool:
     return True
 
 
+def _contains_artist_hint(text: str) -> bool:
+    lower = text.lower()
+    artist_hints = [
+        " feat. ", " feat ", " ft. ", " ft ", " featuring ",
+        "prod. ", " prod ", " by ", " x ", " & ", ", "
+    ]
+    return any(h in f" {lower} " for h in artist_hints)
+
+
+def _looks_like_artist(text: str) -> bool:
+    text = _clean_text(text)
+    lower = text.lower()
+
+    if not text:
+        return False
+
+    # 아티스트명에 자주 붙는 패턴
+    if _contains_artist_hint(text):
+        return True
+
+    # 제목보다 아티스트명이 상대적으로 짧은 경우가 많음
+    word_count = len(text.split())
+    if word_count <= 4:
+        return True
+
+    # 전부 대문자/짧은 영어 이름도 artist일 확률이 높음
+    if len(text) <= 20 and re.fullmatch(r"[A-Za-z0-9&.,'\- ]+", text):
+        return True
+
+    return False
+
+
 # 곡 정보 생성 + 완성도 계산
 def _append_song(results: list[dict], artist: str, title: str):
     artist = _clean_text(artist)
@@ -167,16 +199,33 @@ def _append_song(results: list[dict], artist: str, title: str):
     })
 
 
-# Song - Artist 형태 분리
+# Artist - Title / Title - Artist 판단해서 분리
 def _split_pair(text: str):
     separators = [" - ", " – ", " — ", " | ", " / ", " : "]
+
     for sep in separators:
         if sep in text:
             left, right = text.split(sep, 1)
             left = _clean_text(left)
             right = _clean_text(right)
-            if left and right:
-                return left, right
+
+            if not left or not right:
+                return None
+
+            left_artist_like = _looks_like_artist(left)
+            right_artist_like = _looks_like_artist(right)
+
+            # Artist - Title
+            if left_artist_like and not right_artist_like:
+                return {"artist": left, "title": right}
+
+            # Title - Artist
+            if right_artist_like and not left_artist_like:
+                return {"artist": right, "title": left}
+
+            # 둘 다 애매하면 timestamp 트랙리스트에서 흔한 Artist - Title 우선
+            return {"artist": left, "title": right}
+
     return None
 
 
@@ -186,8 +235,9 @@ def parse_unstructured_lines_to_json(text: str) -> dict:
         return {"songs": []}
 
     lines = [l.strip() for l in text.splitlines() if l.strip()]
-    results = []
+    temp_pairs = []
 
+    # 1차: 라인에서 left/right 후보만 뽑아두기
     for line in lines:
         if not _is_valid_music_line(line):
             continue
@@ -195,23 +245,89 @@ def parse_unstructured_lines_to_json(text: str) -> dict:
         ts_match = TIMESTAMP_LINE_REGEX.match(line)
         if ts_match:
             body = _clean_text(ts_match.group("body"))
-
             if not _is_valid_music_line(body):
                 continue
+            target = body
+        else:
+            target = _normalize_line(line)
 
-            pair = _split_pair(body)
-            if pair:
-                l, r = pair
-                _append_song(results, artist=r, title=l)
-            else:
-                _append_song(results, artist="", title=body)
+        pair_found = False
+        separators = [" - ", " – ", " — ", " | ", " / ", " : "]
+
+        for sep in separators:
+            if sep in target:
+                left, right = target.split(sep, 1)
+                left = _clean_text(left)
+                right = _clean_text(right)
+
+                if left and right:
+                    temp_pairs.append({
+                        "left": left,
+                        "right": right,
+                    })
+                    pair_found = True
+                break
+
+        if not pair_found:
+            target = _clean_text(target)
+            if target:
+                temp_pairs.append({
+                    "left": "",
+                    "right": target,
+                })
+
+    # 2차: 반복 빈도 계산
+    freq = {}
+    for item in temp_pairs:
+        left = item.get("left", "")
+        right = item.get("right", "")
+
+        if left:
+            freq[left] = freq.get(left, 0) + 1
+        if right:
+            freq[right] = freq.get(right, 0) + 1
+
+    # 3차: 방향 결정
+    results = []
+
+    for item in temp_pairs:
+        left = item.get("left", "")
+        right = item.get("right", "")
+
+        # pair가 아닌 단독 텍스트는 title로만 저장
+        if not left and right:
+            _append_song(results, artist="", title=right)
             continue
 
-        normalized = _normalize_line(line)
-        pair = _split_pair(normalized)
-        if pair:
-            l, r = pair
-            _append_song(results, artist=r, title=l)
+        if not left or not right:
+            continue
+
+        left_count = freq.get(left, 0)
+        right_count = freq.get(right, 0)
+
+        left_artist_like = _looks_like_artist(left)
+        right_artist_like = _looks_like_artist(right)
+
+        # 우선순위 1: 더 자주 반복되는 쪽을 artist로 간주
+        if right_count > left_count:
+            _append_song(results, artist=right, title=left)
+            continue
+
+        if left_count > right_count:
+            _append_song(results, artist=left, title=right)
+            continue
+
+        # 우선순위 2: artist-like 판정
+        if left_artist_like and not right_artist_like:
+            _append_song(results, artist=left, title=right)
+            continue
+
+        if right_artist_like and not left_artist_like:
+            _append_song(results, artist=right, title=left)
+            continue
+
+        # 우선순위 3: 애매하면 "제목 - 가수" 형식 우선
+        _append_song(results, artist=right, title=left)
 
     return {"songs": deduplicate_songs(results)}
 

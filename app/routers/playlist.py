@@ -47,15 +47,15 @@ def create_playlist_from_youtube(payload: Dict):
     # 2) Spotify 입력 형식으로 정리
     songs: List[Dict[str, str]] = []
     for item in raw_songs:
-        title = (item.get("title") or "").strip()
         artist = (item.get("artist") or "").strip()
+        title = (item.get("title") or "").strip()
 
         if not title:
             continue
 
         songs.append({
-            "title": title,
             "artist": artist,
+            "title": title,
         })
 
     if not songs:
