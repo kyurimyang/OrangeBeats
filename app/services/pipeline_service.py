@@ -16,6 +16,7 @@ def run_youtube_text_pipeline(url: str) -> dict:
         return {
             "input_url": source_data["input_url"],
             "video_id": source_data["video_id"],
+            "youtube_title": source_data.get("youtube_title", ""),
             "selected_stage": "description",
             "success": True,
             "songs": description_result["songs"],
@@ -31,6 +32,7 @@ def run_youtube_text_pipeline(url: str) -> dict:
         return {
             "input_url": source_data["input_url"],
             "video_id": source_data["video_id"],
+            "youtube_title": source_data.get("youtube_title", ""),
             "selected_stage": "comments",
             "success": True,
             "songs": comments_result["songs"],
@@ -45,6 +47,7 @@ def run_youtube_text_pipeline(url: str) -> dict:
     return {
         "input_url": source_data["input_url"],
         "video_id": source_data["video_id"],
+        "youtube_title": source_data.get("youtube_title", ""),
         "selected_stage": "none",
         "success": False,
         "songs": [],

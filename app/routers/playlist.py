@@ -16,13 +16,23 @@ router = APIRouter(prefix="/playlist", tags=["Playlist"])
 def create_playlist_from_youtube(payload: Dict):
     """
     요청 body 예시
+
+    1) 유튜브 제목 그대로 사용
     {
       "url": "https://www.youtube.com/watch?v=xxxxxxx",
-      "playlist_name": "유튜브 변환 플레이리스트"
+      "title_mode": "youtube"
+    }
+
+    2) 직접 입력 제목 사용
+    {
+      "url": "https://www.youtube.com/watch?v=xxxxxxx",
+      "title_mode": "custom",
+      "playlist_name": "내 플레이리스트 제목"
     }
     """
-    youtube_url = payload.get("url")
-    playlist_name = payload.get("playlist_name", "유튜브 변환 플레이리스트")
+    youtube_url = (payload.get("url") or "").strip()
+    title_mode = (payload.get("title_mode") or "youtube").strip().lower()
+    user_playlist_name = (payload.get("playlist_name") or "").strip()
 
     if not youtube_url:
         raise HTTPException(status_code=400, detail="url이 필요합니다.")
@@ -41,6 +51,8 @@ def create_playlist_from_youtube(payload: Dict):
         )
 
     raw_songs = youtube_result.get("songs", [])
+    youtube_title = (youtube_result.get("youtube_title") or "").strip()
+
     if not raw_songs:
         raise HTTPException(status_code=400, detail="유튜브에서 추출된 곡이 없습니다.")
 
@@ -61,26 +73,38 @@ def create_playlist_from_youtube(payload: Dict):
     if not songs:
         raise HTTPException(status_code=400, detail="Spotify로 넘길 수 있는 곡 데이터가 없습니다.")
 
+    # 3) 제목 결정
+    # - youtube: 유튜브 제목 우선
+    # - custom: 사용자가 직접 입력한 제목 우선
+    if title_mode == "custom":
+        final_playlist_name = user_playlist_name or youtube_title or "유튜브 변환 플레이리스트"
+    else:
+        final_playlist_name = youtube_title or user_playlist_name or "유튜브 변환 플레이리스트"
+
     print("=== /playlist/from-youtube called ===")
     print("youtube_url =", youtube_url)
-    print("playlist_name =", playlist_name)
+    print("title_mode =", title_mode)
+    print("youtube_title =", youtube_title)
+    print("final_playlist_name =", final_playlist_name)
     print("extracted songs count =", len(songs))
     print("songs sample =", songs[:3])
 
-    # 3) Spotify 플레이리스트 생성
+    # 4) Spotify 플레이리스트 생성
     try:
         spotify_result = create_playlist_from_songs(
             access_token=access_token,
-            playlist_name=playlist_name,
+            playlist_name=final_playlist_name,
             songs=songs,
-            playlist_description="Created from YouTube playlist text",
+            playlist_description=f"Created from YouTube: {youtube_title or youtube_url}",
             public=True,
         )
 
         return {
             "success": True,
             "youtube_url": youtube_url,
-            "playlist_name": playlist_name,
+            "youtube_title": youtube_title,
+            "title_mode": title_mode,
+            "playlist_name": final_playlist_name,
             "extracted_count": len(songs),
             "songs": songs,
             "spotify_result": spotify_result,

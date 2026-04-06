@@ -140,14 +140,23 @@ def get_first_video_id_from_playlist(playlist_id: str) -> str:
     return items[0]["snippet"]["resourceId"]["videoId"]
 
 
-# 최종적으로 설명란/댓글 텍스트 수집
+# 최종적으로 설명란/댓글, 제목 텍스트 수집
 def collect_text_sources(url: str) -> dict:
     target = parse_youtube_target(url)
-
+    
+    youtube_title = ""
+    
     if target["type"] == "playlist":
+        playlist_id = target["id"]
+        youtube_title = get_playlist_title(playlist_id)
         video_id = get_first_video_id_from_playlist(target["id"])
+        
+        # 플레이리스트 제목을 못 가져오면 첫 영상 제목 fallback
+        if not youtube_title:
+            youtube_title = get_video_title(video_id)
     else:
         video_id = target["id"]
+        youtube_title = get_video_title(video_id)
 
     description = get_video_description(video_id)
     comments = get_video_comments(video_id)
@@ -155,6 +164,66 @@ def collect_text_sources(url: str) -> dict:
     return {
         "input_url": url,
         "video_id": video_id,
+        "youtube_title": youtube_title,
         "description": description,
         "comments": comments,
     }
+    
+# youtube 영상 title 가져오기
+def get_youtube_video_title(video_id: str) -> str:
+    url = f"{YOUTUBE_API_BASE}/videos"
+    params = {
+        "part": "snippet",
+        "id": video_id,
+        "key": YOUTUBE_API_KEY,
+    }
+
+    res = requests.get(url, params=params).json()
+    items = res.get("items", [])
+
+    return items[0]["snippet"]["title"] if items else None
+
+def get_youtube_playlist_title(playlist_id: str) -> str:
+    url = f"{YOUTUBE_API_BASE}/playlists"
+    params = {
+        "part": "snippet",
+        "id": playlist_id,
+        "key": YOUTUBE_API_KEY,
+    }
+
+    res = requests.get(url, params=params).json()
+    items = res.get("items", [])
+
+    return items[0]["snippet"]["title"] if items else None
+
+# 유튜브 플리 제목 가져오기
+def get_video_title(video_id: str) -> str:
+    payload = _youtube_get(
+        "videos",
+        {
+            "part": "snippet",
+            "id": video_id,
+        },
+    )
+
+    items = payload.get("items", [])
+    if not items:
+        return ""
+
+    return items[0]["snippet"].get("title", "").strip()
+
+# 플리 제목 조회 
+def get_playlist_title(playlist_id: str) -> str:
+    payload = _youtube_get(
+        "playlists",
+        {
+            "part": "snippet",
+            "id": playlist_id,
+        },
+    )
+
+    items = payload.get("items", [])
+    if not items:
+        return ""
+
+    return items[0]["snippet"].get("title", "").strip() 

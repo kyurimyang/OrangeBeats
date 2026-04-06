@@ -19,10 +19,9 @@ AUDIO_SAMPLE_SEC_MAX = 15
 SPOTIFY_HIGH_CONF = 0.85
 SPOTIFY_MID_CONF = 0.65
 
-# 1차 실험 로그 기반 수정 
 SECTION_KEYWORDS = [
     "축가", "행진", "입장", "퇴장", "bgm", "브금", "playlist", "setlist",
-    "tracklist", "music", "song list", "추천곡", "문의", "contact"
+    "tracklist", "music", "song list", "추천곡", "문의", "contact", "timeline", "time line"
 ]
 
 NATURAL_SENTENCE_HINTS = [
@@ -30,7 +29,7 @@ NATURAL_SENTENCE_HINTS = [
     "please", "hope", "thanks", "enjoy", "subscribe", "comment", "watch"
 ]
 
-TITLE_DELIMITERS = [" - ", " — ", " | ", " : "]
+TITLE_DELIMITERS = [" - ", " – ", " — ", " | ", " : ", " ~ "]
 
 NON_MUSIC_LINE_PATTERNS = [
     r"https?://\S+",
@@ -44,4 +43,10 @@ NON_MUSIC_LINE_PATTERNS = [
     r"^\s*thank you\b.*",
     r"^\s*listen on\b.*",
     r"^\s*available on\b.*",
+    r"^\s*\*?timeline\b.*",
+    r"^\s*time line\b.*",
+    r"^\s*음원으로 인한 수익.*",
+    r"^\s*수익은 발생하지 않습니다.*",
+    r"^\s*all rights reserved.*",
+    r"^\s*provided to youtube by.*",
 ]
