@@ -1,108 +1,80 @@
-const API_BASE = "http://127.0.0.1:8000";
+const backendBaseUrlInput = document.getElementById("backendBaseUrl");
+const youtubeUrlInput = document.getElementById("youtubeUrl");
+const modeSelect = document.getElementById("mode");
+const titleModeSelect = document.getElementById("titleMode");
+const playlistNameInput = document.getElementById("playlistName");
 
 const spotifyLoginBtn = document.getElementById("spotifyLoginBtn");
-const clearBtn = document.getElementById("clearBtn");
 const analyzeBtn = document.getElementById("analyzeBtn");
-const createBtn = document.getElementById("createBtn");
-const youtubeUrlInput = document.getElementById("youtubeUrl");
-const playlistNameInput = document.getElementById("playlistName");
+const createPlaylistBtn = document.getElementById("createPlaylistBtn");
+
+const statusBox = document.getElementById("statusBox");
 const resultBox = document.getElementById("resultBox");
-const summaryBox = document.getElementById("summaryBox");
-const songList = document.getElementById("songList");
-const statusBadge = document.getElementById("statusBadge");
-const titleModeInputs = document.querySelectorAll('input[name="titleMode"]');
+const songsList = document.getElementById("songsList");
+
+const summarySuccess = document.getElementById("summarySuccess");
+const summaryStage = document.getElementById("summaryStage");
+const summaryOcrUsed = document.getElementById("summaryOcrUsed");
+const summarySongCount = document.getElementById("summarySongCount");
+
+function getBackendBaseUrl() {
+  return backendBaseUrlInput.value.trim().replace(/\/$/, "");
+}
+
+function getYoutubeUrl() {
+  return youtubeUrlInput.value.trim();
+}
+
+function getMode() {
+  return modeSelect.value;
+}
 
 function getTitleMode() {
-  const checked = document.querySelector('input[name="titleMode"]:checked');
-  return checked ? checked.value : "youtube";
+  return titleModeSelect.value;
 }
 
-function syncTitleInputState() {
-  const titleMode = getTitleMode();
-  playlistNameInput.disabled = titleMode !== "custom";
-  if (titleMode !== "custom") {
-    playlistNameInput.value = "";
-  }
+function getPlaylistName() {
+  return playlistNameInput.value.trim();
 }
 
-function setStatus(type, text) {
-  statusBadge.className = "badge";
-  if (type) {
-    statusBadge.classList.add(type);
-  }
-  statusBadge.textContent = text;
+function setStatus(type, message) {
+  statusBox.className = `status ${type}`;
+  statusBox.textContent = message;
 }
 
-function setResult(data) {
-  if (typeof data === "string") {
-    resultBox.textContent = data;
-    return;
-  }
+function renderJson(data) {
   resultBox.textContent = JSON.stringify(data, null, 2);
 }
 
-function clearSongs() {
-  songList.innerHTML = "";
+function renderSummary(data) {
+  summarySuccess.textContent = String(data?.success ?? "-");
+  summaryStage.textContent = data?.selected_stage ?? "-";
+  summaryOcrUsed.textContent = String(data?.ocr_used ?? "-");
+  summarySongCount.textContent = String((data?.songs || []).length ?? 0);
 }
 
-function renderSongs(songs = []) {
-  clearSongs();
-
-  if (!Array.isArray(songs) || songs.length === 0) {
+function renderSongs(songs) {
+  if (!songs || songs.length === 0) {
+    songsList.className = "songs-list empty";
+    songsList.innerHTML = "아직 추출된 곡이 없어요 ...";
     return;
   }
 
-  songs.forEach((song, index) => {
-    const li = document.createElement("li");
-    li.className = "song-item";
+  songsList.className = "songs-list";
+  songsList.innerHTML = songs
+    .map((song, index) => {
+      const title = song.title || "(제목 없음)";
+      const artist = song.artist || "(아티스트 없음)";
+      const source = song.source || "-";
 
-    const artist = (song.artist || "").trim() || "아티스트 없음";
-    const title = (song.title || "").trim() || "제목 없음";
-
-    li.innerHTML = `
-      <div class="song-index">${index + 1}번 곡</div>
-      <div class="song-title">${escapeHtml(title)}</div>
-      <div class="song-artist">${escapeHtml(artist)}</div>
-    `;
-
-    songList.appendChild(li);
-  });
-}
-
-function renderAnalyzeSummary(data) {
-  if (!data || !data.success) {
-    summaryBox.classList.remove("empty");
-    summaryBox.innerHTML = "분석은 실행됐지만 표시할 수 있는 결과가 없습니다.";
-    return;
-  }
-
-  const youtubeTitle = data.youtube_title || "제목 없음";
-  const count = Array.isArray(data.songs) ? data.songs.length : 0;
-
-  summaryBox.classList.remove("empty");
-  summaryBox.innerHTML = `
-    <strong>유튜브 제목:</strong> ${escapeHtml(youtubeTitle)}<br>
-    <strong>추출 곡 수:</strong> ${count}곡
-  `;
-}
-
-function renderCreateSummary(data) {
-  if (!data || !data.success) {
-    summaryBox.classList.remove("empty");
-    summaryBox.innerHTML = "플레이리스트 생성은 실행됐지만 표시할 수 있는 결과가 없습니다.";
-    return;
-  }
-
-  const youtubeTitle = data.youtube_title || "제목 없음";
-  const playlistName = data.playlist_name || "제목 없음";
-  const count = data.extracted_count ?? (Array.isArray(data.songs) ? data.songs.length : 0);
-
-  summaryBox.classList.remove("empty");
-  summaryBox.innerHTML = `
-    <strong>유튜브 제목:</strong> ${escapeHtml(youtubeTitle)}<br>
-    <strong>생성된 플레이리스트 제목:</strong> ${escapeHtml(playlistName)}<br>
-    <strong>전달 곡 수:</strong> ${count}곡
-  `;
+      return `
+        <div class="song-item">
+          <div class="song-title">${index + 1}. ${escapeHtml(title)}</div>
+          <div class="song-meta">artist: ${escapeHtml(artist)} | source: ${escapeHtml(source)}</div>
+        </div>
+      `;
+    })
+    .join("");
 }
 
 function escapeHtml(value) {
@@ -114,22 +86,17 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
-async function fetchJson(url, options = {}) {
-  const response = await fetch(url, options);
-
+async function handleApiResponse(response) {
   let data;
   try {
     data = await response.json();
-  } catch (error) {
-    data = { detail: "JSON 응답 파싱 실패", raw_error: error.message };
+  } catch (e) {
+    throw new Error("JSON 응답 파싱 실패");
   }
 
   if (!response.ok) {
-    const errorMessage = data?.detail || `HTTP ${response.status} 오류`;
-    const err = new Error(errorMessage);
-    err.status = response.status;
-    err.payload = data;
-    throw err;
+    const detail = data?.detail || data?.message || "요청 실패";
+    throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
   }
 
   return data;
@@ -137,86 +104,86 @@ async function fetchJson(url, options = {}) {
 
 spotifyLoginBtn.addEventListener("click", async () => {
   try {
-    setStatus("loading", "Spotify 로그인 URL 요청 중");
-    setResult("Spotify 로그인 URL 요청 중...");
+    setStatus("loading", "스포티파이 로그인 페이지 불러오는 중 ... ♫");
+    renderJson({ message: "Spotify 로그인 URL 요청 중..." });
 
-    const data = await fetchJson(`${API_BASE}/spotify/login`);
-    setResult(data);
-    setStatus("success", "Spotify 로그인 페이지로 이동");
+    const baseUrl = getBackendBaseUrl();
+    const response = await fetch(`${baseUrl}/spotify/login`);
+    const data = await handleApiResponse(response);
 
-    if (data.login_url) {
-      window.location.href = data.login_url;
-      return;
+    renderJson(data);
+
+    const loginUrl = data?.login_url;
+    if (!loginUrl) {
+      throw new Error("login_url이 응답에 없습니다.");
     }
 
-    throw new Error("login_url을 받지 못했습니다.");
+    setStatus("success", "로그인 페이지를 새 창으로 열었어요 ♡");
+    window.open(loginUrl, "_blank");
   } catch (error) {
-    console.error(error);
-    setStatus("error", "Spotify 로그인 실패");
-    setResult({
-      message: error.message,
-      status: error.status,
-      detail: error.payload || null,
-    });
+    setStatus("error", `로그인 요청 실패 ... ${error.message}`);
+    renderJson({ error: error.message });
   }
 });
 
 analyzeBtn.addEventListener("click", async () => {
-  const youtubeUrl = youtubeUrlInput.value.trim();
-
+  const youtubeUrl = getYoutubeUrl();
   if (!youtubeUrl) {
-    setStatus("error", "URL 필요");
-    setResult("유튜브 링크를 입력해줘.");
+    setStatus("error", "유튜브 링크를 먼저 넣어줘 ...");
     return;
   }
 
   try {
-    setStatus("loading", "유튜브 분석 중");
-    setResult("유튜브 분석 요청 보내는 중...");
+    setStatus("loading", "플레이리스트 분석 중 ... 잠시만 기다려줘 ♫");
+    renderJson({ message: "분석 요청 중..." });
+    renderSongs([]);
+    renderSummary({});
 
-    const encodedUrl = encodeURIComponent(youtubeUrl);
-    const data = await fetchJson(`${API_BASE}/youtube/analyze?url=${encodedUrl}`);
-
-    renderAnalyzeSummary(data);
-    renderSongs(data.songs || []);
-    setResult(data);
-    setStatus("success", "유튜브 분석 완료");
-  } catch (error) {
-    console.error(error);
-    summaryBox.classList.remove("empty");
-    summaryBox.textContent = "분석 실패";
-    clearSongs();
-    setStatus("error", `분석 실패 (${error.status || "ERR"})`);
-    setResult({
-      message: error.message,
-      status: error.status,
-      detail: error.payload || null,
+    const baseUrl = getBackendBaseUrl();
+    const query = new URLSearchParams({
+      url: youtubeUrl,
+      mode: getMode(),
     });
+
+    const response = await fetch(`${baseUrl}/youtube/analyze?${query.toString()}`);
+    const data = await handleApiResponse(response);
+
+    renderJson(data);
+    renderSummary(data);
+    renderSongs(data?.songs || []);
+
+    setStatus(
+      "success",
+      `분석 완료 ♡ stage=${data?.selected_stage ?? "-"} / ocr_used=${data?.ocr_used ?? false}`
+    );
+  } catch (error) {
+    setStatus("error", `분석 실패 ... ${error.message}`);
+    renderJson({ error: error.message });
+    renderSummary({});
+    renderSongs([]);
   }
 });
 
-createBtn.addEventListener("click", async () => {
-  const youtubeUrl = youtubeUrlInput.value.trim();
-  const titleMode = getTitleMode();
-  const playlistName = playlistNameInput.value.trim();
-
+createPlaylistBtn.addEventListener("click", async () => {
+  const youtubeUrl = getYoutubeUrl();
   if (!youtubeUrl) {
-    setStatus("error", "URL 필요");
-    setResult("유튜브 링크를 입력해줘.");
+    setStatus("error", "유튜브 링크를 먼저 넣어줘 ...");
     return;
   }
 
-  const payload = {
-    url: youtubeUrl,
-    title_mode: titleMode,
-    playlist_name: playlistName,
-  };
-
   try {
-    setStatus("loading", "플레이리스트 생성 중");
-    setResult({ message: "플레이리스트 생성 요청 보내는 중...", payload });
+    setStatus("loading", "스포티파이 플레이리스트 만드는 중 ... ♫");
+    renderJson({ message: "플레이리스트 생성 요청 중..." });
 
-    const data = await fetchJson(`${API_BASE}/playlist/from-youtube`, {
+    const baseUrl = getBackendBaseUrl();
+    const payload = {
+      url: youtubeUrl,
+      mode: getMode(),
+      title_mode: getTitleMode(),
+      playlist_name: getPlaylistName(),
+    };
+
+    const response = await fetch(`${baseUrl}/playlist/from-youtube`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -224,45 +191,22 @@ createBtn.addEventListener("click", async () => {
       body: JSON.stringify(payload),
     });
 
-    renderCreateSummary(data);
-    renderSongs(data.songs || []);
-    setResult(data);
-    setStatus("success", "플레이리스트 생성 완료");
+    const data = await handleApiResponse(response);
+
+    renderJson(data);
+
+    const songs = data?.songs || data?.youtube_result?.songs || [];
+    const summarySource = data?.youtube_result || data;
+
+    renderSummary(summarySource);
+    renderSongs(songs);
+
+    setStatus(
+      "success",
+      `플레이리스트 생성 완료 ♡ name=${data?.playlist_name ?? "-"}`
+    );
   } catch (error) {
-    console.error(error);
-    summaryBox.classList.remove("empty");
-    summaryBox.textContent = "플레이리스트 생성 실패";
-    clearSongs();
-    setStatus("error", `생성 실패 (${error.status || "ERR"})`);
-    setResult({
-      message: error.message,
-      status: error.status,
-      request_payload: payload,
-      detail: error.payload || null,
-      hint:
-        error.status === 401
-          ? "Spotify 로그인이 먼저 필요합니다. 로그인 후 이 화면으로 돌아와 다시 시도하세요."
-          : error.status === 400
-            ? "요청 body 값, 유튜브 분석 결과, 추출 곡 수를 다시 확인하세요."
-            : null,
-    });
+    setStatus("error", `플레이리스트 생성 실패 ... ${error.message}`);
+    renderJson({ error: error.message });
   }
 });
-
-clearBtn.addEventListener("click", () => {
-  youtubeUrlInput.value = "";
-  playlistNameInput.value = "";
-  document.querySelector('input[name="titleMode"][value="youtube"]').checked = true;
-  syncTitleInputState();
-  summaryBox.className = "summary empty";
-  summaryBox.textContent = "아직 분석 결과가 없습니다.";
-  clearSongs();
-  setStatus("", "대기 중");
-  setResult("아직 요청 안 함");
-});
-
-titleModeInputs.forEach((input) => {
-  input.addEventListener("change", syncTitleInputState);
-});
-
-syncTitleInputState();

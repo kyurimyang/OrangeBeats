@@ -3,86 +3,137 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Orange Beats - Temp UI</title>
+  <title>Orange Beats ♫</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="app-shell">
-    <header class="hero">
-      <div>
-        <p class="eyebrow">Orange Beats</p>
-        <h1>YouTube → Spotify 임시 테스트 UI</h1>
-        <p class="hero-text">
-          API 임시 흐름 확인용
-        </p>
-      </div>
-      <div class="hero-actions">
-        <button id="spotifyLoginBtn" class="btn btn-primary">Spotify 로그인</button>
-        <button id="clearBtn" class="btn btn-ghost">결과 지우기</button>
-      </div>
-    </header>
-
-    <main class="grid">
-      <section class="panel">
-        <h2>1. 입력</h2>
-
-        <label for="youtubeUrl">YouTube URL</label>
-        <input
-          id="youtubeUrl"
-          type="text"
-          placeholder="https://www.youtube.com/watch?v=..."
-        />
-
-        <label>플레이리스트 제목 방식</label>
-        <div class="radio-group">
-          <label class="radio-card">
-            <input type="radio" name="titleMode" value="youtube" checked />
-            <span>유튜브 제목 그대로 사용</span>
-          </label>
-          <label class="radio-card">
-            <input type="radio" name="titleMode" value="custom" />
-            <span>직접 제목 입력</span>
-          </label>
+  <div class="page-bg">
+    <div class="miniroom-shell">
+      <aside class="profile-panel">
+        <div class="panel-box profile-box">
+          <div class="small-title">TODAY IS...</div>
+          <div class="today-badge">playlist mood ♫</div>
+          <div class="character-box">
+            <div class="character-face">૮ • ﻌ - ა</div>
+            <div class="character-sub">youtube → spotify<br />test room</div>
+          </div>
+          <div class="mini-desc">
+            OCR는 잠깐 힘들어도...<br />
+            text_only가 버텨주는 중
+          </div>
         </div>
 
-        <label for="playlistName">직접 입력 제목</label>
-        <input
-          id="playlistName"
-          type="text"
-          placeholder="title_mode가 custom일 때 사용됨"
-          disabled
-        />
-
-        <div class="button-row">
-          <button id="analyzeBtn" class="btn btn-secondary">유튜브 분석만 실행</button>
-          <button id="createBtn" class="btn btn-primary">Spotify 플레이리스트 생성</button>
+        <div class="panel-box menu-box">
+          <div class="small-title">MENU</div>
+          <ul class="menu-list">
+            <li>홈</li>
+            <li>플리분석</li>
+            <li>스포티로그인</li>
+            <li>JSON방명록</li>
+          </ul>
         </div>
+      </aside>
 
-        <div class="notice">
-          <strong>주의</strong>
-          <p>
-            현재 백엔드 구조상 Spotify 로그인 버튼을 누르면 Spotify 인증 페이지로 이동한다.
-            인증이 끝나면 백엔드 callback JSON 화면이 뜰 수 있다. 그 뒤 이 화면으로 돌아와서 생성 버튼을 누르면 된다.
-          </p>
-        </div>
-      </section>
+      <main class="content-panel">
+        <header class="top-header">
+          <div>
+            <h1>Orange Beats ♡</h1>
+            <p class="subtitle">유튜브 링크 넣고 텍스트 / OCR fallback 테스트하는 미니홈피</p>
+          </div>
+          <div class="mood-badge">BGM :: spring playlist</div>
+        </header>
 
-      <section class="panel">
-        <h2>2. 분석 결과</h2>
-        <div id="summaryBox" class="summary empty">
-          아직 분석 결과가 없습니다.
-        </div>
-        <ul id="songList" class="song-list"></ul>
-      </section>
+        <section class="window-card">
+          <div class="window-title">✿ 기본 설정</div>
 
-      <section class="panel panel-full">
-        <div class="panel-header">
-          <h2>3. 응답 로그</h2>
-          <span id="statusBadge" class="badge">대기 중</span>
-        </div>
-        <pre id="resultBox" class="result-box">아직 요청 안 함</pre>
-      </section>
-    </main>
+          <label for="backendBaseUrl">Backend Base URL</label>
+          <input
+            id="backendBaseUrl"
+            type="text"
+            value="http://127.0.0.1:8000"
+            placeholder="http://127.0.0.1:8000"
+          />
+
+          <label for="youtubeUrl">YouTube URL</label>
+          <input
+            id="youtubeUrl"
+            type="text"
+            placeholder="https://www.youtube.com/watch?v=..."
+          />
+
+          <div class="row">
+            <div class="field">
+              <label for="mode">분석 모드</label>
+              <select id="mode">
+                <option value="auto">auto</option>
+                <option value="text_only">text_only</option>
+                <option value="ocr_only">ocr_only</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label for="titleMode">제목 모드</label>
+              <select id="titleMode">
+                <option value="youtube">youtube</option>
+                <option value="custom">custom</option>
+              </select>
+            </div>
+          </div>
+
+          <label for="playlistName">커스텀 플레이리스트 제목</label>
+          <input
+            id="playlistName"
+            type="text"
+            placeholder="예: 봄밤 감성 플리"
+          />
+        </section>
+
+        <section class="window-card">
+          <div class="window-title">✿ 조작 버튼</div>
+
+          <div class="button-group">
+            <button id="spotifyLoginBtn" class="btn pink">Spotify 로그인</button>
+            <button id="analyzeBtn" class="btn blue">YouTube 분석</button>
+            <button id="createPlaylistBtn" class="btn purple">플레이리스트 생성</button>
+          </div>
+
+          <div id="statusBox" class="status idle">지금은 대기 중 ... ♫</div>
+        </section>
+
+        <section class="window-card">
+          <div class="window-title">✿ 오늘의 결과 요약</div>
+
+          <div class="summary-grid">
+            <div class="summary-item">
+              <span class="label">success</span>
+              <span id="summarySuccess" class="value">-</span>
+            </div>
+            <div class="summary-item">
+              <span class="label">selected_stage</span>
+              <span id="summaryStage" class="value">-</span>
+            </div>
+            <div class="summary-item">
+              <span class="label">ocr_used</span>
+              <span id="summaryOcrUsed" class="value">-</span>
+            </div>
+            <div class="summary-item">
+              <span class="label">songs count</span>
+              <span id="summarySongCount" class="value">-</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="window-card">
+          <div class="window-title">✿ 추출된 곡 목록</div>
+          <div id="songsList" class="songs-list empty">아직 결과가 없습니다.</div>
+        </section>
+
+        <section class="window-card">
+          <div class="window-title">✿ JSON 방명록</div>
+          <pre id="resultBox">아직 결과가 없습니다.</pre>
+        </section>
+      </main>
+    </div>
   </div>
 
   <script src="app.js"></script>
