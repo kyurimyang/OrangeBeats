@@ -54,6 +54,28 @@ def _artist_variants(artist: Optional[str]) -> List[Optional[str]]:
     return variants
 
 
+def _tokenize_text(value: str) -> List[str]:
+    normalized = _normalize_text(value)
+    if not normalized:
+        return []
+    return [token for token in normalized.split() if token]
+
+
+def _token_overlap_ratio(a: str, b: str) -> float:
+    a_tokens = set(_tokenize_text(a))
+    b_tokens = set(_tokenize_text(b))
+
+    if not a_tokens or not b_tokens:
+        return 0.0
+
+    intersection = len(a_tokens & b_tokens)
+    denominator = max(len(a_tokens), len(b_tokens))
+    if denominator == 0:
+        return 0.0
+
+    return round(intersection / denominator, 4)
+
+
 def _is_suspicious_song(song: Dict[str, Any]) -> bool:
     title = (song.get("title") or "").strip()
     artist = (song.get("artist") or "").strip()

@@ -37,6 +37,8 @@ def search_track(
     market: Optional[str] = None,
     limit: int = 10,
 ) -> List[Dict[str, Any]]:
+    limit = max(1, min(int(limit), 50))
+
     query_parts = []
 
     if title:

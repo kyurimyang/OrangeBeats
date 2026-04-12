@@ -1,8 +1,14 @@
+from __future__ import annotations
+
+import json
+import re
+from typing import Any, Dict, List, Optional
+
 from openai import OpenAI
 
 from app.config import OPENAI_API_KEY
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
 SYSTEM_PROMPT = """
 너는 YouTube 설명란/댓글 텍스트에서 음악 곡 정보를 추출하는 AI다.
@@ -88,14 +94,62 @@ SYSTEM_PROMPT = """
 }
 """
 
+SPOTIFY_RERANK_SYSTEM_PROMPT = """
+너는 음악 매칭 검증 AI다.
+역할은 사용자가 추출한 곡 정보(artist/title)와 Spotify 검색 후보 3~5개를 비교해서
+가장 맞는 후보를 고르는 것이다.
 
-def extract_songs_with_llm(text_blocks: list[str]) -> str:
+반드시 아래 JSON만 반환해라.
+
+{
+  "picked_index": 0,
+  "confidence": "high",
+  "should_swap": false,
+  "reason": "짧은 이유"
+}
+
+규칙:
+1. picked_index는 후보 목록의 index를 의미한다. 맞는 후보가 없으면 -1을 반환한다.
+2. should_swap은 사용자의 입력 artist/title이 뒤집힌 것으로 보이면 true, 아니면 false다.
+3. title과 artist를 모두 본다. title만 비슷하고 artist가 다르면 신중하게 판단한다.
+4. 후보 중 어느 것도 확실하지 않으면 picked_index=-1로 반환한다.
+5. confidence는 high / medium / low 중 하나만 사용한다.
+6. 설명문 없이 JSON만 반환한다.
+"""
+
+_JSON_BLOCK_RE = re.compile(r"\{.*\}", re.DOTALL)
+
+
+def _extract_json_object(text: str) -> Optional[Dict[str, Any]]:
+    if not text:
+        return None
+
+    text = text.strip()
+    text = re.sub(r"^```json\s*", "", text)
+    text = re.sub(r"^```\s*", "", text)
+    text = re.sub(r"\s*```$", "", text)
+
+    match = _JSON_BLOCK_RE.search(text)
+    if not match:
+        return None
+
+    try:
+        parsed = json.loads(match.group(0))
+        if isinstance(parsed, dict):
+            return parsed
+    except Exception:
+        return None
+
+    return None
+
+
+def extract_songs_with_llm(text_blocks: List[str]) -> str:
     joined_text = "\n\n".join(block.strip() for block in text_blocks if block and block.strip())
 
     if not joined_text:
         return '{"songs": []}'
 
-    if not OPENAI_API_KEY:
+    if not OPENAI_API_KEY or client is None:
         print("OPENAI_API_KEY가 없습니다.")
         return '{"songs": []}'
 
@@ -116,3 +170,74 @@ def extract_songs_with_llm(text_blocks: list[str]) -> str:
     except Exception as e:
         print("OpenAI 호출 오류 =", str(e))
         return '{"songs": []}'
+
+
+def rerank_spotify_candidates_with_llm(
+    input_artist: str,
+    input_title: str,
+    candidates: List[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    """
+    candidates 예시:
+    [
+      {
+        "index": 0,
+        "name": "...",
+        "artists": ["..."],
+        "score": 0.88,
+        "orientation": "original"
+      }
+    ]
+    """
+    if not OPENAI_API_KEY or client is None:
+        return None
+
+    if not candidates:
+        return None
+
+    payload = {
+        "input_song": {
+            "artist": input_artist or "",
+            "title": input_title or "",
+        },
+        "candidates": candidates,
+    }
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            temperature=0,
+            messages=[
+                {"role": "system", "content": SPOTIFY_RERANK_SYSTEM_PROMPT},
+                {"role": "user", "content": json.dumps(payload, ensure_ascii=False, indent=2)},
+            ],
+        )
+
+        content = response.choices[0].message.content or ""
+        print("Spotify rerank LLM raw =", content)
+
+        parsed = _extract_json_object(content)
+        if not parsed:
+            return None
+
+        picked_index = parsed.get("picked_index", -1)
+        confidence = str(parsed.get("confidence", "low")).lower().strip()
+        should_swap = bool(parsed.get("should_swap", False))
+        reason = str(parsed.get("reason", "")).strip()
+
+        if not isinstance(picked_index, int):
+            return None
+
+        if confidence not in {"high", "medium", "low"}:
+            confidence = "low"
+
+        return {
+            "picked_index": picked_index,
+            "confidence": confidence,
+            "should_swap": should_swap,
+            "reason": reason,
+        }
+
+    except Exception as e:
+        print("Spotify rerank LLM 오류 =", str(e))
+        return None

@@ -3,48 +3,88 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Orange Beats ♫</title>
+  <title>Orange Beats ♡</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Nunito:wght@700;800;900&display=swap"
+    rel="stylesheet"
+  />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="page-bg">
-    <div class="miniroom-shell">
-      <aside class="profile-panel">
-        <div class="panel-box profile-box">
-          <div class="small-title">TODAY IS...</div>
-          <div class="today-badge">playlist mood ♫</div>
-          <div class="character-box">
-            <div class="character-face">૮ • ﻌ - ა</div>
-            <div class="character-sub">youtube → spotify<br />test room</div>
-          </div>
-          <div class="mini-desc">
-            OCR는 잠깐 힘들어도...<br />
-            text_only가 버텨주는 중
-          </div>
-        </div>
+  <div class="lace lace-top"></div>
 
-        <div class="panel-box menu-box">
-          <div class="small-title">MENU</div>
-          <ul class="menu-list">
-            <li>홈</li>
-            <li>플리분석</li>
-            <li>스포티로그인</li>
-            <li>JSON방명록</li>
-          </ul>
-        </div>
+  <div class="page-bg">
+    <div class="sticker sticker-orange">🍊</div>
+    <div class="sticker sticker-heart">♡</div>
+    <div class="sticker sticker-star">✦</div>
+
+    <header class="main-header">
+      <div class="main-title-wrap">
+        <div class="main-title">Orange Beats</div>
+        <div class="main-subtitle">youtube → spotify orange minihome ♫</div>
+      </div>
+    </header>
+
+    <div class="miniroom-shell">
+      <aside class="left-panel">
+        <section class="side-card profile-card">
+          <div class="side-title">PROFILE</div>
+          <div class="profile-photo-frame">
+            <div class="profile-photo">૮ ˶ᵔ ᵕ ᵔ˶ ა</div>
+          </div>
+          <div class="profile-name">Orange Beats Room</div>
+          <div class="profile-status">today mood : orange playlist ♡</div>
+
+          <div class="mini-divider"></div>
+
+          <div class="profile-info">
+            <div><strong>service</strong> YouTube → Spotify</div>
+            <div><strong>style</strong> orange lace minihome</div>
+            <div><strong>mode</strong> test frontend</div>
+          </div>
+        </section>
+
+        <section class="side-card menu-card">
+          <div class="side-title">MENU</div>
+          <button class="menu-btn active" data-target="inputCard">input room</button>
+          <button class="menu-btn" data-target="actionCard">action room</button>
+          <button class="menu-btn" data-target="summaryCard">summary room</button>
+          <button class="menu-btn" data-target="songsCard">songs room</button>
+          <button class="menu-btn" data-target="jsonCard">json room</button>
+        </section>
+
+        <section class="side-card note-card">
+          <div class="side-title">PLAYER NOTE</div>
+          <p>
+            링크 하나로 분석하고 Spotify 플레이리스트까지 이어주는
+            테스트용 미니홈피야. 기존 기능은 유지하고 화면만 더 귀엽게 꾸몄어 ♫
+          </p>
+        </section>
       </aside>
 
-      <main class="content-panel">
-        <header class="top-header">
-          <div>
-            <h1>Orange Beats ♡</h1>
-            <p class="subtitle">유튜브 링크 넣고 텍스트 / OCR fallback 테스트하는 미니홈피</p>
+      <main class="right-panel">
+        <section class="content-card intro-card">
+          <div class="card-title">✿ mini home</div>
+          <div class="intro-grid">
+            <div class="intro-box">
+              <span class="intro-label">service</span>
+              <strong>playlist analyzer</strong>
+            </div>
+            <div class="intro-box">
+              <span class="intro-label">result</span>
+              <strong>spotify playlist</strong>
+            </div>
+            <div class="intro-box">
+              <span class="intro-label">theme</span>
+              <strong>orange retro lace</strong>
+            </div>
           </div>
-          <div class="mood-badge">BGM :: spring playlist</div>
-        </header>
+        </section>
 
-        <section class="window-card">
-          <div class="window-title">✿ 기본 설정</div>
+        <section class="content-card" id="inputCard">
+          <div class="card-title">✿ input room</div>
 
           <label for="backendBaseUrl">Backend Base URL</label>
           <input
@@ -60,8 +100,13 @@
             type="text"
             placeholder="https://www.youtube.com/watch?v=..."
           />
+          <div class="thumbnail-preview" id="thumbnailPreview">
+            <div class="thumbnail-label">youtube thumbnail</div>
+            <img id="thumbnailImage" alt="youtube thumbnail preview" />
+            <div id="thumbnailEmpty" class="thumbnail-empty">링크를 넣으면 썸네일이 보여 ♡</div>
+          </div>
 
-          <div class="row">
+          <div class="field-grid">
             <div class="field">
               <label for="mode">분석 모드</label>
               <select id="mode">
@@ -84,57 +129,63 @@
           <input
             id="playlistName"
             type="text"
-            placeholder="예: 봄밤 감성 플리"
+            placeholder="예: 오렌지빛 봄밤 플리"
           />
         </section>
 
-        <section class="window-card">
-          <div class="window-title">✿ 조작 버튼</div>
+        <section class="content-card" id="actionCard">
+          <div class="card-title">✿ action room</div>
 
           <div class="button-group">
-            <button id="spotifyLoginBtn" class="btn pink">Spotify 로그인</button>
-            <button id="analyzeBtn" class="btn blue">YouTube 분석</button>
-            <button id="createPlaylistBtn" class="btn purple">플레이리스트 생성</button>
+            <button id="spotifyLoginBtn" class="action-btn orange">Spotify 로그인</button>
+            <button id="analyzeBtn" class="action-btn cream">YouTube 분석</button>
+            <button id="createPlaylistBtn" class="action-btn peach">플레이리스트 생성</button>
           </div>
 
-          <div id="statusBox" class="status idle">지금은 대기 중 ... ♫</div>
+          <div id="statusBox" class="status idle">지금은 대기 중이야 ... ♫</div>
+          <div class="guestbook-log" id="guestbookLog">
+            <div class="guestbook-title">mini guestbook</div>
+            <div class="guestbook-entry">준비 완료 ♡ 링크를 넣고 테스트해줘</div>
+          </div>
         </section>
 
-        <section class="window-card">
-          <div class="window-title">✿ 오늘의 결과 요약</div>
+        <section class="content-card" id="summaryCard">
+          <div class="card-title">✿ summary room</div>
 
           <div class="summary-grid">
             <div class="summary-item">
-              <span class="label">success</span>
-              <span id="summarySuccess" class="value">-</span>
+              <span class="summary-label">success</span>
+              <span id="summarySuccess" class="summary-value">-</span>
             </div>
             <div class="summary-item">
-              <span class="label">selected_stage</span>
-              <span id="summaryStage" class="value">-</span>
+              <span class="summary-label">selected_stage</span>
+              <span id="summaryStage" class="summary-value">-</span>
             </div>
             <div class="summary-item">
-              <span class="label">ocr_used</span>
-              <span id="summaryOcrUsed" class="value">-</span>
+              <span class="summary-label">ocr_used</span>
+              <span id="summaryOcrUsed" class="summary-value">-</span>
             </div>
             <div class="summary-item">
-              <span class="label">songs count</span>
-              <span id="summarySongCount" class="value">-</span>
+              <span class="summary-label">songs count</span>
+              <span id="summarySongCount" class="summary-value">-</span>
             </div>
           </div>
         </section>
 
-        <section class="window-card">
-          <div class="window-title">✿ 추출된 곡 목록</div>
-          <div id="songsList" class="songs-list empty">아직 결과가 없습니다.</div>
+        <section class="content-card" id="songsCard">
+          <div class="card-title">✿ songs room</div>
+          <div id="songsList" class="songs-list empty">아직 추출된 곡이 없어요 ...</div>
         </section>
 
-        <section class="window-card">
-          <div class="window-title">✿ JSON 방명록</div>
+        <section class="content-card" id="jsonCard">
+          <div class="card-title">✿ json room</div>
           <pre id="resultBox">아직 결과가 없습니다.</pre>
         </section>
       </main>
     </div>
   </div>
+
+  <div class="lace lace-bottom"></div>
 
   <script src="app.js"></script>
 </body>
