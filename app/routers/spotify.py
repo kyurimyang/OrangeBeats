@@ -2,7 +2,9 @@
 from typing import Dict, List
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import RedirectResponse
 
+from app.config import FRONTEND_URL
 from app.services.spotify_service import (
     SpotifyServiceError,
     create_playlist_from_songs,
@@ -24,6 +26,10 @@ def spotify_login():
 
     login_url = get_spotify_login_url(state=state)
 
+    print("=== /spotify/login called ===")
+    print("generated state =", state)
+    print("login_url =", login_url)
+
     return {
         "login_url": login_url,
         "state": state,
@@ -35,14 +41,19 @@ def spotify_callback(
     code: str = Query(...),
     state: str = Query(...),
 ):
+    print("=== /spotify/callback called ===")
+    print("callback state =", state)
+
     if state not in spotify_auth_state_store:
-        raise HTTPException(status_code=400, detail="유효하지 않은 state입니다.")
+        print("invalid state")
+        return RedirectResponse(
+            url=f"{FRONTEND_URL}?spotify_login=failed&reason=invalid_state",
+            status_code=302,
+        )
 
     try:
         token_data = exchange_code_for_token(code)
 
-        print("=== /spotify/callback called ===")
-        print("callback state =", state)
         print("token_data =", token_data)
         print("granted scope =", token_data.get("scope"))
 
@@ -59,16 +70,33 @@ def spotify_callback(
         print("latest access token saved =", bool(spotify_token_store.get("latest_access_token")))
         print("latest refresh token saved =", bool(spotify_token_store.get("latest_refresh_token")))
 
-        return {
-            "message": "Spotify 로그인 성공",
-            "access_token_saved": True,
-            "refresh_token_saved": bool(refresh_token),
-            "scope": token_data.get("scope"),
-        }
+        return RedirectResponse(
+            url=f"{FRONTEND_URL}?spotify_login=success",
+            status_code=302,
+        )
 
     except SpotifyServiceError as e:
         print("SpotifyServiceError =", str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+        return RedirectResponse(
+            url=f"{FRONTEND_URL}?spotify_login=failed&reason=spotify_service_error",
+            status_code=302,
+        )
+
+    except Exception as e:
+        print("Unexpected callback error =", str(e))
+        return RedirectResponse(
+            url=f"{FRONTEND_URL}?spotify_login=failed&reason=unknown_error",
+            status_code=302,
+        )
+
+
+@router.get("/login-status")
+def spotify_login_status():
+    access_token = spotify_token_store.get("latest_access_token")
+
+    return {
+        "logged_in": bool(access_token),
+    }
 
 
 @router.post("/create-playlist")

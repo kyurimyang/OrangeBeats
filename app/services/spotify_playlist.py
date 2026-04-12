@@ -53,15 +53,34 @@ def create_playlist_from_songs(
                 matched_uris.append(match["uri"])
 
             matched_debug.append({
-                "input": {"artist": artist or "", "title": title},
+                "input": {
+                    "artist": artist or "",
+                    "title": title,
+                },
                 "matched_name": match["name"],
                 "matched_artists": match["artists"],
                 "score": match["score"],
+                "orientation": match.get("orientation", "original"),
+                "llm_reranked": match.get("llm_reranked", False),
+                "llm_confidence": match.get("llm_confidence", ""),
+                "llm_reason": match.get("llm_reason", ""),
                 "search_title": match.get("search_title", ""),
                 "search_artist": match.get("search_artist", ""),
+                "top_candidates": [
+                    {
+                        "name": candidate["name"],
+                        "artists": candidate["artists"],
+                        "score": candidate["score"],
+                        "orientation": candidate["orientation"],
+                    }
+                    for candidate in match.get("top_candidates", [])
+                ],
             })
         else:
-            unmatched.append({"song": song, "reason": "spotify 검색 실패 또는 저신뢰 매칭"})
+            unmatched.append({
+                "song": song,
+                "reason": "spotify 검색 실패 또는 저신뢰 매칭",
+            })
 
     if matched_uris:
         add_tracks_to_playlist(
