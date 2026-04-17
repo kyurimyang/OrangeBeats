@@ -71,7 +71,15 @@ def create_playlist_from_youtube(payload: Dict):
         if key in seen:
             continue
         seen.add(key)
-        songs.append({'artist': artist, 'title': title})
+        songs.append({
+            'artist': artist,
+            'title': title,
+            'raw': item.get('raw', ''),
+            'left': item.get('left', ''),
+            'right': item.get('right', ''),
+            'swap_applied': item.get('swap_applied', False),
+            'global_direction': item.get('global_direction', 'unknown'),
+        })
 
     if not songs:
         raise HTTPException(status_code=400, detail='Spotify로 넘길 수 있는 곡 데이터가 없습니다.')

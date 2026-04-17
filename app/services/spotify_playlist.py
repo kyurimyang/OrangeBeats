@@ -1,7 +1,7 @@
 from typing import Any, Dict, List
 
 from app.services.spotify_api import add_tracks_to_playlist, create_playlist
-from app.services.spotify_common import _is_suspicious_song
+from app.services.spotify_common import _is_suspicious_song, build_match_cache_key
 from app.services.spotify_exceptions import SpotifyServiceError
 from app.services.spotify_matching import pick_best_track_match
 
@@ -27,10 +27,18 @@ def create_playlist_from_songs(
     matched_debug: List[Dict[str, Any]] = []
     unmatched: List[Dict[str, Any]] = []
     seen_uris = set()
+    request_match_cache: Dict[tuple[str, str], Any] = {}
 
     for song in songs:
         title = (song.get('title') or '').strip()
         artist = (song.get('artist') or '').strip() or None
+        song_meta = {
+            'raw': song.get('raw', ''),
+            'left': song.get('left', ''),
+            'right': song.get('right', ''),
+            'swap_applied': song.get('swap_applied', False),
+            'global_direction': song.get('global_direction', 'unknown'),
+        }
 
         if not title:
             unmatched.append({'song': song, 'reason': 'title 없음'})
@@ -40,12 +48,18 @@ def create_playlist_from_songs(
             unmatched.append({'song': song, 'reason': 'artist/title 동일 또는 정보 부족'})
             continue
 
-        match = pick_best_track_match(
-            access_token=access_token,
-            title=title,
-            artist=artist,
-            market='KR',
-        )
+        cache_key = build_match_cache_key(title, artist or '')
+        if cache_key in request_match_cache:
+            match = request_match_cache[cache_key]
+        else:
+            match = pick_best_track_match(
+                access_token=access_token,
+                title=title,
+                artist=artist,
+                market='KR',
+                song_meta=song_meta,
+            )
+            request_match_cache[cache_key] = match
 
         if not match:
             unmatched.append({'song': song, 'reason': 'spotify 검색 실패 또는 저신뢰 매칭'})
@@ -69,6 +83,8 @@ def create_playlist_from_songs(
             'llm_reason': '',
             'search_title': match.get('search_title', ''),
             'search_artist': match.get('search_artist', ''),
+            'swap_applied': song_meta['swap_applied'],
+            'global_direction': song_meta['global_direction'],
             'top_candidates': [
                 {
                     'name': candidate['name'],

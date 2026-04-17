@@ -6,11 +6,16 @@ import re
 from typing import Any
 
 from app.constants.pipeline_params import (
+    CORE_ARTIST_ALIAS_MAP,
+    GLOBAL_DIRECTION_SAMPLE_SIZE,
+    MATCH_NOISE_KEYWORDS,
     MIN_SONG_COUNT,
     MIN_COMPLETE_SONG_COUNT,
     MIN_COMPLETENESS_RATIO,
+    PAIR_SEPARATORS,
     SECTION_KEYWORDS,
     NATURAL_SENTENCE_HINTS,
+    SWAP_SCORE_MARGIN,
     TITLE_DELIMITERS,
     NON_MUSIC_LINE_PATTERNS,
 )
@@ -25,6 +30,7 @@ PURE_PUNCT_REGEX = re.compile(r"^[^\w가-힣]+$")
 LEADING_DECORATION_REGEX = re.compile(r"^[~*#>·•※☆★\-\s]+")
 TRAILING_DECORATION_REGEX = re.compile(r"[~*#>·•※☆★\-\s]+$")
 SEPARATORS = [" - ", " – ", " — ", " | ", " / ", " : ", " ~ "]
+SEPARATORS = PAIR_SEPARATORS
 
 
 def parse_json_from_text(text: str) -> dict:
@@ -159,9 +165,160 @@ def _looks_like_artist(text: str) -> bool:
     return False
 
 
-def _append_song(results: list[dict], artist: str, title: str):
+def _normalize_compare_text(text: str) -> str:
+    text = _clean_text(text).lower()
+    text = re.sub(r"[^\w\uAC00-\uD7A3\s]", " ", text)
+    text = MULTISPACE_REGEX.sub(" ", text)
+    return text.strip()
+
+
+def _match_noise_count(text: str) -> int:
+    normalized = _normalize_compare_text(text)
+    return sum(1 for token in MATCH_NOISE_KEYWORDS if token in normalized)
+
+
+def _artist_alias_hit(text: str) -> bool:
+    normalized = _normalize_compare_text(text)
+    for source, aliases in CORE_ARTIST_ALIAS_MAP.items():
+        alias_group = {_normalize_compare_text(source), *(_normalize_compare_text(alias) for alias in aliases)}
+        if normalized in alias_group:
+            return True
+    return False
+
+
+def _score_artist_candidate(text: str) -> float:
+    text = _clean_text(text)
+    if not text:
+        return 0.0
+
+    score = 0.0
+    if _looks_like_artist(text):
+        score += 0.45
+    if _contains_artist_hint(text):
+        score += 0.2
+    if _artist_alias_hit(text):
+        score += 0.35
+
+    word_count = len(text.split())
+    if word_count <= 3 and len(text) <= 28:
+        score += 0.15
+    if re.fullmatch(r"[A-Za-z0-9&.,'\- ]+", text):
+        score += 0.1
+    if _match_noise_count(text):
+        score -= 0.25
+    if word_count >= 6:
+        score -= 0.15
+
+    return round(max(0.0, min(score, 1.0)), 4)
+
+
+def _score_title_candidate(text: str) -> float:
+    text = _clean_text(text)
+    if not text:
+        return 0.0
+
+    normalized = _normalize_compare_text(text)
+    word_count = len(normalized.split())
+    score = 0.35
+
+    if word_count >= 1:
+        score += 0.15
+    if word_count >= 2:
+        score += 0.1
+    if re.search(r"[\(\)\[\]A-Za-z]", text) and re.search(r"[\uAC00-\uD7A3]", text):
+        score += 0.12
+    if re.search(r"[A-Za-z]{2,}", text) and re.search(r"[\uAC00-\uD7A3]{1,}", text):
+        score += 0.08
+    if _contains_artist_hint(text):
+        score -= 0.2
+    score -= min(_match_noise_count(text) * 0.08, 0.24)
+    if word_count >= 7:
+        score -= 0.1
+
+    return round(max(0.0, min(score, 1.0)), 4)
+
+
+def _extract_pair_parts(text: str) -> dict | None:
+    cleaned = _clean_text(text)
+    if not cleaned:
+        return None
+
+    for sep in SEPARATORS:
+        if sep not in cleaned:
+            continue
+        left, right = cleaned.split(sep, 1)
+        left = _clean_text(left)
+        right = _clean_text(right)
+        if left and right:
+            return {
+                "raw": text,
+                "separator": sep,
+                "left": left,
+                "right": right,
+            }
+    return None
+
+
+def _resolve_orientation(parts: dict, global_direction: str = "artist_title") -> dict:
+    left = parts.get("left", "")
+    right = parts.get("right", "")
+    normal_score = _score_artist_candidate(left) + _score_title_candidate(right)
+    swapped_score = _score_artist_candidate(right) + _score_title_candidate(left)
+
+    if global_direction == "artist_title":
+        normal_score += 0.12
+    elif global_direction == "title_artist":
+        swapped_score += 0.12
+
+    swap_applied = swapped_score > normal_score + SWAP_SCORE_MARGIN
+    if swap_applied:
+        artist, title = right, left
+        resolved_direction = "title_artist"
+        selected_score = swapped_score
+    else:
+        artist, title = left, right
+        resolved_direction = "artist_title"
+        selected_score = normal_score
+
+    return {
+        "artist": artist,
+        "title": title,
+        "raw": parts.get("raw", ""),
+        "left": left,
+        "right": right,
+        "swap_applied": swap_applied,
+        "line_direction": resolved_direction,
+        "global_direction": global_direction,
+        "direction_score": round(selected_score, 4),
+        "normal_score": round(normal_score, 4),
+        "swapped_score": round(swapped_score, 4),
+    }
+
+
+def _infer_global_direction(parsed_pairs: list[dict]) -> str:
+    sample = parsed_pairs[:GLOBAL_DIRECTION_SAMPLE_SIZE]
+    if not sample:
+        return "unknown"
+
+    normal_total = 0.0
+    swapped_total = 0.0
+    for parts in sample:
+        left = parts.get("left", "")
+        right = parts.get("right", "")
+        normal_total += _score_artist_candidate(left) + _score_title_candidate(right)
+        swapped_total += _score_artist_candidate(right) + _score_title_candidate(left)
+
+    if swapped_total > normal_total + 0.45:
+        return "title_artist"
+    if normal_total > swapped_total + 0.45:
+        return "artist_title"
+    return "artist_title"
+
+
+def _append_song(results: list[dict], artist: str, title: str, meta: dict | None = None):
     artist = _clean_text(artist)
     title = _clean_text(title)
+    meta = meta or {}
 
     if not _is_meaningful_text(title):
         return
@@ -175,14 +332,18 @@ def _append_song(results: list[dict], artist: str, title: str):
     if title_ok:
         score += 0.5
 
-    results.append({
+    song = {
         "artist": artist if artist_ok else "",
         "title": title,
         "artist_exists": artist_ok,
         "title_exists": title_ok,
         "is_complete": artist_ok and title_ok,
         "completeness_score": score,
-    })
+    }
+    for key in ["raw", "left", "right", "swap_applied", "line_direction", "global_direction"]:
+        if key in meta:
+            song[key] = meta.get(key)
+    results.append(song)
 
 
 def _split_pair(text: str):
@@ -206,6 +367,13 @@ def _split_pair(text: str):
             # 기본값은 Artist - Title 우선
             return {"artist": left, "title": right}
     return None
+
+
+def _split_pair(text: str):
+    parts = _extract_pair_parts(text)
+    if not parts:
+        return None
+    return _resolve_orientation(parts, global_direction="artist_title")
 
 
 def parse_unstructured_lines_to_json(text: str) -> dict:
@@ -235,6 +403,38 @@ def parse_unstructured_lines_to_json(text: str) -> dict:
         if not left or not right:
             continue
         _append_song(results, artist=left, title=right)
+
+    return {"songs": deduplicate_songs(results)}
+
+
+def parse_unstructured_lines_to_json(text: str) -> dict:
+    if not text:
+        return {"songs": []}
+
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
+    pair_candidates = []
+
+    for line in lines:
+        if not _is_valid_music_line(line):
+            continue
+
+        ts_match = TIMESTAMP_LINE_REGEX.match(line)
+        target = _clean_text(ts_match.group("body") if ts_match else _normalize_line(line))
+        if not target or not _is_valid_music_line(target):
+            continue
+
+        parts = _extract_pair_parts(target)
+        if parts:
+            pair_candidates.append(parts)
+
+    global_direction = _infer_global_direction(pair_candidates)
+    results = []
+    for parts in pair_candidates:
+        parsed = _resolve_orientation(parts, global_direction=global_direction)
+        artist = parsed.get("artist", "")
+        title = parsed.get("title", "")
+        if artist and title:
+            _append_song(results, artist=artist, title=title, meta=parsed)
 
     return {"songs": deduplicate_songs(results)}
 
@@ -284,6 +484,54 @@ def normalize_song_candidates(data: Any) -> dict:
     return {"songs": deduplicate_songs(normalized)}
 
 
+def normalize_song_candidates(data: Any) -> dict:
+    if not data:
+        return {"songs": []}
+
+    songs = data.get("songs", []) if isinstance(data, dict) else data
+    normalized = []
+
+    for item in songs:
+        if not isinstance(item, dict):
+            continue
+
+        artist = _clean_text(item.get("artist", ""))
+        title = _clean_text(item.get("title", ""))
+        raw = _clean_text(item.get("raw", "")) or f"{artist} - {title}".strip(" -")
+        left = _clean_text(item.get("left", artist))
+        right = _clean_text(item.get("right", title))
+        global_direction = str(item.get("global_direction") or "artist_title")
+
+        if artist and title:
+            parsed = _resolve_orientation(
+                {
+                    "raw": raw,
+                    "left": left,
+                    "right": right,
+                },
+                global_direction=global_direction,
+            )
+            artist = _clean_text(parsed.get("artist", artist))
+            title = _clean_text(parsed.get("title", title))
+            meta = parsed
+        else:
+            meta = {
+                "raw": raw,
+                "left": left,
+                "right": right,
+                "swap_applied": False,
+                "line_direction": global_direction,
+                "global_direction": global_direction,
+            }
+
+        if not _is_meaningful_text(title):
+            continue
+
+        _append_song(normalized, artist=artist, title=title, meta=meta)
+
+    return {"songs": deduplicate_songs(normalized)}
+
+
 def deduplicate_songs(songs: list[dict]) -> list[dict]:
     best_by_key = {}
 
@@ -294,7 +542,7 @@ def deduplicate_songs(songs: list[dict]) -> list[dict]:
         )
         prev = best_by_key.get(key)
         if prev is None or s.get("completeness_score", 0.0) > prev.get("completeness_score", 0.0):
-            best_by_key[key] = {
+            entry = {
                 "artist": s.get("artist", ""),
                 "title": s.get("title", ""),
                 "artist_exists": s.get("artist_exists", False),
@@ -302,6 +550,10 @@ def deduplicate_songs(songs: list[dict]) -> list[dict]:
                 "is_complete": s.get("is_complete", False),
                 "completeness_score": s.get("completeness_score", 0.0),
             }
+            for meta_key in ["raw", "left", "right", "swap_applied", "line_direction", "global_direction"]:
+                if meta_key in s:
+                    entry[meta_key] = s.get(meta_key)
+            best_by_key[key] = entry
 
     return list(best_by_key.values())
 
