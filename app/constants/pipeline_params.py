@@ -50,3 +50,59 @@ NON_MUSIC_LINE_PATTERNS = [
     r"^\s*all rights reserved.*",
     r"^\s*provided to youtube by.*",
 ]
+
+PAIR_SEPARATORS = [
+    " - ",
+    " – ",
+    " — ",
+    " | ",
+    " / ",
+    " : ",
+    ": ",
+]
+
+GLOBAL_DIRECTION_SAMPLE_SIZE = 5
+SWAP_SCORE_MARGIN = 0.2
+
+MATCH_NOISE_KEYWORDS = [
+    "official",
+    "audio",
+    "video",
+    "lyrics",
+    "lyric",
+    "mv",
+    "ost",
+    "remix",
+    "version",
+    "ver",
+    "remaster",
+    "remastered",
+    "prod",
+    "produced",
+]
+
+CORE_ARTIST_ALIAS_MAP = {
+    "아이콘": ["iKON"],
+    "지드래곤": ["G-DRAGON", "GD"],
+    "방탄소년단": ["BTS"],
+    "백현": ["BAEKHYUN"],
+    "엔하이픈": ["ENHYPEN"],
+    "블락비": ["Block B"],
+    "엑소": ["EXO"],
+    "악뮤": ["AKMU", "Akdong Musician"],
+    "소녀시대": ["Girls' Generation", "Girls Generation", "SNSD"],
+    "아이유": ["IU"],
+    "예린백": ["Yerin Baek"],
+    "태연": ["TAEYEON"],
+    "윤상": ["Yoon Sang"],
+    "롤러코스터": ["Roller Coaster", "RollerCoaster"],
+    "클래지콰이": ["Clazziquai", "Clazziquai Project"],
+}
+
+CORE_TITLE_ALIAS_MAP = {
+    "놀이공원": ["Amusement Park"],
+    "바래다줄게": ["Take You Home"],
+    "우산": ["Love Song"],
+    "취향저격": ["MY TYPE"],
+    "오늘따라": ["TODAY"],
+}

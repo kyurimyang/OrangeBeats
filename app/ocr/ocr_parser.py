@@ -1,6 +1,8 @@
 import re
 from typing import Dict, List, Optional
 
+from app.parsers.song_parser import _extract_pair_parts, _resolve_orientation
+
 
 NOISE_KEYWORDS = {
     "subscribe",
@@ -104,19 +106,19 @@ def parse_song_candidate(text: str) -> Optional[Dict]:
     if not cleaned or is_noise_text(cleaned):
         return None
 
-    for sep in SPLIT_PATTERNS:
-        if sep in cleaned:
-            left, right = cleaned.split(sep, 1)
-            left = normalize_text(left)
-            right = normalize_text(right)
-
-            if left and right:
-                return {
-                    "artist": left,
-                    "title": right,
-                    "raw": raw,
-                    "source": "ocr",
-                }
+    parts = _extract_pair_parts(cleaned)
+    if parts:
+        parsed = _resolve_orientation(parts, global_direction="artist_title")
+        return {
+            "artist": parsed.get("artist"),
+            "title": parsed.get("title"),
+            "raw": raw,
+            "left": parsed.get("left"),
+            "right": parsed.get("right"),
+            "swap_applied": parsed.get("swap_applied", False),
+            "global_direction": parsed.get("global_direction", "artist_title"),
+            "source": "ocr",
+        }
 
     # 구분자가 없으면 title만 있는 후보로 저장
     return {

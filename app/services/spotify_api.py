@@ -47,7 +47,7 @@ def search_tracks_query(
     if not query:
         return []
 
-    limit = max(1, min(int(limit), 10))
+    limit = max(1, min(int(limit), 3))
     params = {'q': query, 'type': 'track', 'limit': limit}
     if market:
         params['market'] = market
@@ -68,6 +68,7 @@ def search_track(
     market: Optional[str] = None,
     limit: int = 3,
 ) -> List[Dict[str, Any]]:
+    limit = max(1, min(int(limit), 3))
     query_parts = []
     if title:
         query_parts.append(f'track:"{title}"')

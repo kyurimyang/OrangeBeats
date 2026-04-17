@@ -89,12 +89,6 @@ def spotify_request(
     global _rate_limited_until
     global _rate_limit_message
 
-    now = time.time()
-    if _rate_limited_until > now:
-        remaining = max(1, int(_rate_limited_until - now))
-        message = _rate_limit_message or 'Spotify rate limit active'
-        raise SpotifyServiceError(f'{message} (retry_after={remaining})')
-
     token = access_token or ensure_valid_access_token()
     last_response = None
 
@@ -121,12 +115,9 @@ def spotify_request(
                 retry_after = max(1, int(retry_after_header or '60'))
             except ValueError:
                 retry_after = 60
-            _rate_limited_until = time.time() + retry_after
-            _rate_limit_message = 'Spotify API rate limit active: 429 / Too many requests'
-            _save_rate_limit_state()
-            return response
-
-        _clear_rate_limit_state()
+            raise SpotifyServiceError(
+                f'Spotify API rate limit active: 429 / Too many requests (retry_after={retry_after})'
+            )
 
         if response.status_code != 401:
             return response
@@ -140,7 +131,6 @@ def spotify_request(
             refreshed['refresh_token'] = refresh_token
         save_token_data(refreshed)
         token = refreshed.get('access_token') or token
-        time.sleep(0.1)
 
     return last_response
 
