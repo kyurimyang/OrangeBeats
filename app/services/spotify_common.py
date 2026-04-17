@@ -39,9 +39,33 @@ ARTIST_ALIAS_MAP = {
     "백예린": "Yerin Baek",
     "원슈타인": "Wonstein",
     "MC몽": "MC Mong",
+    "더보이즈": "THE BOYZ",
+    "라이즈": "RIIZE",
+    "트레저": "TREASURE",
+    "세븐틴": "SEVENTEEN",
+    "엔시티": "NCT",
+    "투바투": "TOMORROW X TOGETHER",
+    "TXT": "TOMORROW X TOGETHER",
+    "투모로우바이투게더": "TOMORROW X TOGETHER",
 }
 
 ARTIST_ALIAS_MAP.update(CORE_ARTIST_ALIAS_MAP)
+ARTIST_ALIAS_MAP.update({
+    "\uc18c\ub140\uc2dc\ub300": ["Girls' Generation", "Girls Generation", "SNSD"],
+    "\ube44\uc2a4\ud2b8": ["BEAST"],
+    "\uc778\ud53c\ub2c8\ud2b8": ["INFINITE"],
+    "\uc0e4\uc774\ub2c8": ["SHINee"],
+    "\uc5d4\ud558\uc774\ud508": ["ENHYPEN"],
+    "\ub354\ubcf4\uc774\uc988": ["THE BOYZ"],
+    "\ub77c\uc774\uc988": ["RIIZE"],
+    "\ud2b8\ub808\uc800": ["TREASURE"],
+    "\uc138\ube10\ud2f4": ["SEVENTEEN"],
+    "\uc5d4\uc2dc\ud2f0 \ub4dc\ub9bc": ["NCT DREAM"],
+    "\uc5d4\uc2dc\ud2f0": ["NCT"],
+    "\ud22c\ubc14\ud22c": ["TOMORROW X TOGETHER"],
+    "\ud22c\ubaa8\ub85c\uc6b0\ubc14\uc774\ud22c\uac8c\ub354": ["TOMORROW X TOGETHER"],
+    "f": ["f(x)"],
+})
 TITLE_ALIAS_MAP = dict(CORE_TITLE_ALIAS_MAP)
 
 SUSPICIOUS_KEYWORDS = {
@@ -54,6 +78,9 @@ BRACKET_REGEX = re.compile(r'\([^)]*\)|\[[^\]]*\]|\{[^}]*\}')
 NON_WORD_REGEX = re.compile(r'[^\w가-힣\s]')
 MULTISPACE_REGEX = re.compile(r'\s+')
 BRACKET_CONTENT_REGEX = re.compile(r'[\(\[\{]([^\)\]\}]+)[\)\]\}]')
+TRAILING_ELLIPSIS_REGEX = re.compile(r'(?:\.\.\.|…)+$')
+TRAILING_PERIOD_REGEX = re.compile(r'\.+$')
+TITLE_SYMBOL_RELAX_REGEX = re.compile(r"[!\"'`~@#$%^&*_+=]+")
 
 
 def _normalize_text(value: str) -> str:
@@ -77,14 +104,36 @@ def _canonicalize_alias_value(value: str, alias_map: Dict[str, List[str]]) -> st
     cleaned = (value or '').strip()
     normalized = _normalize_text(cleaned)
     for source, aliases in alias_map.items():
-        normalized_group = {_normalize_text(source), *(_normalize_text(alias) for alias in aliases)}
+        alias_values = aliases if isinstance(aliases, list) else [aliases]
+        normalized_group = {_normalize_text(source), *(_normalize_text(alias) for alias in alias_values)}
         if normalized in normalized_group:
             return source
     return cleaned
 
 
+def resolve_artist_alias(artist: str) -> str:
+    cleaned = _clean_artist_name_for_search(artist)
+    normalized = _normalize_text(cleaned)
+    if not normalized:
+        return cleaned
+
+    for source, aliases in ARTIST_ALIAS_MAP.items():
+        alias_values = aliases if isinstance(aliases, list) else [aliases]
+        normalized_group = {_normalize_text(source), *(_normalize_text(alias) for alias in alias_values)}
+        if normalized not in normalized_group:
+            continue
+
+        for alias in alias_values:
+            candidate = (alias or '').strip()
+            if candidate:
+                return candidate
+        return cleaned or source
+
+    return cleaned
+
+
 def build_match_cache_key(title: str, artist: str) -> Tuple[str, str]:
-    canonical_artist = _canonicalize_alias_value(_clean_artist_name_for_search(artist), ARTIST_ALIAS_MAP)
+    canonical_artist = _canonicalize_alias_value(resolve_artist_alias(artist), ARTIST_ALIAS_MAP)
     canonical_title = _canonicalize_alias_value(_clean_track_title_for_search(title), TITLE_ALIAS_MAP)
     return (
         _normalize_cache_text(canonical_artist),
@@ -144,7 +193,11 @@ def _remove_title_noise(value: str) -> str:
 
 
 def _clean_track_title_for_search(title: str) -> str:
-    return _remove_title_noise(title)
+    variants = build_title_variants(title)
+    for variant in variants[1:]:
+        if variant:
+            return variant
+    return variants[0] if variants else ''
 
 
 def _clean_artist_name_for_search(artist: str) -> str:
@@ -152,6 +205,35 @@ def _clean_artist_name_for_search(artist: str) -> str:
     value = re.split(r'\s*(?:feat\.?|ft\.?|with|,|&| x )\s*', value, maxsplit=1, flags=re.IGNORECASE)[0]
     value = MULTISPACE_REGEX.sub(' ', value)
     return value.strip(' -_/:|')
+
+
+def build_title_variants(title: str) -> List[str]:
+    original = MULTISPACE_REGEX.sub(' ', (title or '').strip())
+    variants: List[str] = []
+
+    def add_variant(candidate: str) -> None:
+        candidate = MULTISPACE_REGEX.sub(' ', (candidate or '').strip())
+        candidate = candidate.strip(' -_/|')
+        if candidate and candidate not in variants:
+            variants.append(candidate)
+
+    add_variant(original)
+    if not _is_short_title(original):
+        add_variant(BRACKET_REGEX.sub(' ', original))
+
+    for current in list(variants):
+        add_variant(TRAILING_ELLIPSIS_REGEX.sub('', current).strip())
+        add_variant(TRAILING_PERIOD_REGEX.sub('', current).strip())
+
+    if not _is_short_title(original):
+        add_variant(TITLE_SYMBOL_RELAX_REGEX.sub(' ', original))
+        add_variant(_remove_title_noise(original))
+
+    for current in list(variants):
+        for alias_variant in _expand_alias_variants(current, TITLE_ALIAS_MAP):
+            add_variant(_remove_title_noise(alias_variant))
+
+    return (variants or [original])[:4]
 
 
 def _expand_alias_variants(value: str, alias_map: Dict[str, List[str]]) -> List[str]:
@@ -167,10 +249,11 @@ def _expand_alias_variants(value: str, alias_map: Dict[str, List[str]]) -> List[
     add_variant(cleaned)
 
     for source, aliases in alias_map.items():
-        normalized_group = {_normalize_text(source), *(_normalize_text(alias) for alias in aliases)}
+        alias_values = aliases if isinstance(aliases, list) else [aliases]
+        normalized_group = {_normalize_text(source), *(_normalize_text(alias) for alias in alias_values)}
         if normalized in normalized_group:
             add_variant(source)
-            for alias in aliases:
+            for alias in alias_values:
                 add_variant(alias)
 
     return variants
@@ -224,36 +307,27 @@ def _is_suspicious_song(song: Dict[str, Any]) -> bool:
 
 
 def _title_variants(title: str) -> List[str]:
-    original = (title or '').strip()
-    base = _clean_track_title_for_search(original)
-    variants: List[str] = []
-
-    def add_variant(candidate: str) -> None:
-        candidate = MULTISPACE_REGEX.sub(' ', candidate).strip(' -_/')
-        if candidate and candidate not in variants:
-            variants.append(candidate)
-
-    add_variant(base)
+    original = MULTISPACE_REGEX.sub(' ', (title or '').strip())
+    variants = build_title_variants(original)
 
     for match in BRACKET_CONTENT_REGEX.findall(original):
-        add_variant(_clean_track_title_for_search(match))
+        for variant in build_title_variants(match):
+            if variant not in variants:
+                variants.append(variant)
 
-    if not _is_short_title(base):
+    if not _is_short_title(original):
         for delimiter in [' - ', ' – ', ' — ', ' : ', ' | ', ' / ']:
             if delimiter not in original:
                 continue
             left, right = original.split(delimiter, 1)
-            left = _clean_track_title_for_search(left)
-            right = _clean_track_title_for_search(right)
-            if left and right:
-                add_variant(left)
-                add_variant(right)
+            for variant in build_title_variants(left):
+                if variant not in variants:
+                    variants.append(variant)
+            for variant in build_title_variants(right):
+                if variant not in variants:
+                    variants.append(variant)
 
-    for candidate in list(variants):
-        for alias_variant in _expand_alias_variants(candidate, TITLE_ALIAS_MAP):
-            add_variant(_clean_track_title_for_search(alias_variant))
-
-    return variants or [base]
+    return variants or [original]
 
 
 def _is_short_or_generic_title(title: str) -> bool:
@@ -266,6 +340,14 @@ def _string_similarity(a: str, b: str) -> float:
     a_norm = _normalize_text(a)
     b_norm = _normalize_text(b)
     if not a_norm or not b_norm:
+        return 0.0
+    a_compact = _normalize_cache_text(a)
+    b_compact = _normalize_cache_text(b)
+    if len(a_compact) <= 2 or len(b_compact) <= 2:
+        if a_compact == b_compact:
+            return 1.0
+        if a_compact and b_compact and (a_compact in b_compact or b_compact in a_compact):
+            return 0.95
         return 0.0
     if a_norm == b_norm:
         return 1.0
@@ -281,7 +363,7 @@ def _artist_match_score(input_artist: str, candidate_artists: List[str]) -> floa
     if not input_artist or not candidate_artists:
         return 0.0
 
-    normalized_input = _clean_artist_name_for_search(input_artist)
+    normalized_input = resolve_artist_alias(input_artist)
     input_variants = _artist_variants(normalized_input)
     candidate_cleaned = [_clean_artist_name_for_search(name) for name in candidate_artists if name]
     candidate_joined = ' , '.join(candidate_cleaned)

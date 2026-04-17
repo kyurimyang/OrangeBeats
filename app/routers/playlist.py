@@ -79,6 +79,7 @@ def create_playlist_from_youtube(payload: Dict):
             'right': item.get('right', ''),
             'swap_applied': item.get('swap_applied', False),
             'global_direction': item.get('global_direction', 'unknown'),
+            'reason': item.get('reason', ''),
         })
 
     if not songs:
