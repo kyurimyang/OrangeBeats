@@ -4,11 +4,14 @@ import json
 import re
 from typing import Any, Dict, List, Optional
 
-from openai import OpenAI
+try:
+    from openai import OpenAI
+except Exception:
+    OpenAI = None
 
 from app.config import OPENAI_API_KEY
 
-client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+client = OpenAI(api_key=OPENAI_API_KEY) if (OPENAI_API_KEY and OpenAI is not None) else None
 
 SYSTEM_PROMPT = """
 너는 YouTube 설명란/댓글 텍스트에서 음악 곡 정보를 추출하는 AI다.

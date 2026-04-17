@@ -2,7 +2,6 @@ import os
 import uuid
 from pathlib import Path
 
-import yt_dlp
 
 
 def download_youtube_video(
@@ -24,6 +23,8 @@ def download_youtube_video(
     }
 
     try:
+        import yt_dlp
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             downloaded_path = ydl.prepare_filename(info)
