@@ -5,6 +5,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.config import FRONTEND_URL
 from app.routers import youtube,spotify,playlist
 
 app = FastAPI(title="Orange Beats")
@@ -18,6 +19,7 @@ app.add_middleware(
         "http://localhost:5500",
         "http://127.0.0.1:5173",
         "http://localhost:5173",
+        FRONTEND_URL,
         ],
     allow_credentials=True,
     allow_methods=["*"],

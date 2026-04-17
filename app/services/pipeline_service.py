@@ -3,10 +3,6 @@
 from app.services.text_analysis import analyze_comments, analyze_description
 from app.clients.youtube_client import collect_text_sources
 
-from app.ocr.ocr_pipeline import run_ocr_pipeline
-from app.services.youtube_downloader import download_youtube_video
-
-
 # 유튜브 텍스트 파이프라인 전체 실행
 def run_youtube_text_pipeline(url: str) -> dict:
     source_data = collect_text_sources(url)
@@ -154,6 +150,9 @@ def run_youtube_pipeline(url: str, mode: str = "auto") -> dict:
 
     # 2. OCR만 강제 실행
     if mode == "ocr_only":
+        from app.services.youtube_downloader import download_youtube_video
+        from app.ocr.ocr_pipeline import run_ocr_pipeline
+
         video_path = download_youtube_video(url)
         ocr_result = run_ocr_pipeline(video_path=video_path)
 
@@ -191,6 +190,9 @@ def run_youtube_pipeline(url: str, mode: str = "auto") -> dict:
         return text_result
 
     # 텍스트 결과가 부족하거나 실패했을 때만 OCR fallback
+    from app.services.youtube_downloader import download_youtube_video
+    from app.ocr.ocr_pipeline import run_ocr_pipeline
+
     video_path = download_youtube_video(url)
     ocr_result = run_ocr_pipeline(video_path=video_path)
 

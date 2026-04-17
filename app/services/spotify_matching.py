@@ -1,305 +1,144 @@
-from __future__ import annotations
-
-from difflib import SequenceMatcher
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.clients.openai_client import rerank_spotify_candidates_with_llm
-from app.services.spotify_api import search_track
+from app.constants.pipeline_params import SPOTIFY_HIGH_CONF, SPOTIFY_MID_CONF
+from app.services.spotify_api import search_track, search_tracks_query
 from app.services.spotify_common import (
     _artist_variants,
     _clean_track_title_for_search,
-    _normalize_text,
-    _token_overlap_ratio,
+    _is_short_or_generic_title,
+    _title_variants,
+    compute_match_score,
 )
 
+_MATCH_CACHE: Dict[Tuple[str, str], Optional[Dict[str, Any]]] = {}
+_SEARCH_CACHE: Dict[Tuple[str, str, str], List[Dict[str, Any]]] = {}
 
-def _safe_ratio(a: str, b: str) -> float:
-    if not a or not b:
-        return 0.0
-    return SequenceMatcher(None, a, b).ratio()
-
-
-def _title_score(input_title: str, candidate_title: str) -> float:
-    input_title_raw = _normalize_text(input_title)
-    input_title_clean = _normalize_text(_clean_track_title_for_search(input_title))
-
-    cand_title_raw = _normalize_text(candidate_title)
-    cand_title_clean = _normalize_text(_clean_track_title_for_search(candidate_title))
-
-    raw_ratio = _safe_ratio(input_title_raw, cand_title_raw)
-    clean_ratio = _safe_ratio(input_title_clean, cand_title_clean)
-    token_ratio = _token_overlap_ratio(input_title_clean, cand_title_clean)
-
-    score = max(raw_ratio, clean_ratio) * 0.75 + token_ratio * 0.25
-
-    if input_title_clean and cand_title_clean and input_title_clean == cand_title_clean:
-        score += 0.10
-
-    return round(min(score, 1.0), 4)
+EARLY_STOP_SCORE = 0.78
+SWAPPED_MIN_SCORE = 0.72
+MAX_CACHE_SIZE = 300
 
 
-def _artist_score(input_artist: Optional[str], candidate_artists: List[str]) -> float:
-    if not input_artist:
-        return 0.0
-
-    target_variants = _artist_variants(input_artist)
-    candidate_joined = " ".join(candidate_artists)
-    candidate_norm = _normalize_text(candidate_joined)
-
-    best = 0.0
-    for variant in target_variants:
-        variant_norm = _normalize_text(variant or "")
-        if not variant_norm or not candidate_norm:
-            continue
-
-        ratio = _safe_ratio(variant_norm, candidate_norm)
-        token_ratio = _token_overlap_ratio(variant_norm, candidate_norm)
-        score = ratio * 0.7 + token_ratio * 0.3
-        best = max(best, score)
-
-        if variant_norm and variant_norm in candidate_norm:
-            best = max(best, min(score + 0.08, 1.0))
-
-    return round(min(best, 1.0), 4)
-
-
-def _orientation_conflict_penalty(
-    input_title: str,
-    input_artist: Optional[str],
-    candidate_title: str,
-    candidate_artists: List[str],
-) -> float:
-    """
-    입력이 뒤집힌 것 같은 경우를 감지하기 위한 패널티/보너스 계산용.
-    candidate_title이 오히려 input_artist와 더 비슷하고,
-    candidate_artists가 input_title과 더 비슷하면 원본 방향엔 불리하게 작용.
-    """
-    if not input_artist:
-        return 0.0
-
-    cand_artist_joined = " ".join(candidate_artists)
-
-    title_vs_title = _title_score(input_title, candidate_title)
-    artist_vs_artist = _artist_score(input_artist, candidate_artists)
-
-    swapped_title_like = _title_score(input_artist, candidate_title)
-    swapped_artist_like = _artist_score(input_title, candidate_artists)
-
-    original_total = title_vs_title + artist_vs_artist
-    swapped_like_total = swapped_title_like + swapped_artist_like
-
-    if swapped_like_total > original_total + 0.20:
-        return 0.10
-
-    return 0.0
-
-
-def _candidate_score(
-    candidate: Dict[str, Any],
-    title: str,
-    artist: Optional[str],
+def _candidate_to_result(
+    track: Dict[str, Any],
+    score: float,
+    detail: Dict[str, float],
+    *,
+    search_title: str,
+    search_artist: Optional[str],
     orientation: str,
-) -> float:
-    cand_title = candidate.get("name", "")
-    cand_artists = [a.get("name", "") for a in candidate.get("artists", [])]
-
-    title_score = _title_score(title, cand_title)
-    artist_score = _artist_score(artist, cand_artists)
-
-    score = title_score * 0.72 + artist_score * 0.28
-
-    penalty = _orientation_conflict_penalty(
-        input_title=title,
-        input_artist=artist,
-        candidate_title=cand_title,
-        candidate_artists=cand_artists,
-    )
-
-    if orientation == "original":
-        score -= penalty
-    elif orientation == "swapped":
-        score += penalty * 0.6
-
-    bad_tokens = ["instrumental", "remix", "live", "sped up", "slowed", "karaoke"]
-    cand_title_norm = _normalize_text(cand_title)
-    if any(token in cand_title_norm for token in bad_tokens):
-        score -= 0.05
-
-    if artist and artist.strip():
-        if artist_score < 0.20 and title_score < 0.90:
-            score -= 0.08
-
-    return round(score, 4)
+) -> Dict[str, Any]:
+    return {
+        'id': track.get('id'),
+        'uri': track.get('uri'),
+        'name': track.get('name', ''),
+        'artists': [a.get('name', '') for a in track.get('artists', [])],
+        'album': (track.get('album') or {}).get('name', ''),
+        'score': score,
+        'score_detail': detail,
+        'orientation': orientation,
+        'llm_reranked': False,
+        'llm_confidence': '',
+        'llm_reason': '',
+        'search_title': search_title,
+        'search_artist': search_artist or '',
+    }
 
 
-def _build_search_cases(title: str, artist: Optional[str]) -> List[Tuple[str, Optional[str]]]:
-    raw_title = (title or "").strip()
-    clean_title = _clean_track_title_for_search(raw_title)
-
-    title_variants: List[str] = []
-    for value in [raw_title, clean_title]:
-        if value and value not in title_variants:
-            title_variants.append(value)
-
-    artist_variants = _artist_variants(artist)
-
-    cases: List[Tuple[str, Optional[str]]] = []
-
-    # title + artist
-    for t in title_variants:
-        for a in artist_variants:
-            if t and a:
-                cases.append((t, a))
-
-    # title only
-    for t in title_variants:
-        if t:
-            cases.append((t, None))
-
-    deduped: List[Tuple[str, Optional[str]]] = []
-    seen = set()
-    for case in cases:
-        if case not in seen:
-            seen.add(case)
-            deduped.append(case)
-
-    return deduped
+def _merge_best_candidates(existing: List[Dict[str, Any]], new_candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    by_uri = {item['uri']: item for item in existing if item.get('uri')}
+    for item in new_candidates:
+        uri = item.get('uri')
+        if not uri:
+            continue
+        prev = by_uri.get(uri)
+        if prev is None or item['score'] > prev['score']:
+            by_uri[uri] = item
+    return sorted(by_uri.values(), key=lambda x: x['score'], reverse=True)
 
 
-def _collect_candidates(
+def _search_and_score(
     access_token: str,
+    *,
     input_title: str,
     input_artist: Optional[str],
+    search_title: str,
+    search_artist: Optional[str],
     market: Optional[str],
     orientation: str,
-    per_query_limit: int = 5,
 ) -> List[Dict[str, Any]]:
-    seen_ids = set()
-    ranked: List[Dict[str, Any]] = []
+    cache_key = (
+        (search_title or '').strip().lower(),
+        (search_artist or '').strip().lower(),
+        (market or '').strip().upper(),
+    )
+    raw_tracks = _SEARCH_CACHE.get(cache_key)
+    if raw_tracks is None:
+        if search_artist:
+            raw_tracks = search_track(
+                access_token=access_token,
+                title=search_title,
+                artist=search_artist,
+                market=market,
+                limit=3,
+            )
+        else:
+            raw_tracks = search_tracks_query(
+                access_token=access_token,
+                query=search_title,
+                market=market,
+                limit=3,
+            )
+        if len(_SEARCH_CACHE) >= MAX_CACHE_SIZE:
+            _SEARCH_CACHE.clear()
+        _SEARCH_CACHE[cache_key] = raw_tracks
 
-    search_cases = _build_search_cases(input_title, input_artist)
-
-    for search_title, search_artist in search_cases:
-        candidates = search_track(
-            access_token=access_token,
-            title=search_title,
-            artist=search_artist,
-            market=market,
-            limit=per_query_limit,
-        )
-
-        for candidate in candidates:
-            candidate_id = candidate.get("id")
-            if not candidate_id or candidate_id in seen_ids:
-                continue
-
-            seen_ids.add(candidate_id)
-
-            cand_artists = [a.get("name", "") for a in candidate.get("artists", [])]
-            score = _candidate_score(
-                candidate=candidate,
-                title=input_title,
-                artist=input_artist,
+    scored = []
+    for track in raw_tracks:
+        score, detail = compute_match_score(input_title, input_artist or '', track)
+        scored.append(
+            _candidate_to_result(
+                track,
+                score,
+                detail,
+                search_title=search_title,
+                search_artist=search_artist,
                 orientation=orientation,
             )
-
-            ranked.append({
-                "id": candidate_id,
-                "uri": candidate.get("uri", ""),
-                "name": candidate.get("name", ""),
-                "artists": cand_artists,
-                "score": score,
-                "orientation": orientation,
-                "search_title": search_title,
-                "search_artist": search_artist or "",
-                "input_artist": input_artist or "",
-                "input_title": input_title or "",
-            })
-
-    return ranked
+        )
+    scored.sort(key=lambda x: x['score'], reverse=True)
+    return scored
 
 
-def _merge_and_rank_candidates(
-    original_candidates: List[Dict[str, Any]],
-    swapped_candidates: List[Dict[str, Any]],
-    top_k: int = 5,
-) -> List[Dict[str, Any]]:
-    merged: Dict[str, Dict[str, Any]] = {}
-
-    for item in original_candidates + swapped_candidates:
-        track_id = item["id"]
-        existing = merged.get(track_id)
-
-        if not existing or item["score"] > existing["score"]:
-            merged[track_id] = item
-
-    ranked = list(merged.values())
-    ranked.sort(key=lambda x: x["score"], reverse=True)
-    return ranked[:top_k]
+def _best_score(candidates: List[Dict[str, Any]]) -> float:
+    if not candidates:
+        return 0.0
+    return candidates[0]['score']
 
 
-def _should_use_llm_rerank(candidates: List[Dict[str, Any]]) -> bool:
-    if len(candidates) < 2:
+def _is_artist_like_text(value: str) -> bool:
+    normalized = (value or '').lower()
+    if re.search(r'(?:,|&| x | feat\.?|ft\.?)', normalized):
+        return True
+    return len(_artist_variants(value)) > 1
+
+
+def _should_try_swapped(
+    input_title: str,
+    input_artist: str,
+    best_candidates: List[Dict[str, Any]],
+) -> bool:
+    if not input_artist:
+        return False
+    if _best_score(best_candidates) >= EARLY_STOP_SCORE:
         return False
 
-    best = candidates[0]["score"]
-    second = candidates[1]["score"]
-    margin = best - second
+    best = best_candidates[0] if best_candidates else None
+    weak_artist_alignment = best is None or best.get('score_detail', {}).get('artist_score', 0.0) < 0.25
+    artist_like_title = _is_artist_like_text(input_title)
+    title_like_artist = _clean_track_title_for_search(input_artist) != input_artist
 
-    if best < 0.84:
-        return True
-
-    if margin < 0.05:
-        return True
-
-    return False
-
-
-def _apply_llm_rerank_if_needed(
-    original_artist: Optional[str],
-    original_title: str,
-    candidates: List[Dict[str, Any]],
-) -> Optional[Dict[str, Any]]:
-    if not candidates:
-        return None
-
-    if not _should_use_llm_rerank(candidates):
-        return None
-
-    llm_candidates = []
-    for idx, item in enumerate(candidates):
-        llm_candidates.append({
-            "index": idx,
-            "name": item["name"],
-            "artists": item["artists"],
-            "score": item["score"],
-            "orientation": item["orientation"],
-        })
-
-    decision = rerank_spotify_candidates_with_llm(
-        input_artist=original_artist or "",
-        input_title=original_title or "",
-        candidates=llm_candidates,
-    )
-
-    if not decision:
-        return None
-
-    picked_index = decision.get("picked_index", -1)
-    confidence = decision.get("confidence", "low")
-
-    if not isinstance(picked_index, int):
-        return None
-
-    if picked_index < 0 or picked_index >= len(candidates):
-        return None
-
-    selected = dict(candidates[picked_index])
-    selected["llm_reranked"] = True
-    selected["llm_confidence"] = confidence
-    selected["llm_reason"] = decision.get("reason", "")
-    selected["llm_should_swap"] = bool(decision.get("should_swap", False))
-    return selected
+    return weak_artist_alignment and (artist_like_title or title_like_artist)
 
 
 def pick_best_track_match(
@@ -308,85 +147,109 @@ def pick_best_track_match(
     artist: Optional[str] = None,
     market: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
-    original_title = (title or "").strip()
-    original_artist = (artist or "").strip() or None
+    cache_key = ((title or '').strip().lower(), (artist or '').strip().lower())
+    if cache_key in _MATCH_CACHE:
+        return _MATCH_CACHE[cache_key]
 
-    if not original_title:
-        return None
+    input_title = (title or '').strip()
+    input_artist = (artist or '').strip()
+    title_variants = _title_variants(_clean_track_title_for_search(input_title))
+    artist_variants = _artist_variants(input_artist) if input_artist else [None]
 
-    original_candidates = _collect_candidates(
-        access_token=access_token,
-        input_title=original_title,
-        input_artist=original_artist,
-        market=market,
-        orientation="original",
-        per_query_limit=5,
-    )
+    best_candidates: List[Dict[str, Any]] = []
 
-    swapped_candidates: List[Dict[str, Any]] = []
-    if original_artist:
-        swapped_candidates = _collect_candidates(
-            access_token=access_token,
-            input_title=original_artist,
-            input_artist=original_title,
+    # pass 1: title + artist exact-ish
+    first_title = title_variants[0] if title_variants else input_title
+    first_artist = artist_variants[0] if artist_variants else None
+    best_candidates = _merge_best_candidates(
+        best_candidates,
+        _search_and_score(
+            access_token,
+            input_title=input_title,
+            input_artist=input_artist,
+            search_title=first_title,
+            search_artist=first_artist,
             market=market,
-            orientation="swapped",
-            per_query_limit=5,
-        )
-
-    top_candidates = _merge_and_rank_candidates(
-        original_candidates=original_candidates,
-        swapped_candidates=swapped_candidates,
-        top_k=5,
+            orientation='title_artist',
+        ),
     )
 
-    if not top_candidates:
+    if best_candidates and best_candidates[0]['score'] >= SPOTIFY_HIGH_CONF:
+        best = dict(best_candidates[0])
+        best['top_candidates'] = best_candidates[:3]
+        _MATCH_CACHE[cache_key] = best
+        return best
+
+    if best_candidates and best_candidates[0]['score'] >= EARLY_STOP_SCORE:
+        best = dict(best_candidates[0])
+        best['top_candidates'] = best_candidates[:3]
+        _MATCH_CACHE[cache_key] = best
+        return best
+
+    # pass 2: only one controlled fallback
+    use_artist_first = bool(input_artist) and _is_short_or_generic_title(input_title)
+    if use_artist_first:
+        for artist_variant in artist_variants[:2]:
+            if not artist_variant:
+                continue
+            query = f'artist:"{artist_variant}" {first_title}'
+            candidates = _search_and_score(
+                access_token,
+                input_title=input_title,
+                input_artist=input_artist,
+                search_title=query,
+                search_artist=None,
+                market=market,
+                orientation='artist_first',
+            )
+            best_candidates = _merge_best_candidates(best_candidates, candidates)
+            if best_candidates and best_candidates[0]['score'] >= SPOTIFY_HIGH_CONF:
+                break
+    elif _best_score(best_candidates) < EARLY_STOP_SCORE:
+        for title_variant in title_variants[1:2]:
+            candidates = _search_and_score(
+                access_token,
+                input_title=input_title,
+                input_artist=input_artist,
+                search_title=title_variant,
+                search_artist=first_artist,
+                market=market,
+                orientation='title_fallback',
+            )
+            best_candidates = _merge_best_candidates(best_candidates, candidates)
+            if best_candidates and best_candidates[0]['score'] >= SPOTIFY_HIGH_CONF:
+                break
+
+    if _should_try_swapped(input_title, input_artist, best_candidates):
+        swapped_title = _clean_track_title_for_search(input_artist) or input_artist
+        swapped_artist_variants = _artist_variants(input_title)
+        swapped_artist = swapped_artist_variants[0] if swapped_artist_variants else input_title
+        swapped_candidates = _search_and_score(
+            access_token,
+            input_title=input_artist,
+            input_artist=input_title,
+            search_title=swapped_title,
+            search_artist=swapped_artist,
+            market=market,
+            orientation='swapped',
+        )
+        best_candidates = _merge_best_candidates(best_candidates, swapped_candidates)
+
+    if not best_candidates:
+        _MATCH_CACHE[cache_key] = None
         return None
 
-    best = top_candidates[0]
+    best = dict(best_candidates[0])
+    best['top_candidates'] = best_candidates[:3]
+    min_score = SPOTIFY_MID_CONF
+    if best.get('orientation') == 'swapped':
+        min_score = max(min_score, SWAPPED_MIN_SCORE)
 
-    # 1차 규칙 기반 컷
-    base_threshold = 0.66
-    swapped_threshold = 0.72
-
-    if best["orientation"] == "swapped" and best["score"] < swapped_threshold:
-        llm_selected = _apply_llm_rerank_if_needed(
-            original_artist=original_artist,
-            original_title=original_title,
-            candidates=top_candidates,
-        )
-        if llm_selected:
-            best = llm_selected
-        else:
-            return None
-
-    elif best["score"] < base_threshold:
-        llm_selected = _apply_llm_rerank_if_needed(
-            original_artist=original_artist,
-            original_title=original_title,
-            candidates=top_candidates,
-        )
-        if llm_selected:
-            best = llm_selected
-        else:
-            return None
-
-    else:
-        llm_selected = _apply_llm_rerank_if_needed(
-            original_artist=original_artist,
-            original_title=original_title,
-            candidates=top_candidates,
-        )
-        if llm_selected:
-            best = llm_selected
-
-    # 최종 안정성 체크
-    final_threshold = swapped_threshold if best["orientation"] == "swapped" else base_threshold
-    if best["score"] < final_threshold and not best.get("llm_reranked"):
+    if best['score'] < min_score:
+        _MATCH_CACHE[cache_key] = None
         return None
 
-    if best["score"] < 0.60:
-        return None
-
-    best["top_candidates"] = top_candidates
+    if len(_MATCH_CACHE) >= MAX_CACHE_SIZE:
+        _MATCH_CACHE.clear()
+    _MATCH_CACHE[cache_key] = best
     return best

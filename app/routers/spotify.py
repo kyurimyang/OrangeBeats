@@ -1,4 +1,4 @@
-﻿import secrets
+import secrets
 from typing import Dict, List
 
 from fastapi import APIRouter, HTTPException, Query
@@ -11,138 +11,130 @@ from app.services.spotify_service import (
     exchange_code_for_token,
     get_spotify_login_url,
 )
+from app.services.spotify_session import (
+    ensure_valid_access_token,
+    is_logged_in,
+    save_token_data,
+    spotify_auth_state_store,
+)
 
-router = APIRouter(prefix="/spotify", tags=["Spotify"])
-
-# 실제 배포에서는 DB/Redis/세션으로 바꾸기
-spotify_auth_state_store = {}
-spotify_token_store = {}
+router = APIRouter(prefix='/spotify', tags=['Spotify'])
 
 
-@router.get("/login")
+def _spotify_http_status(exc: SpotifyServiceError) -> int:
+    message = str(exc)
+    if '429' in message or 'Too many requests' in message or 'rate limit' in message.lower():
+        return 429
+    return 500
+
+
+@router.get('/login')
 def spotify_login():
     state = secrets.token_urlsafe(16)
     spotify_auth_state_store[state] = True
 
     login_url = get_spotify_login_url(state=state)
 
-    print("=== /spotify/login called ===")
-    print("generated state =", state)
-    print("login_url =", login_url)
+    print('=== /spotify/login called ===')
+    print('generated state =', state)
+    print('login_url =', login_url)
 
     return {
-        "login_url": login_url,
-        "state": state,
+        'login_url': login_url,
+        'state': state,
     }
 
 
-@router.get("/callback")
+@router.get('/callback')
 def spotify_callback(
     code: str = Query(...),
     state: str = Query(...),
 ):
-    print("=== /spotify/callback called ===")
-    print("callback state =", state)
+    print('=== /spotify/callback called ===')
+    print('callback state =', state)
 
     if state not in spotify_auth_state_store:
-        print("invalid state")
+        print('invalid state')
         return RedirectResponse(
-            url=f"{FRONTEND_URL}?spotify_login=failed&reason=invalid_state",
+            url=f'{FRONTEND_URL}?spotify_login=failed&reason=invalid_state',
             status_code=302,
         )
 
     try:
         token_data = exchange_code_for_token(code)
+        print('granted scope =', token_data.get('scope'))
+        save_token_data(token_data)
 
-        print("token_data =", token_data)
-        print("granted scope =", token_data.get("scope"))
-
-        access_token = token_data["access_token"]
-        refresh_token = token_data.get("refresh_token")
-
-        spotify_token_store["latest_access_token"] = access_token
-        if refresh_token:
-            spotify_token_store["latest_refresh_token"] = refresh_token
-
-        # state는 검증용으로만 썼으니 사용 후 제거
         spotify_auth_state_store.pop(state, None)
 
-        print("latest access token saved =", bool(spotify_token_store.get("latest_access_token")))
-        print("latest refresh token saved =", bool(spotify_token_store.get("latest_refresh_token")))
-
         return RedirectResponse(
-            url=f"{FRONTEND_URL}?spotify_login=success",
+            url=f'{FRONTEND_URL}?spotify_login=success',
             status_code=302,
         )
 
     except SpotifyServiceError as e:
-        print("SpotifyServiceError =", str(e))
+        print('SpotifyServiceError =', str(e))
         return RedirectResponse(
-            url=f"{FRONTEND_URL}?spotify_login=failed&reason=spotify_service_error",
+            url=f'{FRONTEND_URL}?spotify_login=failed&reason=spotify_service_error',
             status_code=302,
         )
 
     except Exception as e:
-        print("Unexpected callback error =", str(e))
+        print('Unexpected callback error =', str(e))
         return RedirectResponse(
-            url=f"{FRONTEND_URL}?spotify_login=failed&reason=unknown_error",
+            url=f'{FRONTEND_URL}?spotify_login=failed&reason=unknown_error',
             status_code=302,
         )
 
 
-@router.get("/login-status")
+@router.get('/login-status')
 def spotify_login_status():
-    access_token = spotify_token_store.get("latest_access_token")
+    try:
+        token = ensure_valid_access_token()
+        return {
+            'logged_in': bool(token),
+        }
+    except Exception:
+        return {
+            'logged_in': is_logged_in(),
+        }
 
-    return {
-        "logged_in": bool(access_token),
-    }
 
-
-@router.post("/create-playlist")
+@router.post('/create-playlist')
 def create_spotify_playlist(payload: Dict):
-    """
-    요청 body 예시
-    {
-      "playlist_name": "유튜브 추출 플레이리스트",
-      "songs": [
-        {"artist": "NewJeans", "title": "Ditto"},
-        {"artist": "DAY6", "title": "한 페이지가 될 수 있게"}
-      ]
-    }
-    """
-    access_token = spotify_token_store.get("latest_access_token")
-    if not access_token:
-        raise HTTPException(status_code=401, detail="Spotify 로그인이 먼저 필요합니다.")
+    try:
+        access_token = ensure_valid_access_token()
+    except SpotifyServiceError as e:
+        raise HTTPException(status_code=401, detail=str(e)) from e
 
-    print("=== /spotify/create-playlist called ===")
-    print("payload =", payload)
-    print("token exists =", bool(access_token))
+    print('=== /spotify/create-playlist called ===')
+    print('payload =', payload)
+    print('token exists =', bool(access_token))
 
-    playlist_name = (payload.get("playlist_name") or "새 플레이리스트").strip()
-    songs: List[Dict[str, str]] = payload.get("songs", [])
+    playlist_name = (payload.get('playlist_name') or '새 플레이리스트').strip()
+    songs: List[Dict[str, str]] = payload.get('songs', [])
 
-    print("playlist_name =", playlist_name)
-    print("songs count =", len(songs))
-    print("songs sample =", songs[:3])
+    print('playlist_name =', playlist_name)
+    print('songs count =', len(songs))
+    print('songs sample =', songs[:3])
 
     if not songs:
-        raise HTTPException(status_code=400, detail="songs가 비어 있습니다.")
+        raise HTTPException(status_code=400, detail='songs가 비어 있습니다.')
 
     try:
         result = create_playlist_from_songs(
             access_token=access_token,
             playlist_name=playlist_name,
             songs=songs,
-            playlist_description="Created from YouTube playlist text",
+            playlist_description='Created from YouTube playlist text',
             public=True,
         )
 
         return {
-            "success": True,
-            "result": result,
+            'success': True,
+            'result': result,
         }
 
     except SpotifyServiceError as e:
-        print("SpotifyServiceError =", str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+        print('SpotifyServiceError =', str(e))
+        raise HTTPException(status_code=_spotify_http_status(e), detail=str(e))
