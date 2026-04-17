@@ -38,6 +38,7 @@ def create_playlist_from_songs(
             'right': song.get('right', ''),
             'swap_applied': song.get('swap_applied', False),
             'global_direction': song.get('global_direction', 'unknown'),
+            'reason': song.get('reason', ''),
         }
 
         if not title:
@@ -85,6 +86,7 @@ def create_playlist_from_songs(
             'search_artist': match.get('search_artist', ''),
             'swap_applied': song_meta['swap_applied'],
             'global_direction': song_meta['global_direction'],
+            'parse_reason': song_meta['reason'],
             'top_candidates': [
                 {
                     'name': candidate['name'],

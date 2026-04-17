@@ -31,6 +31,13 @@ LEADING_DECORATION_REGEX = re.compile(r"^[~*#>·•※☆★\-\s]+")
 TRAILING_DECORATION_REGEX = re.compile(r"[~*#>·•※☆★\-\s]+$")
 SEPARATORS = [" - ", " – ", " — ", " | ", " / ", " : ", " ~ "]
 SEPARATORS = PAIR_SEPARATORS
+KOREAN_NAME_REGEX = re.compile(r"^[\uAC00-\uD7A3]{2,4}$")
+ENGLISH_SINGLE_WORD_REGEX = re.compile(r"^[A-Za-z][A-Za-z0-9'._-]{1,24}$")
+LOWERCASE_ARTIST_HANDLE_REGEX = re.compile(r"^[a-z][a-z0-9._-]{2,24}$")
+TITLE_ENDING_HINT_REGEX = re.compile(
+    r"(요|데|게|자|밤|꿈|봄|길|꽃|비|춤|사랑|이별|마음|만으로|으로|처럼|인가|거야|없어|같아|했다)$"
+)
+REPEATED_HANGUL_TITLE_REGEX = re.compile(r"^([\uAC00-\uD7A3]{1,2})\1{1,}$")
 
 
 def parse_json_from_text(text: str) -> dict:
@@ -138,111 +145,212 @@ def _is_meaningful_text(text: str) -> bool:
     return True
 
 
-def _contains_artist_hint(text: str) -> bool:
-    lower = text.lower()
-    artist_hints = [
-        " feat. ", " feat ", " ft. ", " ft ", " featuring ",
-        "prod. ", " prod ", " by ", " x ", " & ", ", "
-    ]
-    return any(h in f" {lower} " for h in artist_hints)
+TITLE_HINT_KO = [
+    "\uc0ac\ub791", "\uc774\ubcc4", "\uae30\uc5b5", "\uc2dc\uac04", "\ub9c8\uc74c", "\uc624\ub298", "\ub0b4\uc77c",
+    "\uc6b0\ub9ac", "\ub108", "\ub098", "\uc874\uc7ac", "\ucda4", "\uc88b\uc544\uc694", "\ubd88\ud3b8\ud574",
+]
+ARTIST_CONNECTORS = ["feat", "ft", "&", ",", " x ", " X "]
+TITLE_LEADING_WORDS_EN = {"the", "a", "an", "my", "your", "our", "this", "that"}
+TITLE_VERB_HINTS_EN = {"is", "are", "was", "were", "be", "build", "love", "hate", "need", "want"}
+TITLE_TRAILING_WORDS_EN = {"mine", "more", "sick", "dance", "umbrella", "vida"}
+LINE_OVERRIDE_SCORE_MARGIN = 1.0
+KNOWN_GROUP_ARTISTS = {
+    "shinee",
+    "bigbang",
+    "2ne1",
+    "girls generation",
+    "girls' generation",
+    "snsd",
+    "wonder girls",
+    "\uc18c\ub140\uc2dc\ub300",
+    "\uc778\ud53c\ub2c8\ud2b8",
+    "\ube44\uc2a4\ud2b8",
+    "beast",
+    "highlight",
+}
 
 
-def _looks_like_artist(text: str) -> bool:
-    text = _clean_text(text)
-    if not text:
+def normalize_text(text: str) -> str:
+    normalized = _clean_text(text).lower()
+    normalized = re.sub(r"[^\w\uAC00-\uD7A3\s&.,'\-]", " ", normalized)
+    normalized = MULTISPACE_REGEX.sub(" ", normalized)
+    return normalized.strip()
+
+
+def is_hangul_only(text: str) -> bool:
+    compact = _clean_text(text).replace(" ", "")
+    return bool(compact) and bool(re.fullmatch(r"[\uAC00-\uD7A3]+", compact))
+
+
+def looks_like_korean_name(text: str) -> bool:
+    cleaned = _clean_text(text)
+    return bool(cleaned) and bool(KOREAN_NAME_REGEX.fullmatch(cleaned))
+
+
+def looks_like_english_artist(text: str) -> bool:
+    normalized = normalize_text(text)
+    if not normalized:
         return False
-
-    if _contains_artist_hint(text):
+    words = normalized.split()
+    if len(words) > 3:
+        return False
+    if any(connector in f" {normalized} " for connector in ARTIST_CONNECTORS):
         return True
-
-    word_count = len(text.split())
-    if word_count <= 3 and len(text) <= 24:
+    if len(words) == 1 and LOWERCASE_ARTIST_HANDLE_REGEX.fullmatch(normalized):
         return True
-
-    if len(text) <= 20 and re.fullmatch(r"[A-Za-z0-9&.,'\- ]+", text):
+    if all(re.fullmatch(r"[a-z0-9&.,'\-]+", word) for word in words):
+        if len(words) == 1:
+            word = words[0]
+            if not ENGLISH_SINGLE_WORD_REGEX.fullmatch(word):
+                return False
+            # Single-word English artists tend to be handles or stylized short names.
+            return bool(re.search(r"[\-0-9]", word) or word.islower() or len(word) <= 5)
+        if len(words) >= 2 and (
+            words[0] in TITLE_LEADING_WORDS_EN
+            or any(word in TITLE_VERB_HINTS_EN for word in words)
+            or words[-1] in TITLE_TRAILING_WORDS_EN
+        ):
+            return False
         return True
-
     return False
 
 
-def _normalize_compare_text(text: str) -> str:
-    text = _clean_text(text).lower()
-    text = re.sub(r"[^\w\uAC00-\uD7A3\s]", " ", text)
-    text = MULTISPACE_REGEX.sub(" ", text)
-    return text.strip()
+def looks_like_title_korean(text: str) -> bool:
+    cleaned = _clean_text(text)
+    if not cleaned or not re.search(r"[\uAC00-\uD7A3]", cleaned):
+        return False
+    if any(hint in cleaned for hint in TITLE_HINT_KO):
+        return True
+    if REPEATED_HANGUL_TITLE_REGEX.fullmatch(cleaned):
+        return True
+    if " " in cleaned:
+        return True
+    if len(cleaned) >= 3 and not looks_like_korean_name(cleaned):
+        return True
+    return False
+
+
+def looks_like_title_english(text: str) -> bool:
+    normalized = normalize_text(text)
+    if not normalized:
+        return False
+    words = normalized.split()
+    if len(words) >= 2:
+        return True
+    if len(words) == 1 and len(words[0]) >= 4:
+        return True
+    return False
+
+
+def _contains_artist_hint(text: str) -> bool:
+    lowered = f" {normalize_text(text)} "
+    return any(connector in lowered for connector in ARTIST_CONNECTORS)
 
 
 def _match_noise_count(text: str) -> int:
-    normalized = _normalize_compare_text(text)
+    normalized = normalize_text(text)
     return sum(1 for token in MATCH_NOISE_KEYWORDS if token in normalized)
 
 
 def _artist_alias_hit(text: str) -> bool:
-    normalized = _normalize_compare_text(text)
+    normalized = normalize_text(text)
     for source, aliases in CORE_ARTIST_ALIAS_MAP.items():
-        alias_group = {_normalize_compare_text(source), *(_normalize_compare_text(alias) for alias in aliases)}
+        alias_values = aliases if isinstance(aliases, list) else [aliases]
+        alias_group = {normalize_text(source), *(normalize_text(alias) for alias in alias_values)}
         if normalized in alias_group:
             return True
     return False
 
 
-def _score_artist_candidate(text: str) -> float:
-    text = _clean_text(text)
-    if not text:
-        return 0.0
+def _known_group_artist_hit(text: str) -> bool:
+    normalized = normalize_text(text)
+    return normalized in KNOWN_GROUP_ARTISTS
 
+
+def looks_like_artist(text: str) -> bool:
+    cleaned = _clean_text(text)
+    if not cleaned:
+        return False
+    if _contains_artist_hint(cleaned):
+        return True
+    if _known_group_artist_hit(cleaned):
+        return True
+    if _artist_alias_hit(cleaned):
+        return True
+    if looks_like_korean_name(cleaned):
+        return True
+    if looks_like_english_artist(cleaned):
+        return True
+    if is_hangul_only(cleaned) and 2 <= len(cleaned) <= 5:
+        return True
+    return False
+
+
+def looks_like_title(text: str) -> bool:
+    cleaned = _clean_text(text)
+    if not cleaned:
+        return False
+    if _known_group_artist_hit(cleaned):
+        return False
+    if re.search(r"\(.*?\)", cleaned):
+        return True
+    if looks_like_title_korean(cleaned):
+        return True
+    if looks_like_title_english(cleaned):
+        return True
+    return False
+
+
+def score_artist_like(text: str) -> float:
+    cleaned = _clean_text(text)
+    if not cleaned:
+        return 0.0
     score = 0.0
-    if _looks_like_artist(text):
-        score += 0.45
-    if _contains_artist_hint(text):
-        score += 0.2
-    if _artist_alias_hit(text):
-        score += 0.35
+    if looks_like_artist(cleaned):
+        score += 1.0
+    if _known_group_artist_hit(cleaned):
+        score += 1.1
+    if looks_like_korean_name(cleaned):
+        score += 0.8
+    if looks_like_english_artist(cleaned):
+        score += 0.8
+    if _artist_alias_hit(cleaned):
+        score += 0.8
+    if _contains_artist_hint(cleaned):
+        score += 0.7
+    if looks_like_title(cleaned):
+        score -= 0.4
+    if _match_noise_count(cleaned):
+        score -= 0.4
+    return round(score, 4)
 
-    word_count = len(text.split())
-    if word_count <= 3 and len(text) <= 28:
-        score += 0.15
-    if re.fullmatch(r"[A-Za-z0-9&.,'\- ]+", text):
-        score += 0.1
-    if _match_noise_count(text):
-        score -= 0.25
-    if word_count >= 6:
-        score -= 0.15
 
-    return round(max(0.0, min(score, 1.0)), 4)
-
-
-def _score_title_candidate(text: str) -> float:
-    text = _clean_text(text)
-    if not text:
+def score_title_like(text: str) -> float:
+    cleaned = _clean_text(text)
+    if not cleaned:
         return 0.0
-
-    normalized = _normalize_compare_text(text)
-    word_count = len(normalized.split())
-    score = 0.35
-
-    if word_count >= 1:
-        score += 0.15
-    if word_count >= 2:
-        score += 0.1
-    if re.search(r"[\(\)\[\]A-Za-z]", text) and re.search(r"[\uAC00-\uD7A3]", text):
-        score += 0.12
-    if re.search(r"[A-Za-z]{2,}", text) and re.search(r"[\uAC00-\uD7A3]{1,}", text):
-        score += 0.08
-    if _contains_artist_hint(text):
-        score -= 0.2
-    score -= min(_match_noise_count(text) * 0.08, 0.24)
-    if word_count >= 7:
-        score -= 0.1
-
-    return round(max(0.0, min(score, 1.0)), 4)
+    score = 0.0
+    if looks_like_title(cleaned):
+        score += 1.0
+    if looks_like_title_korean(cleaned):
+        score += 0.8
+    if looks_like_title_english(cleaned):
+        score += 0.8
+    if _known_group_artist_hit(cleaned):
+        score -= 1.0
+    if looks_like_korean_name(cleaned):
+        score -= 0.5
+    if looks_like_english_artist(cleaned):
+        score -= 0.5
+    if _contains_artist_hint(cleaned):
+        score -= 0.4
+    return round(score, 4)
 
 
 def _extract_pair_parts(text: str) -> dict | None:
     cleaned = _clean_text(text)
     if not cleaned:
         return None
-
     for sep in SEPARATORS:
         if sep not in cleaned:
             continue
@@ -259,40 +367,128 @@ def _extract_pair_parts(text: str) -> dict | None:
     return None
 
 
-def _resolve_orientation(parts: dict, global_direction: str = "artist_title") -> dict:
-    left = parts.get("left", "")
-    right = parts.get("right", "")
-    normal_score = _score_artist_candidate(left) + _score_title_candidate(right)
-    swapped_score = _score_artist_candidate(right) + _score_title_candidate(left)
+def _compute_direction_scores(left: str, right: str) -> dict:
+    left_artist = score_artist_like(left)
+    left_title = score_title_like(left)
+    right_artist = score_artist_like(right)
+    right_title = score_title_like(right)
+    return {
+        "left_artist": left_artist,
+        "left_title": left_title,
+        "right_artist": right_artist,
+        "right_title": right_title,
+        "normal_score": round(left_artist + right_title, 4),
+        "swapped_score": round(right_artist + left_title, 4),
+    }
 
-    if global_direction == "artist_title":
-        normal_score += 0.12
-    elif global_direction == "title_artist":
-        swapped_score += 0.12
 
-    swap_applied = swapped_score > normal_score + SWAP_SCORE_MARGIN
-    if swap_applied:
-        artist, title = right, left
-        resolved_direction = "title_artist"
-        selected_score = swapped_score
+def should_swap(left: str, right: str, global_direction: str = "artist_title") -> tuple[bool, str, dict]:
+    detail = _compute_direction_scores(left, right)
+    normal_score = detail["normal_score"]
+    swapped_score = detail["swapped_score"]
+
+    strong_swapped_signal = looks_like_title(left) and looks_like_artist(right)
+    strong_normal_signal = looks_like_artist(left) and looks_like_title(right)
+    left_artist_edge = round(detail["left_artist"] - detail["left_title"], 4)
+    left_title_edge = round(detail["left_title"] - detail["left_artist"], 4)
+    right_artist_edge = round(detail["right_artist"] - detail["right_title"], 4)
+    right_title_edge = round(detail["right_title"] - detail["right_artist"], 4)
+    right_known_artist = _known_group_artist_hit(right) or _artist_alias_hit(right)
+    left_known_artist = _known_group_artist_hit(left) or _artist_alias_hit(left)
+
+    base_direction = global_direction if global_direction in {"artist_title", "title_artist"} else "artist_title"
+    final_direction = base_direction
+    override_applied = False
+
+    if base_direction == "artist_title":
+        if (
+            strong_swapped_signal
+            and left_title_edge >= 0.8
+            and right_artist_edge >= 0.8
+            and swapped_score >= normal_score + LINE_OVERRIDE_SCORE_MARGIN
+        ):
+            final_direction = "title_artist"
+            override_applied = True
+            reason = "override:left_title_like + right_artist_like"
+        else:
+            reason = f"follow_global({base_direction})"
     else:
-        artist, title = left, right
-        resolved_direction = "artist_title"
-        selected_score = normal_score
+        if (
+            strong_normal_signal
+            and not right_known_artist
+            and (left_known_artist or left_artist_edge >= 0.3)
+            and right_title_edge >= 1.2
+            and normal_score >= swapped_score + (LINE_OVERRIDE_SCORE_MARGIN + 0.4)
+        ):
+            final_direction = "artist_title"
+            override_applied = True
+            reason = "override:left_artist_like + right_title_like"
+        else:
+            reason = f"follow_global({base_direction})"
 
+    detail["override_applied"] = override_applied
+    detail["final_direction"] = final_direction
+    detail["margin"] = round(swapped_score - normal_score, 4)
+    detail["base_direction"] = base_direction
+    detail["left_artist_edge"] = left_artist_edge
+    detail["left_title_edge"] = left_title_edge
+    detail["right_artist_edge"] = right_artist_edge
+    detail["right_title_edge"] = right_title_edge
+    return final_direction == "title_artist", reason, detail
+
+
+def finalize_pair(left: str, right: str, global_direction: str = "artist_title") -> dict:
+    swap, reason, detail = should_swap(left, right, global_direction)
+    final_direction = detail["final_direction"]
+    if final_direction == "title_artist":
+        artist, title = right.strip(), left.strip()
+        direction_score = detail["swapped_score"]
+    else:
+        artist, title = left.strip(), right.strip()
+        direction_score = detail["normal_score"]
     return {
         "artist": artist,
         "title": title,
-        "raw": parts.get("raw", ""),
+        "swap_applied": final_direction == "title_artist",
+        "override_applied": detail["override_applied"],
+        "reason": reason,
         "left": left,
         "right": right,
-        "swap_applied": swap_applied,
-        "line_direction": resolved_direction,
+        "line_direction": final_direction,
+        "final_direction": final_direction,
         "global_direction": global_direction,
-        "direction_score": round(selected_score, 4),
-        "normal_score": round(normal_score, 4),
-        "swapped_score": round(swapped_score, 4),
+        "direction_score": direction_score,
+        "normal_score": detail["normal_score"],
+        "swapped_score": detail["swapped_score"],
     }
+
+
+def _safe_log_value(value: str) -> str:
+    return str(value or "").replace("'", "\\'")
+
+
+def _log_parse_line(parsed: dict) -> None:
+    print(
+        f"[parse-line] raw='{_safe_log_value(parsed.get('raw', ''))}' "
+        f"global={parsed.get('global_direction', 'unknown')} "
+        f"override={str(parsed.get('override_applied', False)).lower()} "
+        f"final_direction={parsed.get('final_direction', parsed.get('line_direction', 'unknown'))} "
+        f"left='{_safe_log_value(parsed.get('left', ''))}' "
+        f"right='{_safe_log_value(parsed.get('right', ''))}' "
+        f"artist='{_safe_log_value(parsed.get('artist', ''))}' "
+        f"title='{_safe_log_value(parsed.get('title', ''))}' "
+        f"reason='{_safe_log_value(parsed.get('reason', ''))}'"
+    )
+
+
+def _resolve_orientation(parts: dict, global_direction: str = "artist_title") -> dict:
+    finalized = finalize_pair(
+        parts.get("left", ""),
+        parts.get("right", ""),
+        global_direction=global_direction,
+    )
+    finalized["raw"] = parts.get("raw", "")
+    return finalized
 
 
 def _infer_global_direction(parsed_pairs: list[dict]) -> str:
@@ -300,14 +496,27 @@ def _infer_global_direction(parsed_pairs: list[dict]) -> str:
     if not sample:
         return "unknown"
 
+    normal_votes = 0
+    swapped_votes = 0
     normal_total = 0.0
     swapped_total = 0.0
     for parts in sample:
         left = parts.get("left", "")
         right = parts.get("right", "")
-        normal_total += _score_artist_candidate(left) + _score_title_candidate(right)
-        swapped_total += _score_artist_candidate(right) + _score_title_candidate(left)
+        detail = _compute_direction_scores(left, right)
+        normal_score = detail["normal_score"]
+        swapped_score = detail["swapped_score"]
+        normal_total += normal_score
+        swapped_total += swapped_score
+        if normal_score >= swapped_score + SWAP_SCORE_MARGIN:
+            normal_votes += 1
+        elif swapped_score >= normal_score + SWAP_SCORE_MARGIN:
+            swapped_votes += 1
 
+    if swapped_votes > normal_votes:
+        return "title_artist"
+    if normal_votes > swapped_votes:
+        return "artist_title"
     if swapped_total > normal_total + 0.45:
         return "title_artist"
     if normal_total > swapped_total + 0.45:
@@ -340,7 +549,7 @@ def _append_song(results: list[dict], artist: str, title: str, meta: dict | None
         "is_complete": artist_ok and title_ok,
         "completeness_score": score,
     }
-    for key in ["raw", "left", "right", "swap_applied", "line_direction", "global_direction"]:
+    for key in ["raw", "left", "right", "swap_applied", "override_applied", "line_direction", "final_direction", "global_direction", "reason"]:
         if key in meta:
             song[key] = meta.get(key)
     results.append(song)
@@ -369,6 +578,13 @@ def _split_pair(text: str):
     return None
 
 
+def _legacy_split_pair_unused(text: str):
+    parts = _extract_pair_parts(text)
+    if not parts:
+        return None
+    return _resolve_orientation(parts, global_direction="artist_title")
+
+
 def _split_pair(text: str):
     parts = _extract_pair_parts(text)
     if not parts:
@@ -376,7 +592,7 @@ def _split_pair(text: str):
     return _resolve_orientation(parts, global_direction="artist_title")
 
 
-def parse_unstructured_lines_to_json(text: str) -> dict:
+def _legacy_parse_unstructured_lines_to_json_unused(text: str) -> dict:
     if not text:
         return {"songs": []}
 
@@ -434,12 +650,13 @@ def parse_unstructured_lines_to_json(text: str) -> dict:
         artist = parsed.get("artist", "")
         title = parsed.get("title", "")
         if artist and title:
+            _log_parse_line(parsed)
             _append_song(results, artist=artist, title=title, meta=parsed)
 
     return {"songs": deduplicate_songs(results)}
 
 
-def normalize_song_candidates(data: Any) -> dict:
+def _legacy_normalize_song_candidates_unused(data: Any) -> dict:
     if not data:
         return {"songs": []}
 
@@ -514,14 +731,18 @@ def normalize_song_candidates(data: Any) -> dict:
             artist = _clean_text(parsed.get("artist", artist))
             title = _clean_text(parsed.get("title", title))
             meta = parsed
+            _log_parse_line(parsed)
         else:
             meta = {
                 "raw": raw,
                 "left": left,
                 "right": right,
-                "swap_applied": False,
+                "swap_applied": global_direction == "title_artist",
+                "override_applied": False,
                 "line_direction": global_direction,
+                "final_direction": global_direction,
                 "global_direction": global_direction,
+                "reason": f"follow_global({global_direction})",
             }
 
         if not _is_meaningful_text(title):
@@ -550,7 +771,7 @@ def deduplicate_songs(songs: list[dict]) -> list[dict]:
                 "is_complete": s.get("is_complete", False),
                 "completeness_score": s.get("completeness_score", 0.0),
             }
-            for meta_key in ["raw", "left", "right", "swap_applied", "line_direction", "global_direction"]:
+            for meta_key in ["raw", "left", "right", "swap_applied", "override_applied", "line_direction", "final_direction", "global_direction", "reason"]:
                 if meta_key in s:
                     entry[meta_key] = s.get(meta_key)
             best_by_key[key] = entry

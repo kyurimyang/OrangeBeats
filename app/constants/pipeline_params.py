@@ -62,7 +62,7 @@ PAIR_SEPARATORS = [
 ]
 
 GLOBAL_DIRECTION_SAMPLE_SIZE = 5
-SWAP_SCORE_MARGIN = 0.2
+SWAP_SCORE_MARGIN = 0.14
 
 MATCH_NOISE_KEYWORDS = [
     "official",
@@ -98,6 +98,12 @@ CORE_ARTIST_ALIAS_MAP = {
     "롤러코스터": ["Roller Coaster", "RollerCoaster"],
     "클래지콰이": ["Clazziquai", "Clazziquai Project"],
 }
+
+CORE_ARTIST_ALIAS_MAP.update({
+    "\ubc31\uc608\ub9b0": ["Yerin Baek"],
+    "\uc6d0\uc288\ud0c0\uc778": ["Wonstein"],
+    "MC\ubabd": ["MC Mong"],
+})
 
 CORE_TITLE_ALIAS_MAP = {
     "놀이공원": ["Amusement Park"],
