@@ -16,12 +16,19 @@ def _basic_auth_header() -> str:
     return f"Basic {encoded}"
 
 
-def get_spotify_login_url(state: str) -> str:
+def _resolve_redirect_uri(redirect_uri: str | None) -> str:
+    resolved = (redirect_uri or SPOTIFY_REDIRECT_URI or "").strip()
+    if not resolved:
+        raise SpotifyServiceError("Spotify redirect_uri가 설정되지 않았습니다.")
+    return resolved
+
+
+def get_spotify_login_url(state: str, redirect_uri: str | None = None) -> str:
     scope = "playlist-modify-public playlist-modify-private ugc-image-upload"
     params = {
         "client_id": SPOTIFY_CLIENT_ID,
         "response_type": "code",
-        "redirect_uri": SPOTIFY_REDIRECT_URI,
+        "redirect_uri": _resolve_redirect_uri(redirect_uri),
         "scope": scope,
         "state": state,
         "show_dialog": "true",
@@ -29,7 +36,7 @@ def get_spotify_login_url(state: str) -> str:
     return f"{SPOTIFY_ACCOUNTS_BASE}/authorize?{urlencode(params)}"
 
 
-def exchange_code_for_token(code: str) -> Dict[str, Any]:
+def exchange_code_for_token(code: str, redirect_uri: str | None = None) -> Dict[str, Any]:
     url = f"{SPOTIFY_ACCOUNTS_BASE}/api/token"
     headers = {
         "Authorization": _basic_auth_header(),
@@ -38,7 +45,7 @@ def exchange_code_for_token(code: str) -> Dict[str, Any]:
     data = {
         "grant_type": "authorization_code",
         "code": code,
-        "redirect_uri": SPOTIFY_REDIRECT_URI,
+        "redirect_uri": _resolve_redirect_uri(redirect_uri),
     }
 
     resp = requests.post(url, headers=headers, data=data, timeout=20)

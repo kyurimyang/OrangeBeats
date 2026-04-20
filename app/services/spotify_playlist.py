@@ -3,7 +3,7 @@ from typing import Any, Dict, List
 from app.services.spotify_api import add_tracks_to_playlist, create_playlist
 from app.services.spotify_common import _is_suspicious_song, build_match_cache_key
 from app.services.spotify_exceptions import SpotifyServiceError
-from app.services.spotify_matching import pick_best_track_match
+from app.services.spotify_matching import get_match_debug, pick_best_track_match
 
 
 def create_playlist_from_songs(
@@ -63,7 +63,14 @@ def create_playlist_from_songs(
             request_match_cache[cache_key] = match
 
         if not match:
-            unmatched.append({'song': song, 'reason': 'spotify 검색 실패 또는 저신뢰 매칭'})
+            debug = get_match_debug(title, artist or '')
+            unmatched.append({
+                'song': song,
+                'reason': debug.get('unmatched_reason') or 'spotify 검색 실패 또는 저신뢰 매칭',
+                'search_title': debug.get('search_title', title),
+                'search_artist': debug.get('search_artist', artist or ''),
+                'top_candidates': debug.get('top_candidates', []),
+            })
             continue
 
         if match['uri'] not in seen_uris:
@@ -92,6 +99,7 @@ def create_playlist_from_songs(
                     'name': candidate['name'],
                     'artists': candidate['artists'],
                     'score': candidate['score'],
+                    'popularity': candidate.get('popularity', 0),
                     'orientation': candidate['orientation'],
                 }
                 for candidate in match.get('top_candidates', [])
