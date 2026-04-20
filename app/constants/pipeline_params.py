@@ -100,9 +100,15 @@ CORE_ARTIST_ALIAS_MAP = {
 }
 
 CORE_ARTIST_ALIAS_MAP.update({
-    "\ubc31\uc608\ub9b0": ["Yerin Baek"],
-    "\uc6d0\uc288\ud0c0\uc778": ["Wonstein"],
-    "MC\ubabd": ["MC Mong"],
+    "백예린": ["Yerin Baek"],
+    "원슈타인": ["Wonstein"],
+    "MC몽": ["MC Mong"],
+    "휘성": ["Wheesung", "Realslow"],
+    "윤하": ["Younha"],
+    "나윤권": ["Na Yoon Kwon", "Nayoon Kwon"],
+    "팀": ["Tim"],
+    "씨야": ["SeeYa", "Kim Yeonji", "Kim Yeon Ji"],
+    "더윈": ["The Wind"],
 })
 
 CORE_TITLE_ALIAS_MAP = {
@@ -111,4 +117,5 @@ CORE_TITLE_ALIAS_MAP = {
     "우산": ["Love Song"],
     "취향저격": ["MY TYPE"],
     "오늘따라": ["TODAY"],
+    "사랑의 인사": ["Lovely Sweet Heart"],
 }

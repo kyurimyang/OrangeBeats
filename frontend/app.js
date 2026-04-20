@@ -1,4 +1,4 @@
-﻿const backendBaseUrlInput = document.getElementById("backendBaseUrl");
+const backendBaseUrlInput = document.getElementById("backendBaseUrl");
 const youtubeUrlInput = document.getElementById("youtubeUrl");
 const playlistNameInput = document.getElementById("playlistName");
 const modeSelect = document.getElementById("mode");
@@ -43,6 +43,34 @@ const loginSummaryText = document.getElementById("loginSummaryText");
 const recentActionText = document.getElementById("recentActionText");
 const recentYoutubeTitle = document.getElementById("recentYoutubeTitle");
 const recentStageText = document.getElementById("recentStageText");
+const BACKEND_BASE_URL_STORAGE_KEY = "orangebeats.backendBaseUrl";
+
+function inferBackendBaseUrl() {
+  const persisted = window.localStorage.getItem(BACKEND_BASE_URL_STORAGE_KEY)?.trim();
+  if (persisted) {
+    return persisted.replace(/\/$/, "");
+  }
+
+  const currentUrl = new URL(window.location.href);
+  if (currentUrl.protocol.startsWith("http")) {
+    return `${currentUrl.protocol}//${currentUrl.hostname}:8000`;
+  }
+
+  return "http://127.0.0.1:8000";
+}
+
+function initializeBackendBaseUrl() {
+  if (!backendBaseUrlInput) {
+    return;
+  }
+
+  backendBaseUrlInput.value = inferBackendBaseUrl();
+  backendBaseUrlInput.addEventListener("change", () => {
+    const normalized = backendBaseUrlInput.value.trim().replace(/\/$/, "");
+    backendBaseUrlInput.value = normalized;
+    window.localStorage.setItem(BACKEND_BASE_URL_STORAGE_KEY, normalized);
+  });
+}
 
 function getBackendBaseUrl() {
   return backendBaseUrlInput.value.trim().replace(/\/$/, "");
@@ -503,6 +531,7 @@ createPlaylistBtn.addEventListener("click", async () => {
   }
 });
 
+initializeBackendBaseUrl();
 clearResponseState();
 updateNoticeFromQuery();
 refreshLoginStatus();

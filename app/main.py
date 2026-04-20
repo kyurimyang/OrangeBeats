@@ -1,26 +1,16 @@
-#서버 시작 파일python -m uvicorn app.main:app --reload
-# ``
-# 서버 종료 Ctrl + C
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.config import FRONTEND_URL
-from app.routers import youtube,spotify,playlist
+from app.config import get_allowed_frontend_origins
+from app.routers import playlist, spotify, youtube
 
 app = FastAPI(title="Orange Beats")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://127.0.0.1:3000",
-        "http://localhost:3000",
-        "http://127.0.0.1:5500",
-        "http://localhost:5500",
-        "http://127.0.0.1:5173",
-        "http://localhost:5173",
-        FRONTEND_URL,
-        ],
+    allow_origins=sorted(get_allowed_frontend_origins()),
+    # Allow common local/LAN dev hosts so other devices can reuse the same app.
+    allow_origin_regex=r"^https?://(?:localhost|127(?:\.\d{1,3}){3}|10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2})(?::\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

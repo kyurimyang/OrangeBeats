@@ -1,20 +1,23 @@
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.constants.pipeline_params import SPOTIFY_MID_CONF
 from app.services.spotify_api import search_track, search_tracks_query
 from app.services.spotify_common import (
-    build_title_variants,
     build_match_cache_key,
+    build_title_variants,
     compute_match_score,
     resolve_artist_alias,
 )
 
 _MATCH_CACHE: Dict[Tuple[str, str], Optional[Dict[str, Any]]] = {}
+_MATCH_DEBUG: Dict[Tuple[str, str], Dict[str, Any]] = {}
 
 EARLY_RETURN_SCORE = 0.90
-MIN_ACCEPT_SCORE = 0.75
+DIRECT_ACCEPT_SCORE = 0.84
+MIN_ACCEPT_SCORE = 0.72
+MIN_TITLE_SCORE = 0.90
+MIN_ARTIST_SCORE = 0.45
 MAX_CACHE_SIZE = 300
-LOW_CONF_FALLBACK_SCORE = 0.45
+SEARCH_LIMIT = 5
 
 
 def _candidate_to_result(
@@ -31,6 +34,7 @@ def _candidate_to_result(
         'name': track.get('name', ''),
         'artists': [a.get('name', '') for a in track.get('artists', [])],
         'album': (track.get('album') or {}).get('name', ''),
+        'popularity': int(track.get('popularity') or 0),
         'score': score,
         'score_detail': detail,
         'orientation': 'title_artist',
@@ -109,8 +113,106 @@ def _score_tracks(
                 search_artist=normalized_artist,
             )
         )
-    scored_candidates.sort(key=lambda item: item['score'], reverse=True)
+    scored_candidates.sort(
+        key=lambda item: (
+            item['score'],
+            item.get('popularity', 0),
+            item['score_detail'].get('title_score', 0.0),
+            item['score_detail'].get('artist_score', 0.0),
+        ),
+        reverse=True,
+    )
     return scored_candidates
+
+
+def _candidate_is_acceptable(candidate: Dict[str, Any], *, has_artist: bool) -> bool:
+    detail = candidate.get('score_detail', {})
+    title_score = float(detail.get('title_score', 0.0))
+    artist_score = float(detail.get('artist_score', 0.0))
+    score = float(candidate.get('score', 0.0))
+
+    if score >= DIRECT_ACCEPT_SCORE:
+        return True
+    if score < MIN_ACCEPT_SCORE:
+        return False
+    if title_score < MIN_TITLE_SCORE:
+        return False
+    if has_artist and artist_score < MIN_ARTIST_SCORE:
+        return False
+    return True
+
+
+def _pick_best_acceptable_candidate(
+    scored_candidates: List[Dict[str, Any]],
+    *,
+    has_artist: bool,
+) -> Optional[Dict[str, Any]]:
+    acceptable = [
+        candidate for candidate in scored_candidates
+        if _candidate_is_acceptable(candidate, has_artist=has_artist)
+    ]
+    if not acceptable:
+        return None
+    return max(
+        acceptable,
+        key=lambda item: (
+            item.get('popularity', 0),
+            item['score'],
+            item['score_detail'].get('title_score', 0.0),
+            item['score_detail'].get('artist_score', 0.0),
+        ),
+    )
+
+
+def _build_unmatched_reason(
+    scored_candidates: List[Dict[str, Any]],
+    *,
+    has_artist: bool,
+) -> str:
+    if not scored_candidates:
+        return 'no_candidates'
+
+    best = scored_candidates[0]
+    detail = best.get('score_detail', {})
+    title_score = float(detail.get('title_score', 0.0))
+    artist_score = float(detail.get('artist_score', 0.0))
+    score = float(best.get('score', 0.0))
+
+    if title_score < MIN_TITLE_SCORE:
+        return f'title_mismatch(score={score:.2f},title={title_score:.2f})'
+    if has_artist and artist_score < MIN_ARTIST_SCORE:
+        return f'artist_mismatch(score={score:.2f},artist={artist_score:.2f})'
+    return f'low_score({score:.2f})'
+
+
+def _store_match_debug(
+    cache_key: Tuple[str, str],
+    *,
+    search_title: str,
+    search_artist: str,
+    unmatched_reason: str,
+    top_candidates: List[Dict[str, Any]],
+) -> None:
+    _MATCH_DEBUG[cache_key] = {
+        'search_title': search_title,
+        'search_artist': search_artist,
+        'unmatched_reason': unmatched_reason,
+        'top_candidates': [
+            {
+                'name': candidate.get('name', ''),
+                'artists': candidate.get('artists', []),
+                'score': candidate.get('score', 0.0),
+                'popularity': candidate.get('popularity', 0),
+                'score_detail': candidate.get('score_detail', {}),
+            }
+            for candidate in top_candidates[:3]
+        ],
+    }
+
+
+def get_match_debug(title: str, artist: str) -> Dict[str, Any]:
+    cache_key = build_match_cache_key(title, artist)
+    return dict(_MATCH_DEBUG.get(cache_key, {}))
 
 
 def pick_best_track_match(
@@ -133,6 +235,7 @@ def pick_best_track_match(
 
     if cache_key in _MATCH_CACHE:
         cached = _MATCH_CACHE[cache_key]
+        cached_debug = _MATCH_DEBUG.get(cache_key, {})
         selected = 'none'
         candidate_count = 0
         early_return = False
@@ -151,7 +254,7 @@ def pick_best_track_match(
             candidate_count=candidate_count,
             selected=selected,
             selected_score=float(cached.get('score', 0.0)) if cached else 0.0,
-            unmatched_reason='',
+            unmatched_reason='' if cached else str(cached_debug.get('unmatched_reason', '')),
             early_return=early_return,
             rerank_executed=False,
             swap_decision=swap_decision,
@@ -160,6 +263,13 @@ def pick_best_track_match(
         return cached
 
     if not raw_query_title or not normalized_artist:
+        _store_match_debug(
+            cache_key,
+            search_title=input_title,
+            search_artist=normalized_artist,
+            unmatched_reason='empty_search_terms',
+            top_candidates=[],
+        )
         _log_match(
             input_title=input_title,
             input_artist=input_artist,
@@ -185,7 +295,7 @@ def pick_best_track_match(
         title=raw_query_title,
         artist=normalized_artist,
         market=market,
-        limit=3,
+        limit=SEARCH_LIMIT,
     )
     scored_candidates = _score_tracks(
         raw_tracks,
@@ -195,8 +305,7 @@ def pick_best_track_match(
     fallback_used = False
 
     fallback_title = next((variant for variant in title_variants[1:] if variant and variant != raw_query_title), '')
-    should_use_fallback = (not scored_candidates) or (scored_candidates[0]['score'] < LOW_CONF_FALLBACK_SCORE)
-    if should_use_fallback and fallback_title:
+    if not scored_candidates and fallback_title:
         fallback_query = f'{fallback_title} {normalized_artist}'.strip()
         primary_query_words = f'{raw_query_title} {normalized_artist}'.strip()
         if fallback_query and fallback_query.lower() != primary_query_words.lower():
@@ -205,7 +314,7 @@ def pick_best_track_match(
                 access_token=access_token,
                 query=fallback_query,
                 market=market,
-                limit=3,
+                limit=SEARCH_LIMIT,
             )
             if fallback_tracks:
                 scored_candidates = _score_tracks(
@@ -215,6 +324,13 @@ def pick_best_track_match(
                 )
 
     if not scored_candidates:
+        _store_match_debug(
+            cache_key,
+            search_title=input_title,
+            search_artist=normalized_artist,
+            unmatched_reason='no_candidates',
+            top_candidates=[],
+        )
         _log_match(
             input_title=input_title,
             input_artist=input_artist,
@@ -235,10 +351,25 @@ def pick_best_track_match(
         _MATCH_CACHE[cache_key] = None
         return None
 
-    best = dict(scored_candidates[0])
+    chosen_candidate = _pick_best_acceptable_candidate(
+        scored_candidates,
+        has_artist=bool(normalized_artist),
+    )
+    best = dict(chosen_candidate or scored_candidates[0])
     best['top_candidates'] = scored_candidates[:3]
     early_return = best['score'] >= EARLY_RETURN_SCORE
     selected = f"{best.get('name', '')} / {', '.join(best.get('artists', []))}"
+    unmatched_reason = '' if chosen_candidate else _build_unmatched_reason(
+        scored_candidates,
+        has_artist=bool(normalized_artist),
+    )
+    _store_match_debug(
+        cache_key,
+        search_title=input_title,
+        search_artist=normalized_artist,
+        unmatched_reason=unmatched_reason,
+        top_candidates=scored_candidates,
+    )
 
     _log_match(
         input_title=input_title,
@@ -251,18 +382,19 @@ def pick_best_track_match(
         candidate_count=len(scored_candidates),
         selected=selected,
         selected_score=best['score'],
-        unmatched_reason='' if best['score'] >= max(SPOTIFY_MID_CONF, MIN_ACCEPT_SCORE) else f"low_score({best['score']:.2f})",
+        unmatched_reason=unmatched_reason,
         early_return=early_return,
         rerank_executed=False,
         swap_decision=swap_decision,
         global_direction=global_direction,
     )
 
-    if best['score'] < max(SPOTIFY_MID_CONF, MIN_ACCEPT_SCORE):
+    if not chosen_candidate:
         _MATCH_CACHE[cache_key] = None
         return None
 
     if len(_MATCH_CACHE) >= MAX_CACHE_SIZE:
         _MATCH_CACHE.clear()
+        _MATCH_DEBUG.clear()
     _MATCH_CACHE[cache_key] = best
     return best
