@@ -1,5 +1,6 @@
 import secrets
 from typing import Dict, List
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import RedirectResponse
@@ -12,13 +13,22 @@ from app.services.spotify_service import (
     get_spotify_login_url,
 )
 from app.services.spotify_session import (
+    clear_tokens,
     ensure_valid_access_token,
-    is_logged_in,
+    pop_auth_state,
     save_token_data,
-    spotify_auth_state_store,
+    save_auth_state,
 )
 
 router = APIRouter(prefix='/spotify', tags=['Spotify'])
+_DEFAULT_FRONTEND_ORIGINS = {
+    'http://127.0.0.1:3000',
+    'http://localhost:3000',
+    'http://127.0.0.1:5500',
+    'http://localhost:5500',
+    'http://127.0.0.1:5173',
+    'http://localhost:5173',
+}
 
 
 def _spotify_http_status(exc: SpotifyServiceError) -> int:
@@ -28,15 +38,48 @@ def _spotify_http_status(exc: SpotifyServiceError) -> int:
     return 500
 
 
+def _allowed_frontend_origins() -> set[str]:
+    allowed = set(_DEFAULT_FRONTEND_ORIGINS)
+    frontend_parts = urlsplit(FRONTEND_URL)
+    if frontend_parts.scheme and frontend_parts.netloc:
+        allowed.add(f'{frontend_parts.scheme}://{frontend_parts.netloc}')
+    return allowed
+
+
+def _resolve_frontend_origin(frontend_origin: str | None) -> str:
+    if frontend_origin:
+        parts = urlsplit(frontend_origin)
+        normalized_origin = f'{parts.scheme}://{parts.netloc}' if parts.scheme and parts.netloc else ''
+        if normalized_origin in _allowed_frontend_origins():
+            return urlunsplit((parts.scheme, parts.netloc, parts.path, parts.query, parts.fragment))
+
+    return FRONTEND_URL.rstrip('/')
+
+
+def _build_frontend_redirect(base_url: str, status: str, reason: str | None = None) -> str:
+    parts = urlsplit(base_url)
+    query = dict(parse_qsl(parts.query, keep_blank_values=True))
+    query['spotify_login'] = status
+
+    if reason is not None:
+        query['reason'] = reason
+    else:
+        query.pop('reason', None)
+
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
+
+
 @router.get('/login')
-def spotify_login():
+def spotify_login(frontend_origin: str | None = Query(default=None)):
     state = secrets.token_urlsafe(16)
-    spotify_auth_state_store[state] = True
+    redirect_origin = _resolve_frontend_origin(frontend_origin)
+    save_auth_state(state, redirect_origin)
 
     login_url = get_spotify_login_url(state=state)
 
     print('=== /spotify/login called ===')
     print('generated state =', state)
+    print('frontend_origin =', redirect_origin)
     print('login_url =', login_url)
 
     return {
@@ -53,10 +96,13 @@ def spotify_callback(
     print('=== /spotify/callback called ===')
     print('callback state =', state)
 
-    if state not in spotify_auth_state_store:
+    auth_state = pop_auth_state(state)
+    frontend_redirect = _resolve_frontend_origin(auth_state.get('frontend_origin') if auth_state else None)
+
+    if not auth_state:
         print('invalid state')
         return RedirectResponse(
-            url=f'{FRONTEND_URL}?spotify_login=failed&reason=invalid_state',
+            url=_build_frontend_redirect(frontend_redirect, 'failed', 'invalid_state'),
             status_code=302,
         )
 
@@ -65,24 +111,22 @@ def spotify_callback(
         print('granted scope =', token_data.get('scope'))
         save_token_data(token_data)
 
-        spotify_auth_state_store.pop(state, None)
-
         return RedirectResponse(
-            url=f'{FRONTEND_URL}?spotify_login=success',
+            url=_build_frontend_redirect(frontend_redirect, 'success'),
             status_code=302,
         )
 
     except SpotifyServiceError as e:
         print('SpotifyServiceError =', str(e))
         return RedirectResponse(
-            url=f'{FRONTEND_URL}?spotify_login=failed&reason=spotify_service_error',
+            url=_build_frontend_redirect(frontend_redirect, 'failed', 'spotify_service_error'),
             status_code=302,
         )
 
     except Exception as e:
         print('Unexpected callback error =', str(e))
         return RedirectResponse(
-            url=f'{FRONTEND_URL}?spotify_login=failed&reason=unknown_error',
+            url=_build_frontend_redirect(frontend_redirect, 'failed', 'unknown_error'),
             status_code=302,
         )
 
@@ -94,9 +138,17 @@ def spotify_login_status():
         return {
             'logged_in': bool(token),
         }
-    except Exception:
+    except SpotifyServiceError as e:
+        if 'invalid_grant' in str(e).lower():
+            clear_tokens()
         return {
-            'logged_in': is_logged_in(),
+            'logged_in': False,
+            'reason': str(e),
+        }
+    except Exception as e:
+        return {
+            'logged_in': False,
+            'reason': str(e),
         }
 
 
