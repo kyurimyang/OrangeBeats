@@ -209,3 +209,6 @@ __marimo__/
 __pycache__/
 *.pyc
 node_modules/
+.spotify_session.json
+.spotify_rate_limit.json
+.spotify_auth_states.json

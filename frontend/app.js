@@ -360,9 +360,12 @@ spotifyLoginBtn.addEventListener("click", async () => {
     setButtonsDisabled(true);
     setStatus("loading", "Spotify 로그인 URL을 가져오는 중입니다.");
 
-    const frontendOrigin = window.location.origin;
+    const currentUrl = new URL(window.location.href);
+    currentUrl.searchParams.delete("spotify_login");
+    currentUrl.searchParams.delete("reason");
+    const frontendRedirect = currentUrl.toString();
     const response = await fetch(
-      buildApiUrl(`/spotify/login?frontend_origin=${encodeURIComponent(frontendOrigin)}`)
+      buildApiUrl(`/spotify/login?frontend_origin=${encodeURIComponent(frontendRedirect)}`)
     );
     const data = await handleApiResponse(response);
 
