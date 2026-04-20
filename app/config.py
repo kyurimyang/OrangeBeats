@@ -24,6 +24,14 @@ SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
 SPOTIFY_REDIRECT_URI = os.getenv("SPOTIFY_REDIRECT_URI")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://127.0.0.1:3000")
 FRONTEND_ALLOWED_ORIGINS = os.getenv("FRONTEND_ALLOWED_ORIGINS", "")
+SPOTIFY_SESSION_COOKIE_NAME = os.getenv("SPOTIFY_SESSION_COOKIE_NAME", "ob_session")
+SPOTIFY_SESSION_MAX_AGE = int(os.getenv("SPOTIFY_SESSION_MAX_AGE", "2592000"))
+SPOTIFY_SESSION_COOKIE_SECURE = os.getenv("SPOTIFY_SESSION_COOKIE_SECURE", "").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 
 
 def _normalize_origin(origin: str | None) -> str:

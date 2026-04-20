@@ -1,26 +1,23 @@
 import secrets
-from typing import Dict, List
+from typing import Annotated, Dict, List
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import RedirectResponse
 
 from app.config import FRONTEND_URL, is_allowed_frontend_url, normalize_frontend_url
+from app.dependencies.spotify_session import get_spotify_session_service
 from app.services.spotify_service import (
     SpotifyServiceError,
     create_playlist_from_songs,
     exchange_code_for_token,
     get_spotify_login_url,
 )
-from app.services.spotify_session import (
-    clear_tokens,
-    ensure_valid_access_token,
-    pop_auth_state,
-    save_auth_state,
-    save_token_data,
-)
+from app.services.spotify_session_service import SpotifySessionService
+from app.sessions.session_id import get_or_create_session_id, get_session_id
 
 router = APIRouter(prefix="/spotify", tags=["Spotify"])
+SpotifySessionDep = Annotated[SpotifySessionService, Depends(get_spotify_session_service)]
 
 
 def _spotify_http_status(exc: SpotifyServiceError) -> int:
@@ -57,15 +54,27 @@ def _build_frontend_redirect(base_url: str, status: str, reason: str | None = No
 
 
 @router.get("/login")
-def spotify_login(request: Request, frontend_origin: str | None = Query(default=None)):
+def spotify_login(
+    request: Request,
+    response: Response,
+    session_service: SpotifySessionDep,
+    frontend_origin: str | None = Query(default=None),
+):
+    session_id = get_or_create_session_id(request, response)
     state = secrets.token_urlsafe(16)
     redirect_origin = _resolve_frontend_origin(frontend_origin)
     callback_redirect_uri = _resolve_callback_redirect_uri(request)
-    save_auth_state(state, redirect_origin, callback_redirect_uri)
+    session_service.save_auth_state(
+        state=state,
+        session_id=session_id,
+        frontend_origin=redirect_origin,
+        redirect_uri=callback_redirect_uri,
+    )
 
     login_url = get_spotify_login_url(state=state, redirect_uri=callback_redirect_uri)
 
     print("=== /spotify/login called ===")
+    print("session_id =", session_id)
     print("generated state =", state)
     print("frontend_origin =", redirect_origin)
     print("callback_redirect_uri =", callback_redirect_uri)
@@ -79,15 +88,16 @@ def spotify_login(request: Request, frontend_origin: str | None = Query(default=
 
 @router.get("/callback")
 def spotify_callback(
+    session_service: SpotifySessionDep,
     code: str = Query(...),
     state: str = Query(...),
 ):
     print("=== /spotify/callback called ===")
     print("callback state =", state)
 
-    auth_state = pop_auth_state(state)
-    frontend_redirect = _resolve_frontend_origin(auth_state.get("frontend_origin") if auth_state else None)
-    callback_redirect_uri = auth_state.get("redirect_uri") if auth_state else None
+    auth_state = session_service.pop_auth_state(state)
+    frontend_redirect = _resolve_frontend_origin(auth_state.frontend_origin if auth_state else None)
+    callback_redirect_uri = auth_state.redirect_uri if auth_state else None
 
     if not auth_state:
         print("invalid state")
@@ -99,7 +109,7 @@ def spotify_callback(
     try:
         token_data = exchange_code_for_token(code, redirect_uri=callback_redirect_uri)
         print("granted scope =", token_data.get("scope"))
-        save_token_data(token_data)
+        session_service.save_token_data(auth_state.session_id, token_data)
 
         return RedirectResponse(
             url=_build_frontend_redirect(frontend_redirect, "success"),
@@ -122,15 +132,25 @@ def spotify_callback(
 
 
 @router.get("/login-status")
-def spotify_login_status():
+def spotify_login_status(
+    request: Request,
+    session_service: SpotifySessionDep,
+):
+    session_id = get_session_id(request)
+    if not session_id:
+        return {
+            "logged_in": False,
+            "reason": "missing_session",
+        }
+
     try:
-        token = ensure_valid_access_token()
+        token = session_service.ensure_valid_access_token(session_id)
         return {
             "logged_in": bool(token),
         }
     except SpotifyServiceError as exc:
         if "invalid_grant" in str(exc).lower():
-            clear_tokens()
+            session_service.clear_tokens(session_id)
         return {
             "logged_in": False,
             "reason": str(exc),
@@ -143,9 +163,17 @@ def spotify_login_status():
 
 
 @router.post("/create-playlist")
-def create_spotify_playlist(payload: Dict):
+def create_spotify_playlist(
+    payload: Dict,
+    request: Request,
+    session_service: SpotifySessionDep,
+):
+    session_id = get_session_id(request)
+    if not session_id:
+        raise HTTPException(status_code=401, detail="Spotify 로그인 세션이 없습니다.")
+
     try:
-        access_token = ensure_valid_access_token()
+        access_token = session_service.ensure_valid_access_token(session_id)
     except SpotifyServiceError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
 

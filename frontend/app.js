@@ -347,7 +347,9 @@ async function handleApiResponse(response) {
 
 async function refreshLoginStatus() {
   try {
-    const response = await fetch(buildApiUrl("/spotify/login-status"));
+    const response = await fetch(buildApiUrl("/spotify/login-status"), {
+      credentials: "include",
+    });
     const data = await handleApiResponse(response);
     setText(loginSummaryText, data?.logged_in ? "로그인 완료" : "미로그인", "확인 전");
   } catch (error) {
@@ -393,7 +395,10 @@ spotifyLoginBtn.addEventListener("click", async () => {
     currentUrl.searchParams.delete("reason");
     const frontendRedirect = currentUrl.toString();
     const response = await fetch(
-      buildApiUrl(`/spotify/login?frontend_origin=${encodeURIComponent(frontendRedirect)}`)
+      buildApiUrl(`/spotify/login?frontend_origin=${encodeURIComponent(frontendRedirect)}`),
+      {
+        credentials: "include",
+      }
     );
     const data = await handleApiResponse(response);
 
@@ -486,6 +491,7 @@ createPlaylistBtn.addEventListener("click", async () => {
 
     const response = await fetch(buildApiUrl("/playlist/from-youtube"), {
       method: "POST",
+      credentials: "include",
       headers: {
         "Content-Type": "application/json",
       },

@@ -236,6 +236,21 @@ def build_title_variants(title: str) -> List[str]:
     return (variants or [original])[:4]
 
 
+def build_title_search_variants(title: str) -> List[str]:
+    variants: List[str] = []
+
+    def add_variant(candidate: str) -> None:
+        candidate = MULTISPACE_REGEX.sub(' ', (candidate or '').strip())
+        candidate = candidate.strip(' -_/|')
+        if candidate and candidate not in variants:
+            variants.append(candidate)
+
+    for variant in _title_variants(title):
+        add_variant(variant)
+
+    return variants[:6]
+
+
 def _expand_alias_variants(value: str, alias_map: Dict[str, List[str]]) -> List[str]:
     cleaned = (value or '').strip()
     normalized = _normalize_text(cleaned)
@@ -279,6 +294,34 @@ def _artist_variants(artist: Optional[str]) -> List[Optional[str]]:
         add_variant(part)
 
     return variants or [cleaned]
+
+
+def build_artist_search_variants(artist: Optional[str]) -> List[str]:
+    if not artist:
+        return []
+
+    cleaned = _clean_artist_name_for_search(artist)
+    resolved = resolve_artist_alias(cleaned)
+    variants: List[str] = []
+
+    def add_variant(value: Optional[str]) -> None:
+        value = (value or '').strip()
+        if value and value not in variants:
+            variants.append(value)
+
+    add_variant(cleaned)
+    add_variant(resolved)
+
+    for variant in _expand_alias_variants(cleaned, ARTIST_ALIAS_MAP):
+        add_variant(variant)
+    for variant in _expand_alias_variants(resolved, ARTIST_ALIAS_MAP):
+        add_variant(variant)
+
+    split_parts = re.split(r'\s*(?:,|&| x | feat\.?|ft\.?)\s*', cleaned, flags=re.IGNORECASE)
+    for part in split_parts:
+        add_variant(part)
+
+    return variants[:6]
 
 
 def _tokenize_text(value: str) -> List[str]:
