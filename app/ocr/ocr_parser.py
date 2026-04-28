@@ -108,7 +108,7 @@ def parse_song_candidate(text: str) -> Optional[Dict]:
 
     parts = _extract_pair_parts(cleaned)
     if parts:
-        parsed = _resolve_orientation(parts, global_direction="artist_title")
+        parsed = _resolve_orientation(parts)
         return {
             "artist": parsed.get("artist"),
             "title": parsed.get("title"),
@@ -116,7 +116,12 @@ def parse_song_candidate(text: str) -> Optional[Dict]:
             "left": parsed.get("left"),
             "right": parsed.get("right"),
             "swap_applied": parsed.get("swap_applied", False),
-            "global_direction": parsed.get("global_direction", "artist_title"),
+            "global_direction": parsed.get("global_direction", "per_line"),
+            "chosen_case": parsed.get("chosen_case", "original"),
+            "score": parsed.get("score", 0.0),
+            "reason": parsed.get("reason", ""),
+            "swap_guard_applied": parsed.get("swap_guard_applied", False),
+            "swap_guard_reason": parsed.get("swap_guard_reason", ""),
             "source": "ocr",
         }
 

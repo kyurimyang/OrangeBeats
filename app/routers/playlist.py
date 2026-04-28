@@ -84,8 +84,12 @@ def create_playlist_from_youtube(
                 "left": item.get("left", ""),
                 "right": item.get("right", ""),
                 "swap_applied": item.get("swap_applied", False),
-                "global_direction": item.get("global_direction", "unknown"),
+                "global_direction": item.get("global_direction", "per_line"),
+                "chosen_case": item.get("chosen_case", "original"),
+                "score": item.get("score", 0.0),
                 "reason": item.get("reason", ""),
+                "swap_guard_applied": item.get("swap_guard_applied", False),
+                "swap_guard_reason": item.get("swap_guard_reason", ""),
             }
         )
 

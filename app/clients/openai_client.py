@@ -9,7 +9,7 @@ try:
 except Exception:
     OpenAI = None
 
-from app.config import OPENAI_API_KEY
+from app.config import OPENAI_API_KEY, OPENAI_MODEL
 
 client = OpenAI(api_key=OPENAI_API_KEY) if (OPENAI_API_KEY and OpenAI is not None) else None
 
@@ -120,7 +120,61 @@ SPOTIFY_RERANK_SYSTEM_PROMPT = """
 6. 설명문 없이 JSON만 반환한다.
 """
 
+DIRECTION_DETECT_SYSTEM_PROMPT = """
+You are an AI that determines the overall notation direction of a YouTube music track list.
+Return only a JSON object. Do not include markdown or any explanation outside JSON.
+
+Your task is not to match individual songs. Only decide the global direction used by the list.
+Track lists from the same YouTube video usually repeat one format consistently.
+
+Return exactly this schema:
+{
+  "global_direction": "artist_title" | "title_artist" | "mixed",
+  "confidence": "high" | "medium" | "low",
+  "reason": "short reason"
+}
+
+Rules:
+1. artist_title means most left values are artists and most right values are titles.
+2. title_artist means most left values are titles and most right values are artists.
+3. mixed means the direction is mixed or cannot be confidently decided.
+4. Do not identify or validate individual songs; judge the whole list pattern.
+5. If feat., ft., or with appears inside parentheses on the left, the left side is likely a title.
+6. If the right side repeatedly looks like person/artist names across many lines, title_artist is likely.
+7. If the left side repeatedly looks like person/artist names across many lines, artist_title is likely.
+8. If confidence is low, return mixed with confidence low.
+9. JSON only.
+"""
+
 _JSON_BLOCK_RE = re.compile(r"\{.*\}", re.DOTALL)
+
+
+def _supports_custom_temperature(model: str) -> bool:
+    normalized = (model or "").lower().strip()
+    return not normalized.startswith(("gpt-5", "o1", "o3", "o4"))
+
+
+def _is_temperature_unsupported_error(error: Exception) -> bool:
+    message = str(error).lower()
+    return "temperature" in message and "unsupported" in message
+
+
+def _create_chat_completion(messages: List[Dict[str, str]]):
+    kwargs = {
+        "model": OPENAI_MODEL,
+        "messages": messages,
+    }
+
+    if _supports_custom_temperature(OPENAI_MODEL):
+        kwargs["temperature"] = 0
+
+    try:
+        return client.chat.completions.create(**kwargs)
+    except Exception as exc:
+        if "temperature" in kwargs and _is_temperature_unsupported_error(exc):
+            kwargs.pop("temperature", None)
+            return client.chat.completions.create(**kwargs)
+        raise
 
 
 def _extract_json_object(text: str) -> Optional[Dict[str, Any]]:
@@ -157,9 +211,7 @@ def extract_songs_with_llm(text_blocks: List[str]) -> str:
         return '{"songs": []}'
 
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            temperature=0,
+        response = _create_chat_completion(
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": joined_text},
@@ -173,6 +225,66 @@ def extract_songs_with_llm(text_blocks: List[str]) -> str:
     except Exception as e:
         print("OpenAI 호출 오류 =", str(e))
         return '{"songs": []}'
+
+
+def detect_direction_with_llm(pairs: List[Dict[str, str]]) -> Optional[Dict[str, Any]]:
+    if not OPENAI_API_KEY or client is None:
+        print("[direction-llm] skipped: OpenAI client unavailable")
+        return None
+
+    cleaned_pairs = []
+    for pair in pairs[:40]:
+        if not isinstance(pair, dict):
+            continue
+        left = str(pair.get("left") or "").strip()
+        right = str(pair.get("right") or "").strip()
+        if left and right:
+            cleaned_pairs.append({"left": left, "right": right})
+
+    if not cleaned_pairs:
+        return None
+
+    payload = {"pairs": cleaned_pairs}
+
+    try:
+        response = _create_chat_completion(
+            messages=[
+                {"role": "system", "content": DIRECTION_DETECT_SYSTEM_PROMPT},
+                {"role": "user", "content": json.dumps(payload, ensure_ascii=False, indent=2)},
+            ],
+        )
+
+        content = response.choices[0].message.content or ""
+        print("[direction-llm] raw =", content)
+
+        parsed = _extract_json_object(content)
+        if not parsed:
+            print("[direction-llm] invalid_json")
+            return None
+
+        direction = str(parsed.get("global_direction") or "mixed").lower().strip()
+        confidence = str(parsed.get("confidence") or "low").lower().strip()
+        reason = str(parsed.get("reason") or "").strip()
+
+        if direction not in {"artist_title", "title_artist", "mixed"}:
+            direction = "mixed"
+        if confidence not in {"high", "medium", "low"}:
+            confidence = "low"
+
+        result = {
+            "global_direction": direction,
+            "confidence": confidence,
+            "reason": reason,
+        }
+        print(
+            f"[direction-llm] global_direction={direction} "
+            f"confidence={confidence} reason='{reason}'"
+        )
+        return result
+
+    except Exception as e:
+        print("[direction-llm] error =", str(e))
+        return None
 
 
 def rerank_spotify_candidates_with_llm(
@@ -207,9 +319,7 @@ def rerank_spotify_candidates_with_llm(
     }
 
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            temperature=0,
+        response = _create_chat_completion(
             messages=[
                 {"role": "system", "content": SPOTIFY_RERANK_SYSTEM_PROMPT},
                 {"role": "user", "content": json.dumps(payload, ensure_ascii=False, indent=2)},
