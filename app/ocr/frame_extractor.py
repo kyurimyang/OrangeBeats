@@ -8,6 +8,7 @@ def extract_frames(
     video_path: str,
     output_dir: str,
     interval_sec: int = 30,
+    max_frames: int | None = None,
 ) -> List[str]:
     if not os.path.exists(video_path):
         raise FileNotFoundError(f"영상 파일을 찾을 수 없습니다: {video_path}")
@@ -21,10 +22,16 @@ def extract_frames(
         "-i", video_path,
         "-vf", f"fps=1/{interval_sec}",
         "-q:v", "2",
+    ]
+
+    if max_frames:
+        cmd.extend(["-frames:v", str(max_frames)])
+
+    cmd.extend([
         output_pattern,
         "-y",
         "-loglevel", "error",
-    ]
+    ])
 
     try:
         subprocess.run(

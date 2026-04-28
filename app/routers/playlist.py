@@ -33,11 +33,11 @@ def create_playlist_from_youtube(
     youtube_url = (payload.get("url") or "").strip()
     title_mode = (payload.get("title_mode") or "youtube").strip().lower()
     user_playlist_name = (payload.get("playlist_name") or "").strip()
-    mode = (payload.get("mode") or "auto").strip().lower()
+    mode = (payload.get("mode") or "text").strip().lower()
 
-    allowed_modes = {"auto", "text_only", "ocr_only"}
+    allowed_modes = {"text", "ocr", "acr"}
     if mode not in allowed_modes:
-        mode = "auto"
+        raise HTTPException(status_code=400, detail="mode must be one of: text, ocr, acr")
 
     if not youtube_url:
         raise HTTPException(status_code=400, detail="url이 필요합니다.")
@@ -109,6 +109,7 @@ def create_playlist_from_youtube(
     print("final_playlist_name =", final_playlist_name)
     print("selected_stage =", youtube_result.get("selected_stage"))
     print("ocr_used =", youtube_result.get("ocr_used"))
+    print("acr_used =", youtube_result.get("acr_used"))
     print("extracted songs count =", len(songs))
     print("songs sample =", songs[:3])
 
@@ -151,6 +152,7 @@ def create_playlist_from_youtube(
             "mode": mode,
             "selected_stage": youtube_result.get("selected_stage"),
             "ocr_used": youtube_result.get("ocr_used", False),
+            "acr_used": youtube_result.get("acr_used", False),
             "playlist_name": final_playlist_name,
             "extracted_count": len(songs),
             "songs": songs,

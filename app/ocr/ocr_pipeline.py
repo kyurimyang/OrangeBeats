@@ -16,6 +16,7 @@ def run_ocr_pipeline(
     video_path: str,
     work_dir: str = "./tmp/ocr",
     interval_sec: int = 30,
+    max_frames: int | None = None,
 ) -> Dict:
     """
     OCR 전체 파이프라인:
@@ -40,6 +41,7 @@ def run_ocr_pipeline(
         video_path=video_path,
         output_dir=str(frames_dir),
         interval_sec=interval_sec,
+        max_frames=max_frames,
     )
 
     raw_texts: List[Dict] = []
