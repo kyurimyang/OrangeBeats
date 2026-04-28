@@ -10,6 +10,6 @@ router = APIRouter(prefix="/youtube", tags=["YouTube"])
 @router.get("/analyze")
 def analyze_youtube(
     url: str = Query(...),
-    mode: str = Query("auto"),
+    mode: str = Query("text"),
 ):
     return run_youtube_pipeline(url, mode)

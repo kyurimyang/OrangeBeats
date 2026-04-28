@@ -81,7 +81,12 @@ function getYoutubeUrl() {
 }
 
 function getMode() {
-  return modeSelect.value;
+  const modeMap = {
+    auto: "text",
+    text_only: "text",
+    ocr_only: "ocr",
+  };
+  return modeMap[modeSelect.value] || modeSelect.value || "text";
 }
 
 function getTitleMode() {

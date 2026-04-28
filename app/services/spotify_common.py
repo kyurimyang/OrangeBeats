@@ -71,6 +71,15 @@ ARTIST_ALIAS_MAP.update({
     "f(x)": ["F(x)", "f\uff08x\uff09"],
     "(G)I-DLE": ["GIDLE", "(G)I-DLE", "I-DLE"],
 })
+ARTIST_ALIAS_MAP.update({
+    "\uc774\ud76c\uc0c1": ["LEEHEESANG", "Lee Hee Sang"],
+    "\uc774\uc900\ud615": ["Lee Jun Hyung", "LEE JUN HYUNG"],
+    "\ucd5c\uc720\ub9ac": ["Choi Yu Ree", "CHOI YU REE"],
+    "\uc724\uc9c0\uc601": ["Whys Young", "Yoon Ji Young"],
+    "\ud5c8\ud68c\uacbd": ["Heo Hoy Kyung", "HEO HOY KYUNG"],
+    "\ubc31\uc544": ["Baek A", "BAEK A"],
+    "\ub85c\uaefc": ["Loco", "LOCO"],
+})
 TITLE_ALIAS_MAP = dict(CORE_TITLE_ALIAS_MAP)
 
 SUSPICIOUS_KEYWORDS = {
@@ -166,6 +175,29 @@ def _normalize_cache_text(value: str) -> str:
 
 def _has_korean(value: str) -> bool:
     return bool(re.search(r'[\uAC00-\uD7A3]', value or ''))
+
+
+def _has_english(value: str) -> bool:
+    return bool(re.search(r'[A-Za-z]', value or ''))
+
+
+def _possible_artist_romanization_match(input_artist: str, candidate_artists: List[str] | str) -> bool:
+    if not input_artist or not candidate_artists or not _has_korean(input_artist):
+        return False
+
+    if isinstance(candidate_artists, str):
+        candidate_values = [candidate_artists]
+    else:
+        candidate_values = [artist for artist in candidate_artists if artist]
+
+    return bool(candidate_values and any(_has_english(artist) for artist in candidate_values))
+
+
+def _artist_alias_compare_keys(value: str) -> set[str]:
+    normalized = _normalize_text(value)
+    compact = normalized.replace(' ', '')
+    artist_key = _normalize_artist_key(value)
+    return {key for key in {normalized, compact, artist_key} if key}
 
 
 def _canonicalize_alias_value(value: str, alias_map: Dict[str, List[str]]) -> str:
@@ -550,14 +582,15 @@ def _artist_alias_match(input_artist: str, candidate_artists: List[str]) -> Tupl
         return False, ''
 
     input_variants = _expand_alias_variants(input_cleaned, ARTIST_ALIAS_MAP)
-    input_keys = {_normalize_artist_key(variant) for variant in input_variants if variant}
-    input_keys.discard('')
+    input_keys = set()
+    for variant in input_variants:
+        input_keys.update(_artist_alias_compare_keys(variant))
 
     for candidate in candidate_artists:
         candidate_cleaned = _clean_artist_name_for_search(candidate)
         candidate_variants = _expand_alias_variants(candidate_cleaned, ARTIST_ALIAS_MAP)
         for variant in candidate_variants:
-            if _normalize_artist_key(variant) in input_keys:
+            if _artist_alias_compare_keys(variant) & input_keys:
                 return True, candidate_cleaned or variant
 
     return False, ''
