@@ -1,3 +1,4 @@
+import time
 from typing import Annotated, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -34,6 +35,7 @@ def create_playlist_from_youtube(
     title_mode = (payload.get("title_mode") or "youtube").strip().lower()
     user_playlist_name = (payload.get("playlist_name") or "").strip()
     mode = (payload.get("mode") or "text").strip().lower()
+    total_started_at = time.perf_counter()
 
     allowed_modes = {"text", "ocr", "acr"}
     if mode not in allowed_modes:
@@ -51,7 +53,9 @@ def create_playlist_from_youtube(
     except SpotifyServiceError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
 
+    analysis_started_at = time.perf_counter()
     youtube_result = run_youtube_pipeline(youtube_url, mode=mode)
+    analysis_elapsed_ms = int((time.perf_counter() - analysis_started_at) * 1000)
 
     if not youtube_result.get("success"):
         raise HTTPException(
@@ -114,6 +118,7 @@ def create_playlist_from_youtube(
     print("songs sample =", songs[:3])
 
     try:
+        spotify_started_at = time.perf_counter()
         spotify_result = create_playlist_from_songs(
             access_token=access_token,
             playlist_name=final_playlist_name,
@@ -121,6 +126,7 @@ def create_playlist_from_youtube(
             playlist_description=f"Created from YouTube: {youtube_title or youtube_url}",
             public=True,
         )
+        spotify_elapsed_ms = int((time.perf_counter() - spotify_started_at) * 1000)
 
         cover_upload_status = "not_attempted"
         cover_upload_error = None
@@ -140,12 +146,20 @@ def create_playlist_from_youtube(
                 cover_upload_error = str(exc)
                 print("cover upload failed =", str(exc))
         else:
-            cover_upload_status = "failed"
-            cover_upload_error = "spotify_result에 playlist_id가 없습니다."
-            print("cover upload skipped: playlist_id missing")
+            cover_upload_status = "not_attempted"
+            cover_upload_error = None
+            print("cover upload skipped: playlist was not created")
+
+        total_elapsed_ms = int((time.perf_counter() - total_started_at) * 1000)
+        timings = {
+            "analysis_elapsed_ms": analysis_elapsed_ms,
+            "spotify_elapsed_ms": spotify_elapsed_ms,
+            "total_elapsed_ms": total_elapsed_ms,
+        }
 
         return {
             "success": True,
+            "message": spotify_result.get("message", ""),
             "youtube_url": youtube_url,
             "youtube_title": youtube_title,
             "title_mode": title_mode,
@@ -158,6 +172,14 @@ def create_playlist_from_youtube(
             "songs": songs,
             "spotify_result": spotify_result,
             "youtube_result": youtube_result,
+            "timings": timings,
+            "analysis_elapsed_ms": analysis_elapsed_ms,
+            "spotify_elapsed_ms": spotify_elapsed_ms,
+            "total_elapsed_ms": total_elapsed_ms,
+            "matching_rate": spotify_result.get("matching_rate", 0.0),
+            "matched_count": spotify_result.get("matched_count", 0),
+            "unmatched_count": spotify_result.get("unmatched_count", 0),
+            "low_confidence_count": spotify_result.get("low_confidence_count", 0),
             "cover_upload_status": cover_upload_status,
             "cover_upload_error": cover_upload_error,
         }

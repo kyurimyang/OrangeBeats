@@ -1,3 +1,4 @@
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.services.spotify_api import search_track, search_tracks_query
@@ -14,9 +15,9 @@ _MATCH_CACHE: Dict[Tuple[str, str], Optional[Dict[str, Any]]] = {}
 _MATCH_DEBUG: Dict[Tuple[str, str], Dict[str, Any]] = {}
 
 EARLY_RETURN_SCORE = 0.90
-DIRECT_ACCEPT_SCORE = 0.84
-MIN_ACCEPT_SCORE = 0.72
-MIN_TITLE_SCORE = 0.90
+DIRECT_ACCEPT_SCORE = 0.85
+MIN_ACCEPT_SCORE = 0.85
+MIN_TITLE_SCORE = 0.65
 MIN_ARTIST_SCORE = 0.45
 EXACT_ARTIST_SCORE = 0.999
 EXACT_ARTIST_MIN_TITLE_SCORE = 0.50
@@ -30,7 +31,71 @@ ARTIST_ALIAS_CANDIDATE_TITLE_SCORE = 0.90
 TITLE_ALIAS_CANDIDATE_ARTIST_SCORE = 0.95
 TITLE_MISMATCH_ARTIST_SCORE = 0.85
 TITLE_MISMATCH_MAX_TITLE_SCORE = 0.45
-PARTIAL_CONFIDENCE_SCORE = 0.30
+PARTIAL_CONFIDENCE_SCORE = 0.65
+PROBABLE_MATCH_SCORE = 0.70
+REVIEW_NEEDED_SCORE = 0.50
+
+ACCEPTABLE_VERSION_KEYWORDS = {
+    "live",
+    "remaster",
+    "remastered",
+    "acoustic",
+    "duet",
+    "explicit",
+    "radio edit",
+    "edit",
+}
+NON_ORIGINAL_KEYWORDS = {
+    "mr",
+    "karaoke",
+    "noraebang",
+    "노래방",
+    "금영",
+    "ky",
+    "tj",
+    "cover",
+    "piano cover",
+    "instrumental",
+    "inst",
+    "tribute",
+    "lullaby",
+    "nightcore",
+}
+SHORT_TITLE_RISK_TOKENS = {
+    "one",
+    "love",
+    "blue",
+    "fatal",
+    "rain",
+    "home",
+    "hello",
+    "run",
+    "stay",
+    "dream",
+    "you",
+    "day",
+}
+
+REASON_MESSAGES = {
+    "matched": "자동 매칭되었습니다.",
+    "probable_match": "표기 차이 가능성이 있지만 자동 매칭되었습니다.",
+    "review_needed": "확인이 필요한 후보입니다.",
+    "title_matched_artist_alias_candidate": "제목은 일치하지만 가수명이 Spotify에서 다른 표기로 등록되어 확인이 필요합니다.",
+    "artist_matched_title_mismatch": "가수는 일치하지만 제목이 다른 표기로 등록되어 확인이 필요합니다.",
+    "artist_matched_title_alias_candidate": "가수는 일치하지만 제목이 다른 언어/표기로 등록된 후보일 수 있습니다.",
+    "top_candidate_artist_romanization_title_mismatch": "검색 1위 후보이며 가수명 로마자 표기 차이 가능성이 있습니다.",
+    "partial_match_needs_review": "일부 정보가 유사하지만 자동 확정하기에는 점수가 낮습니다.",
+    "version_candidate": "Live/Remix/Instrumental 등 다른 버전일 가능성이 있어 확인이 필요합니다.",
+    "no_search_result": "Spotify 검색 결과가 없습니다.",
+    "artist_mismatch": "후보는 찾았지만 가수명이 일치하지 않습니다.",
+    "title_mismatch": "후보는 찾았지만 제목 유사도가 낮습니다.",
+    "weak_title_and_artist": "제목과 가수명이 모두 약하게 일치합니다.",
+    "low_score": "후보는 찾았지만 전체 유사도가 낮습니다.",
+    "non_original_audio": "노래방/커버/Instrumental 등 원곡이 아닌 음원일 가능성이 큽니다.",
+    "artist_only_overconfidence": "가수는 비슷하지만 제목이 달라 자동 매칭하지 않았습니다.",
+    "title_only_overconfidence": "제목은 비슷하지만 가수가 달라 자동 매칭하지 않았습니다.",
+    "short_title_false_positive": "짧은 제목이라 부분 일치만으로는 확정하기 어렵습니다.",
+}
 
 
 def _candidate_to_result(
@@ -60,6 +125,291 @@ def _candidate_to_result(
         "search_artist": search_artist,
     }
 
+
+def _candidate_score_log(candidate: Dict[str, Any]) -> str:
+    detail = candidate.get("score_detail", {})
+    score = float(candidate.get("score", 0.0))
+    confidence = candidate.get("match_status") or _status_from_score(score)
+    base_score = float(detail.get("base_score", detail.get("score_before_context", score)))
+    return (
+        f"input_api_added=false query_added=false "
+        f"{candidate.get('artists', [])} - {candidate.get('name', '')} "
+        f"base={base_score:.2f} "
+        f"title={float(detail.get('title_score', 0.0)):.2f} "
+        f"artist={float(detail.get('artist_score', 0.0)):.2f} "
+        f"token={float(detail.get('token_score', 0.0)):.2f} "
+        f"patterns={detail.get('pattern_tags', [])} "
+        f"bonuses={detail.get('bonuses', dict())} "
+        f"penalties={detail.get('penalties', dict())} "
+        f"final={score:.2f} "
+        f"confidence={confidence} "
+        f"chosen_reason='{candidate.get('user_message', '')}' "
+        f"rejected_reason='{candidate.get('unmatched_reason', '')}'"
+    )
+
+
+def _reason_message(reason: str) -> str:
+    return REASON_MESSAGES.get(reason, reason or "확인 가능한 사유가 없습니다.")
+
+
+def explain_match_reason(reason: str) -> str:
+    return _reason_message(reason)
+
+
+def _status_from_score(score: float) -> str:
+    if score >= DIRECT_ACCEPT_SCORE:
+        return "matched"
+    if score >= PROBABLE_MATCH_SCORE:
+        return "probable_match"
+    if score >= REVIEW_NEEDED_SCORE:
+        return "review_needed"
+    return "unmatched"
+
+
+def normalize_title(value: str) -> str:
+    value = (value or "").lower().strip()
+    value = re.sub(r"[\(\[\{][^\)\]\}]*[\)\]\}]", " ", value)
+    value = re.sub(r"[\u2010-\u2015:|/]+", " ", value)
+    value = re.sub(r"[^\w\uAC00-\uD7A3\s]", " ", value)
+    value = re.sub(r"\s+", " ", value)
+    return value.strip()
+
+
+def normalize_artist(value: str) -> str:
+    value = normalize_title(value)
+    value = re.sub(r"\b(feat|ft|featuring|with)\b.*$", " ", value)
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def get_title_variants(value: str) -> List[str]:
+    normalized = normalize_title(value)
+    compact = normalized.replace(" ", "")
+    variants = [item for item in {normalized, compact} if item]
+    return variants
+
+
+def get_artist_aliases(value: str) -> List[str]:
+    normalized = normalize_artist(value)
+    compact = normalized.replace(" ", "")
+    return [item for item in {normalized, compact} if item]
+
+
+def calculate_base_score(input_title: str, input_artist: str, track: Dict[str, Any]) -> Tuple[float, Dict[str, Any]]:
+    return compute_match_score(input_title, input_artist, track)
+
+
+def _candidate_text(candidate_title: str, candidate_artists: List[str]) -> str:
+    return normalize_title(f"{candidate_title} {' '.join(candidate_artists)}")
+
+
+def _contains_keyword(haystack: str, keywords: set[str]) -> bool:
+    normalized = normalize_title(haystack)
+    return any(keyword in normalized for keyword in keywords)
+
+
+def _token_count(value: str) -> int:
+    return len([token for token in normalize_title(value).split() if token])
+
+
+def _is_short_title_false_positive(input_title: str, candidate_title: str, title_score: float) -> bool:
+    input_tokens = normalize_title(input_title).split()
+    candidate_tokens = normalize_title(candidate_title).split()
+    if not input_tokens or len(input_tokens) > 2:
+        return False
+    risky = len(input_tokens) == 1 and input_tokens[0] in SHORT_TITLE_RISK_TOKENS
+    much_longer = len(candidate_tokens) >= len(input_tokens) + 3
+    return title_score >= 0.70 and (risky or much_longer)
+
+
+def classify_candidate_patterns(
+    *,
+    input_title: str,
+    input_artist: str,
+    candidate_title: str,
+    candidate_artists: List[str],
+    detail: Dict[str, Any],
+    base_score: float,
+    api_rank: int,
+) -> List[str]:
+    title_score = float(detail.get("title_score", 0.0))
+    artist_score = float(detail.get("artist_score", 0.0))
+    version_penalty = float(detail.get("version_penalty", 0.0))
+    haystack = _candidate_text(candidate_title, candidate_artists)
+    tags: List[str] = []
+
+    if title_score >= 0.95 and (not input_artist or artist_score >= 0.85):
+        tags.append("exact_match_pattern")
+
+    if (
+        bool(detail.get("artist_alias_matched"))
+        or bool(detail.get("title_alias_matched"))
+        or bool(detail.get("title_variant_matched"))
+        or title_score >= 0.90
+        or artist_score >= 0.90
+    ):
+        tags.append("notation_difference_pattern")
+
+    if version_penalty > 0 or _contains_keyword(haystack, ACCEPTABLE_VERSION_KEYWORDS):
+        tags.append("acceptable_version_pattern")
+
+    if _contains_keyword(haystack, NON_ORIGINAL_KEYWORDS):
+        tags.append("non_original_audio_pattern")
+
+    if input_artist and artist_score >= 0.85 and title_score < 0.55:
+        tags.append("artist_only_overconfidence_pattern")
+
+    if input_artist and title_score >= 0.85 and artist_score < MIN_ARTIST_SCORE:
+        tags.append("title_only_overconfidence_pattern")
+
+    if _is_short_title_false_positive(input_title, candidate_title, title_score):
+        tags.append("short_title_false_positive_pattern")
+
+    if title_score < 0.40 and (not input_artist or artist_score < 0.40):
+        tags.append("weak_both_pattern")
+
+    if api_rank == 0 and (title_score >= 0.95 or artist_score >= 0.95):
+        tags.append("top_rank_one_side_exact_pattern")
+
+    return tags
+
+
+def apply_pattern_adjustments(
+    base_score: float,
+    detail: Dict[str, Any],
+    pattern_tags: List[str],
+) -> Tuple[float, Dict[str, Any]]:
+    adjusted = float(base_score)
+    enriched = dict(detail)
+    title_score = float(enriched.get("title_score", 0.0))
+    artist_score = float(enriched.get("artist_score", 0.0))
+    bonuses: Dict[str, float] = {}
+    penalties: Dict[str, float] = {}
+    caps: Dict[str, float] = {}
+
+    if "exact_match_pattern" in pattern_tags:
+        bonuses["exact_match_pattern"] = 0.03
+        adjusted += 0.03
+
+    if "notation_difference_pattern" in pattern_tags:
+        bonuses["notation_difference_pattern"] = 0.03
+        adjusted += 0.03
+        if title_score >= 0.98 and artist_score < MIN_ARTIST_SCORE:
+            adjusted = max(adjusted, 0.78)
+            bonuses["title_exact_artist_spelling_gap_floor"] = round(max(0.0, 0.78 - base_score), 4)
+        if artist_score >= 0.98 and title_score < MIN_TITLE_SCORE:
+            adjusted = max(adjusted, 0.72)
+            bonuses["artist_exact_title_spelling_gap_floor"] = round(max(0.0, 0.72 - base_score), 4)
+
+    if "top_rank_one_side_exact_pattern" in pattern_tags:
+        bonuses["top_rank_one_side_exact_bonus"] = 0.10
+        adjusted += 0.10
+
+    if "acceptable_version_pattern" in pattern_tags:
+        penalty = min(float(enriched.get("version_penalty", 0.04)) or 0.04, 0.08)
+        penalties["acceptable_version_pattern"] = penalty
+        adjusted -= penalty
+
+    if "non_original_audio_pattern" in pattern_tags:
+        penalties["non_original_audio_pattern"] = 0.35
+        adjusted -= 0.35
+        caps["non_original_audio_pattern"] = 0.49
+
+    one_side_exact_spelling_gap = (
+        "notation_difference_pattern" in pattern_tags
+        and "top_rank_one_side_exact_pattern" in pattern_tags
+        and (title_score >= 0.98 or artist_score >= 0.98)
+    )
+
+    if "artist_only_overconfidence_pattern" in pattern_tags and not one_side_exact_spelling_gap:
+        caps["artist_only_overconfidence_pattern"] = 0.69
+
+    if "title_only_overconfidence_pattern" in pattern_tags and not one_side_exact_spelling_gap:
+        penalties["title_only_overconfidence_pattern"] = 0.12
+        adjusted -= 0.12
+        caps["title_only_overconfidence_pattern"] = 0.78
+
+    if "short_title_false_positive_pattern" in pattern_tags:
+        penalties["short_title_false_positive_pattern"] = 0.20
+        adjusted -= 0.20
+        caps["short_title_false_positive_pattern"] = 0.62
+
+    if "weak_both_pattern" in pattern_tags:
+        caps["weak_both_pattern"] = 0.49
+
+    if caps:
+        adjusted = min(adjusted, min(caps.values()))
+
+    final = max(0.0, min(round(adjusted, 4), 1.0))
+    enriched["base_score"] = round(float(base_score), 4)
+    enriched["pattern_tags"] = pattern_tags
+    enriched["bonuses"] = bonuses
+    enriched["penalties"] = penalties
+    enriched["score_caps"] = caps
+    enriched["final_score"] = final
+    enriched["api_call_added"] = False
+    enriched["query_added"] = False
+    return final, enriched
+
+
+def decide_match_status(score: float) -> str:
+    return _status_from_score(score)
+
+
+def rank_candidates(scored_candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return sorted(
+        scored_candidates,
+        key=lambda item: (
+            item["score"],
+            item.get("popularity", 0),
+            item["score_detail"].get("title_score", 0.0),
+            item["score_detail"].get("artist_score", 0.0),
+        ),
+        reverse=True,
+    )
+
+
+def _candidate_reason(candidate: Dict[str, Any], *, has_artist: bool, input_artist: str = "") -> str:
+    detail = candidate.get("score_detail", {})
+    pattern_tags = set(detail.get("pattern_tags", []))
+    title_score = float(detail.get("title_score", 0.0))
+    artist_score = float(detail.get("artist_score", 0.0))
+    version_penalty = float(detail.get("version_penalty", 0.0))
+    score = float(candidate.get("score", 0.0))
+    artist_alias_matched = bool(detail.get("artist_alias_matched", False))
+
+    if "non_original_audio_pattern" in pattern_tags:
+        return "non_original_audio"
+    if "artist_only_overconfidence_pattern" in pattern_tags:
+        return "artist_only_overconfidence"
+    if "title_only_overconfidence_pattern" in pattern_tags:
+        return "title_only_overconfidence"
+    if "short_title_false_positive_pattern" in pattern_tags:
+        return "short_title_false_positive"
+    if version_penalty >= 0.08 or "acceptable_version_pattern" in pattern_tags:
+        return "version_candidate"
+    if score >= DIRECT_ACCEPT_SCORE:
+        return "matched"
+    if has_artist and title_score >= 0.95 and artist_score < MIN_ARTIST_SCORE:
+        return "title_matched_artist_alias_candidate"
+    if has_artist and artist_score >= 0.95 and title_score < MIN_TITLE_SCORE:
+        return "artist_matched_title_mismatch"
+    if (
+        has_artist
+        and int(candidate.get("candidate_rank", 999)) == 0
+        and title_score < TITLE_MISMATCH_MAX_TITLE_SCORE
+        and _possible_artist_romanization_match(input_artist, candidate.get("artists", []))
+        and not (artist_score >= TITLE_MISMATCH_ARTIST_SCORE or artist_alias_matched)
+    ):
+        return "top_candidate_artist_romanization_title_mismatch"
+    if title_score < 0.40 and (not has_artist or artist_score < 0.40):
+        return "weak_title_and_artist"
+    if title_score < MIN_TITLE_SCORE:
+        return "title_mismatch"
+    if has_artist and artist_score < MIN_ARTIST_SCORE:
+        return "artist_mismatch"
+    if score >= REVIEW_NEEDED_SCORE:
+        return "partial_match_needs_review"
+    return "low_score"
 
 def _log_match(
     *,
@@ -168,8 +518,27 @@ def _score_tracks(
         unique_tracks.append(track)
 
     scored_candidates: List[Dict[str, Any]] = []
-    for track in unique_tracks:
-        score, detail = compute_match_score(input_title, input_artist, track)
+    for api_rank, track in enumerate(unique_tracks):
+        base_score, detail = calculate_base_score(input_title, input_artist, track)
+        track_name = track.get("name", "")
+        track_artists = [artist.get("name", "") for artist in track.get("artists", [])]
+        pattern_tags = classify_candidate_patterns(
+            input_title=input_title,
+            input_artist=input_artist,
+            candidate_title=track_name,
+            candidate_artists=track_artists,
+            detail=detail,
+            base_score=base_score,
+            api_rank=api_rank,
+        )
+
+        score, detail = apply_pattern_adjustments(
+            base_score,
+            detail,
+            pattern_tags,
+        )
+        detail["api_rank"] = api_rank + 1
+        detail["score_before_context"] = round(base_score, 4)
         source = track_sources.get(_track_dedupe_key(track), {})
         candidate = _candidate_to_result(
                 track,
@@ -182,110 +551,51 @@ def _score_tracks(
         candidate["candidate_rank"] = len(scored_candidates)
         scored_candidates.append(candidate)
 
-    scored_candidates.sort(
-        key=lambda item: (
-            item["score"],
-            item.get("popularity", 0),
-            item["score_detail"].get("title_score", 0.0),
-            item["score_detail"].get("artist_score", 0.0),
-        ),
-        reverse=True,
-    )
-    return scored_candidates
+    return rank_candidates(scored_candidates)
 
 
 def _classify_candidate(candidate: Dict[str, Any], *, has_artist: bool, input_artist: str = "") -> str:
     """Classify a Spotify candidate without making extra searches."""
-    detail = candidate.get("score_detail", {})
-    title_score = float(detail.get("title_score", 0.0))
-    artist_score = float(detail.get("artist_score", 0.0))
     score = float(candidate.get("score", 0.0))
-    artist_alias_matched = bool(detail.get("artist_alias_matched", False))
-
-    # Safe auto-add cases.
-    if score >= DIRECT_ACCEPT_SCORE:
-        return "matched"
-    if has_artist and artist_score >= EXACT_ARTIST_SCORE and title_score >= EXACT_ARTIST_MIN_TITLE_SCORE:
-        return "matched"
-    if score >= MIN_ACCEPT_SCORE and title_score >= MIN_TITLE_SCORE and (not has_artist or artist_score >= MIN_ARTIST_SCORE):
-        return "matched"
-
-    # Useful review candidates. Do not auto-add these to the playlist.
-    if has_artist and title_score >= ARTIST_ALIAS_CANDIDATE_TITLE_SCORE and artist_score < MIN_ARTIST_SCORE:
-        return "artist_alias_candidate"
-    if (
-        has_artist
-        and title_score < TITLE_MISMATCH_MAX_TITLE_SCORE
-        and (artist_score >= TITLE_MISMATCH_ARTIST_SCORE or artist_alias_matched)
-    ):
-        return "title_alias_candidate"
-    if (
-        has_artist
-        and int(candidate.get("candidate_rank", 999)) == 0
-        and title_score < TITLE_MISMATCH_MAX_TITLE_SCORE
-        and _possible_artist_romanization_match(input_artist, candidate.get("artists", []))
-    ):
-        return "title_alias_candidate"
-    if has_artist and artist_score >= TITLE_ALIAS_CANDIDATE_ARTIST_SCORE and title_score < MIN_TITLE_SCORE:
-        return "title_alias_candidate"
-    if score >= PARTIAL_CONFIDENCE_SCORE or title_score >= 0.70 or (has_artist and artist_score >= 0.70):
-        return "low_confidence"
-    return "unmatched"
+    return _status_from_score(score)
 
 
 def _candidate_is_acceptable(candidate: Dict[str, Any], *, has_artist: bool, input_artist: str = "") -> bool:
-    return _classify_candidate(candidate, has_artist=has_artist, input_artist=input_artist) == "matched"
+    return _classify_candidate(candidate, has_artist=has_artist, input_artist=input_artist) in {
+        "matched",
+        "probable_match",
+    }
 
 
 def _candidate_is_recoverable(candidate: Dict[str, Any], *, has_artist: bool, input_artist: str = "") -> bool:
     return _classify_candidate(candidate, has_artist=has_artist, input_artist=input_artist) in {
-        "artist_alias_candidate",
-        "title_alias_candidate",
-        "low_confidence",
+        "review_needed",
     }
 
 
 def _low_confidence_reason_for_status(candidate: Dict[str, Any], status: str, *, has_artist: bool, input_artist: str = "") -> str:
-    detail = candidate.get("score_detail", {})
-    title_score = float(detail.get("title_score", 0.0))
-    artist_score = float(detail.get("artist_score", 0.0))
-    artist_alias_matched = bool(detail.get("artist_alias_matched", False))
-
-    if status == "artist_alias_candidate":
-        return "title_matched_artist_alias_candidate"
-    if status == "title_alias_candidate":
-        if (
-            has_artist
-            and int(candidate.get("candidate_rank", 999)) == 0
-            and title_score < TITLE_MISMATCH_MAX_TITLE_SCORE
-            and _possible_artist_romanization_match(input_artist, candidate.get("artists", []))
-            and not (artist_score >= TITLE_MISMATCH_ARTIST_SCORE or artist_alias_matched)
-        ):
-            return "top_candidate_artist_romanization_title_mismatch"
-        if (
-            has_artist
-            and title_score < TITLE_MISMATCH_MAX_TITLE_SCORE
-            and (artist_score >= TITLE_MISMATCH_ARTIST_SCORE or artist_alias_matched)
-        ):
-            return "artist_matched_title_mismatch"
-        return "artist_matched_title_alias_candidate"
-    if status == "low_confidence":
-        return "partial_match_needs_review"
-    return ""
+    if status in {"matched", "probable_match"}:
+        return ""
+    return _candidate_reason(candidate, has_artist=has_artist, input_artist=input_artist)
 
 
 def _attach_candidate_status(candidate: Dict[str, Any], *, has_artist: bool, input_artist: str = "") -> Dict[str, Any]:
     enriched = dict(candidate)
     status = _classify_candidate(candidate, has_artist=has_artist, input_artist=input_artist)
+    reason = _candidate_reason(candidate, has_artist=has_artist, input_artist=input_artist)
     enriched["match_status"] = status
+    enriched["user_message"] = _reason_message(reason if status == "unmatched" else status)
+    enriched["unmatched_reason"] = reason if status == "unmatched" else ""
     if status != "matched":
-        enriched["low_confidence"] = True
+        enriched["low_confidence"] = status in {"probable_match", "review_needed"}
         enriched["low_confidence_reason"] = _low_confidence_reason_for_status(
             candidate,
             status,
             has_artist=has_artist,
             input_artist=input_artist,
         )
+        if enriched["low_confidence_reason"]:
+            enriched["user_message"] = _reason_message(enriched["low_confidence_reason"])
     return enriched
 
 
@@ -320,18 +630,16 @@ def _pick_best_acceptable_candidate(
         return None
 
     status_priority = {
-        "artist_alias_candidate": 3,
-        "title_alias_candidate": 3,
-        "low_confidence": 2,
+        "review_needed": 2,
         "unmatched": 0,
     }
     return max(
         recoverable,
         key=lambda item: (
             status_priority.get(item.get("match_status", "unmatched"), 0),
+            item["score"],
             item["score_detail"].get("title_score", 0.0),
             item["score_detail"].get("artist_score", 0.0),
-            item["score"],
             item.get("popularity", 0),
         ),
     )
@@ -343,7 +651,7 @@ def _build_unmatched_reason(
     input_artist: str = "",
 ) -> str:
     if not scored_candidates:
-        return "no_candidates"
+        return "no_search_result"
 
     best = scored_candidates[0]
     status = _classify_candidate(best, has_artist=has_artist, input_artist=input_artist)
@@ -352,19 +660,10 @@ def _build_unmatched_reason(
     artist_score = float(detail.get("artist_score", 0.0))
     score = float(best.get("score", 0.0))
 
-    if status == "matched":
+    if status in {"matched", "probable_match"}:
         return ""
-    if status == "artist_alias_candidate":
-        return f"artist_alias_candidate(score={score:.2f},title={title_score:.2f},artist={artist_score:.2f})"
-    if status == "title_alias_candidate":
-        return f"title_alias_candidate(score={score:.2f},title={title_score:.2f},artist={artist_score:.2f})"
-    if status == "low_confidence":
-        return f"low_confidence(score={score:.2f},title={title_score:.2f},artist={artist_score:.2f})"
-    if title_score < MIN_TITLE_SCORE:
-        return f"title_mismatch(score={score:.2f},title={title_score:.2f})"
-    if has_artist and artist_score < MIN_ARTIST_SCORE:
-        return f"artist_mismatch(score={score:.2f},artist={artist_score:.2f})"
-    return f"low_score({score:.2f})"
+    reason = _candidate_reason(best, has_artist=has_artist, input_artist=input_artist)
+    return f"{reason}(score={score:.2f},title={title_score:.2f},artist={artist_score:.2f})"
 
 def _summarize_case_result(case_result: Dict[str, Any]) -> Dict[str, Any]:
     best = case_result.get("best_candidate") or {}
@@ -407,6 +706,8 @@ def _store_match_debug(
                 "chosen_case": candidate.get("chosen_case", selected_case),
                 "match_status": candidate.get("match_status", ""),
                 "low_confidence_reason": candidate.get("low_confidence_reason", ""),
+                "unmatched_reason": candidate.get("unmatched_reason", ""),
+                "user_message": candidate.get("user_message", ""),
             }
             for candidate in top_candidates[:3]
         ],
@@ -515,6 +816,13 @@ def _evaluate_case(
         result["search_title"] = result["best_candidate"].get("search_title", input_title)
         result["search_artist"] = result["best_candidate"].get("search_artist", input_artist)
 
+        print(
+            f"[spotify-match:candidates] input='{input_artist} - {input_title}' "
+            f"query='{strategy['query']}' candidates=["
+            + "; ".join(_candidate_score_log(candidate) for candidate in scored_candidates[:SEARCH_LIMIT])
+            + "]"
+        )
+
         chosen_candidate = result["chosen_candidate"]
         if chosen_candidate and float(chosen_candidate.get("score", 0.0)) >= EARLY_RETURN_SCORE:
             break
@@ -573,7 +881,7 @@ def _choose_case_result(
 
     available = [case_result for case_result in case_results if case_result.get("best_candidate")]
     if not available:
-        return None, "no_candidates"
+        return None, "no_search_result"
 
     selected = max(
         available,
@@ -648,7 +956,7 @@ def pick_best_track_match(
             selected_case=str(song_meta.get("chosen_case") or "original"),
             search_title=input_title,
             search_artist=input_artist,
-            unmatched_reason="no_candidates",
+            unmatched_reason="no_search_result",
             top_candidates=[],
             case_results=case_results,
         )
@@ -663,7 +971,7 @@ def pick_best_track_match(
             selected="none",
             selected_score=0.0,
             reason=decision_reason,
-            unmatched_reason="no_candidates",
+            unmatched_reason="no_search_result",
             early_return=False,
         )
         _MATCH_CACHE[cache_key] = None

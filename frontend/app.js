@@ -29,6 +29,8 @@ const overviewExtractedCount = document.getElementById("overviewExtractedCount")
 const overviewMatchedCount = document.getElementById("overviewMatchedCount");
 const overviewUnmatchedCount = document.getElementById("overviewUnmatchedCount");
 const overviewLowConfidenceCount = document.getElementById("overviewLowConfidenceCount");
+const overviewMatchingRate = document.getElementById("overviewMatchingRate");
+const overviewTotalElapsed = document.getElementById("overviewTotalElapsed");
 
 const infoStage = document.getElementById("infoStage");
 const infoOcrUsed = document.getElementById("infoOcrUsed");
@@ -37,6 +39,9 @@ const infoMatchedCount = document.getElementById("infoMatchedCount");
 const infoUnmatchedCount = document.getElementById("infoUnmatchedCount");
 const infoLowConfidenceCount = document.getElementById("infoLowConfidenceCount");
 const infoMatchingRate = document.getElementById("infoMatchingRate");
+const infoAnalysisElapsed = document.getElementById("infoAnalysisElapsed");
+const infoSpotifyElapsed = document.getElementById("infoSpotifyElapsed");
+const infoTotalElapsed = document.getElementById("infoTotalElapsed");
 const infoCoverStatus = document.getElementById("infoCoverStatus");
 
 const loginSummaryText = document.getElementById("loginSummaryText");
@@ -176,6 +181,54 @@ function formatScore(value) {
   return typeof value === "number" ? `${Math.round(value * 100)}%` : "-";
 }
 
+function formatPercent(value) {
+  if (typeof value !== "number" || Number.isNaN(value)) {
+    return "-";
+  }
+  return `${Number.isInteger(value) ? value : value.toFixed(1)}%`;
+}
+
+function formatDurationMs(value) {
+  if (typeof value !== "number" || Number.isNaN(value)) {
+    return "-";
+  }
+  if (value < 1000) {
+    return `${Math.max(0, Math.round(value))}ms`;
+  }
+  const seconds = value / 1000;
+  if (seconds < 60) {
+    return `${seconds.toFixed(seconds < 10 ? 1 : 0)}s`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const remainder = Math.round(seconds % 60);
+  return `${minutes}m ${remainder}s`;
+}
+
+function formatMatchStatus(value) {
+  const statusMap = {
+    matched: "자동 매칭됨",
+    probable_match: "표기 차이 가능성",
+    review_needed: "확인 필요",
+    unmatched: "매칭 실패",
+  };
+  return statusMap[value] || value || "-";
+}
+
+function formatScoreDetail(detail) {
+  if (!detail || typeof detail !== "object") {
+    return "";
+  }
+  const parts = [
+    ["title", detail.title_score],
+    ["artist", detail.artist_score],
+    ["token", detail.token_score],
+    ["version_penalty", detail.version_penalty],
+  ]
+    .filter(([, value]) => typeof value === "number")
+    .map(([label, value]) => `${label}: ${Math.round(value * 100)}%`);
+  return parts.length ? parts.join(" / ") : "";
+}
+
 function getSongTitle(item) {
   return item?.title || item?.input?.title || item?.song?.title || "(제목 없음)";
 }
@@ -233,7 +286,10 @@ function renderMatchedSongs(items) {
     renderMeta: (item) => {
       const matchedTitle = item?.matched_title || "-";
       const matchedArtists = safeArray(item?.matched_artists).join(", ") || "-";
-      return `Spotify: ${escapeHtml(matchedTitle)} / ${escapeHtml(matchedArtists)}<br />score: ${escapeHtml(formatScore(item?.score))}`;
+      const userMessage = item?.user_message || "자동 매칭되었습니다.";
+      const status = formatMatchStatus(item?.match_status);
+      const scoreDetail = formatScoreDetail(item?.score_detail);
+      return `Spotify: ${escapeHtml(matchedTitle)} / ${escapeHtml(matchedArtists)}<br />status: ${escapeHtml(status)}<br />score: ${escapeHtml(formatScore(item?.score))}<br />message: ${escapeHtml(userMessage)}${scoreDetail ? `<br />detail: ${escapeHtml(scoreDetail)}` : ""}`;
     },
   });
 }
@@ -247,8 +303,11 @@ function renderLowConfidenceSongs(items) {
     renderMeta: (item) => {
       const matchedTitle = item?.matched_title || "-";
       const matchedArtists = safeArray(item?.matched_artists).join(", ") || "-";
-      const reason = item?.reason || item?.llm_reason || "저신뢰 매칭";
-      return `Spotify: ${escapeHtml(matchedTitle)} / ${escapeHtml(matchedArtists)}<br />score: ${escapeHtml(formatScore(item?.score))} / reason: ${escapeHtml(reason)}`;
+      const reason = item?.low_confidence_reason || item?.reason || item?.llm_reason || "review_needed";
+      const userMessage = item?.user_message || reason;
+      const status = formatMatchStatus(item?.match_status);
+      const scoreDetail = formatScoreDetail(item?.score_detail);
+      return `Spotify: ${escapeHtml(matchedTitle)} / ${escapeHtml(matchedArtists)}<br />status: ${escapeHtml(status)}<br />score: ${escapeHtml(formatScore(item?.score))}<br />reason: ${escapeHtml(reason)}<br />message: ${escapeHtml(userMessage)}${scoreDetail ? `<br />detail: ${escapeHtml(scoreDetail)}` : ""}`;
     },
   });
 }
@@ -259,7 +318,16 @@ function renderFailedSongs(items) {
     items,
     emptyMessage: "매칭 실패 곡이 여기에 표시됩니다.",
     cardClass: "failed-card",
-    renderMeta: (item) => `reason: ${escapeHtml(item?.reason || "사유 없음")}`,
+    renderMeta: (item) => {
+      const reason = item?.unmatched_reason || item?.reason || "unknown";
+      const userMessage = item?.user_message || reason;
+      const status = formatMatchStatus(item?.match_status || "unmatched");
+      const topCandidate = safeArray(item?.top_candidates)[0];
+      const topCandidateText = topCandidate
+        ? `<br />top candidate: ${escapeHtml(topCandidate.name || "-")} / ${escapeHtml(safeArray(topCandidate.artists).join(", ") || "-")} (${escapeHtml(formatScore(topCandidate.score))})`
+        : "";
+      return `status: ${escapeHtml(status)}<br />reason: ${escapeHtml(reason)}<br />message: ${escapeHtml(userMessage)}${topCandidateText}`;
+    },
   });
 }
 
@@ -277,6 +345,27 @@ function extractList(data, flatKey) {
 function extractNumber(data, key, fallback = 0) {
   const value = data?.[key] ?? data?.spotify_result?.[key];
   return typeof value === "number" ? value : fallback;
+}
+
+function extractTiming(data, key) {
+  const value = data?.timings?.[key] ?? data?.[key] ?? data?.youtube_result?.timings?.[key];
+  return typeof value === "number" ? value : null;
+}
+
+function extractMatchingRate(data) {
+  const explicit = data?.matching_rate ?? data?.spotify_result?.matching_rate;
+  if (typeof explicit === "number") {
+    return explicit;
+  }
+
+  const matched = extractNumber(data, "matched_count");
+  const lowConfidence = extractNumber(data, "low_confidence_count");
+  const unmatched = extractNumber(data, "unmatched_count");
+  const total = matched + lowConfidence + unmatched;
+  if (total <= 0) {
+    return null;
+  }
+  return Math.round(((matched + lowConfidence) / total) * 1000) / 10;
 }
 
 function getYoutubeTitle(data) {
@@ -299,6 +388,8 @@ function renderOverview(data) {
   setText(overviewMatchedCount, extractNumber(data, "matched_count"), "0");
   setText(overviewUnmatchedCount, extractNumber(data, "unmatched_count"), "0");
   setText(overviewLowConfidenceCount, extractNumber(data, "low_confidence_count"), "0");
+  setText(overviewMatchingRate, formatPercent(extractMatchingRate(data)), "-");
+  setText(overviewTotalElapsed, formatDurationMs(extractTiming(data, "total_elapsed_ms")), "-");
 }
 
 function renderQuickInfo(data) {
@@ -309,8 +400,10 @@ function renderQuickInfo(data) {
   setText(infoUnmatchedCount, extractNumber(data, "unmatched_count"), "0");
   setText(infoLowConfidenceCount, extractNumber(data, "low_confidence_count"), "0");
 
-  const matchingRate = data?.matching_rate ?? data?.spotify_result?.matching_rate;
-  setText(infoMatchingRate, typeof matchingRate === "number" ? `${matchingRate}%` : "-", "-");
+  setText(infoMatchingRate, formatPercent(extractMatchingRate(data)), "-");
+  setText(infoAnalysisElapsed, formatDurationMs(extractTiming(data, "analysis_elapsed_ms")), "-");
+  setText(infoSpotifyElapsed, formatDurationMs(extractTiming(data, "spotify_elapsed_ms")), "-");
+  setText(infoTotalElapsed, formatDurationMs(extractTiming(data, "total_elapsed_ms")), "-");
   setText(infoCoverStatus, data?.cover_upload_status, "-");
 }
 
@@ -452,6 +545,7 @@ analyzeBtn.addEventListener("click", async () => {
       matched_count: 0,
       unmatched_count: 0,
       low_confidence_count: 0,
+      timings: data?.timings,
     });
     renderQuickInfo({
       selected_stage: data?.selected_stage,
@@ -460,6 +554,7 @@ analyzeBtn.addEventListener("click", async () => {
       matched_count: 0,
       unmatched_count: 0,
       low_confidence_count: 0,
+      timings: data?.timings,
       cover_upload_status: "-",
     });
     renderExtractedSongs(getExtractedSongs(data));

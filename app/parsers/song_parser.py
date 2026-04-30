@@ -22,6 +22,7 @@ TIME_PREFIX_REGEX = re.compile(r"^\s*(?:\d{1,2}:\d{2}(?::\d{2})?)\s*[-|~>*]*\s*"
 TIMESTAMP_TOKEN_REGEX = re.compile(r"(?<!\d)(?:\d{1,2}:\d{2}(?::\d{2})?)(?!\d)")
 TIMESTAMP_LINE_REGEX = re.compile(r"^(?P<ts>\d{1,2}:\d{2}(?::\d{2})?)\s+(?P<body>.+)$")
 TIMESTAMP_PREFIX_ONLY_REGEX = re.compile(r"^\d{1,2}:\d{2}(?::\d{2})?\s+")
+TRACK_NUMBER_ONLY_REGEX = re.compile(r"^\s*(?:\d{1,3}|[A-Za-z])[\.)]?\s*$")
 MULTISPACE_REGEX = re.compile(r"\s+")
 BRACKET_REGEX = re.compile(r"[\[\(\{].*?[\]\)\}]")
 PARENTHETICAL_REGEX = re.compile(r"[\(\[\{]([^\)\]\}]{1,12})[\)\]\}]")
@@ -459,6 +460,18 @@ def _extract_pair_parts(text: str) -> dict | None:
         left, right = raw_left, raw_right
         left = _clean_text(left)
         right = _clean_text(right)
+        nested = _extract_numbered_nested_pair(left, right)
+        if nested:
+            nested_left, nested_right, nested_sep = nested
+            return {
+                "raw": text,
+                "separator": nested_sep,
+                "left": nested_left,
+                "right": nested_right,
+                "artist_parentheses_preserved": _has_preserved_parenthetical_identifier(nested_left),
+                "track_number_prefix": left,
+                "nested_pair_extracted": True,
+            }
         if left and right:
             return {
                 "raw": text,
@@ -467,6 +480,31 @@ def _extract_pair_parts(text: str) -> dict | None:
                 "right": right,
                 "artist_parentheses_preserved": _has_preserved_parenthetical_identifier(raw_left),
             }
+    return None
+
+
+def _looks_like_track_number_prefix(text: str) -> bool:
+    cleaned = _clean_text(text)
+    return bool(cleaned and TRACK_NUMBER_ONLY_REGEX.fullmatch(cleaned))
+
+
+def _extract_numbered_nested_pair(left: str, right: str) -> tuple[str, str, str] | None:
+    if not _looks_like_track_number_prefix(left):
+        return None
+
+    cleaned_right = _clean_text(right)
+    if not cleaned_right:
+        return None
+
+    for sep in SEPARATORS:
+        if sep not in cleaned_right:
+            continue
+        nested_left, nested_right = cleaned_right.split(sep, 1)
+        nested_left = _clean_text(nested_left)
+        nested_right = _clean_text(nested_right)
+        if nested_left and nested_right and not _looks_like_track_number_prefix(nested_left):
+            return nested_left, nested_right, sep
+
     return None
 
 
@@ -1154,6 +1192,8 @@ def _append_song(results: list[dict], artist: str, title: str, meta: dict | None
         "left_title_evidence",
         "right_title_evidence",
         "artist_parentheses_preserved",
+        "track_number_prefix",
+        "nested_pair_extracted",
     ]:
         if key in meta:
             song[key] = meta.get(key)
@@ -1186,8 +1226,12 @@ def parse_unstructured_lines_to_json(text: str) -> dict:
     global_direction, direction_meta = _resolve_global_direction(pair_candidates)
     results = []
     for parts in pair_candidates:
-        parsed = _resolve_orientation(parts, global_direction)
+        line_direction = "title_artist" if parts.get("nested_pair_extracted") else global_direction
+        parsed = _resolve_orientation(parts, line_direction)
         parsed.update(direction_meta)
+        if parts.get("nested_pair_extracted"):
+            parsed["nested_pair_extracted"] = True
+            parsed["track_number_prefix"] = parts.get("track_number_prefix", "")
         artist = parsed.get("artist", "")
         title = parsed.get("title", "")
         if artist and title:
@@ -1251,8 +1295,12 @@ def normalize_song_candidates(data: Any) -> dict:
         }
 
         if left and right:
-            parsed = _resolve_orientation({"raw": raw, "left": left, "right": right}, global_direction)
+            line_direction = "title_artist" if item.get("nested_pair_extracted") else global_direction
+            parsed = _resolve_orientation({"raw": raw, "left": left, "right": right}, line_direction)
             parsed.update(direction_meta)
+            if item.get("nested_pair_extracted"):
+                parsed["nested_pair_extracted"] = True
+                parsed["track_number_prefix"] = item.get("track_number_prefix", "")
             artist = _clean_text(parsed.get("artist", artist))
             title = _clean_text(parsed.get("title", title))
             meta.update(parsed)
@@ -1326,6 +1374,8 @@ def deduplicate_songs(songs: list[dict]) -> list[dict]:
             "left_title_evidence",
             "right_title_evidence",
             "artist_parentheses_preserved",
+            "track_number_prefix",
+            "nested_pair_extracted",
         ]:
             if meta_key in song:
                 entry[meta_key] = song.get(meta_key)
