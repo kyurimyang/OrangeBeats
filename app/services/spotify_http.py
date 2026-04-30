@@ -1,4 +1,5 @@
 import json
+import time
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -31,6 +32,60 @@ def _load_rate_limit_state() -> None:
         _rate_limit_message = None
 
 
+def _save_rate_limit_state(retry_after: int) -> None:
+    global _rate_limited_until
+    global _rate_limit_message
+
+    retry_after = max(1, int(retry_after or 60))
+    _rate_limited_until = time.time() + retry_after
+    _rate_limit_message = (
+        f"Spotify API rate limit active: 429 / Too many requests (retry_after={retry_after})"
+    )
+
+    try:
+        _RATE_LIMIT_FILE.write_text(
+            json.dumps(
+                {
+                    "rate_limited_until": _rate_limited_until,
+                    "retry_after": retry_after,
+                    "message": _rate_limit_message,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
+
+
+def _clear_rate_limit_state_if_expired() -> None:
+    global _rate_limited_until
+    global _rate_limit_message
+
+    if not _rate_limited_until or time.time() < _rate_limited_until:
+        return
+
+    _rate_limited_until = 0.0
+    _rate_limit_message = None
+    try:
+        _RATE_LIMIT_FILE.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
+def _raise_if_rate_limited() -> None:
+    _clear_rate_limit_state_if_expired()
+    if not _rate_limited_until:
+        return
+
+    retry_after = max(1, int(_rate_limited_until - time.time()))
+    message = _rate_limit_message or "Spotify API rate limit active: 429 / Too many requests"
+    if "retry_after=" in message:
+        message = message.split(" (retry_after=", 1)[0]
+    raise SpotifyServiceError(f"{message} (retry_after={retry_after})")
+
+
 def _auth_headers(access_token: str, content_type: str = "application/json") -> Dict[str, str]:
     headers = {
         "Authorization": f"Bearer {access_token}",
@@ -54,6 +109,8 @@ def spotify_request(
     if not access_token:
         raise SpotifyServiceError("Spotify access token이 없습니다.")
 
+    _raise_if_rate_limited()
+
     headers = _auth_headers(access_token, content_type=content_type)
     try:
         response = requests.request(
@@ -74,9 +131,8 @@ def spotify_request(
             retry_after = max(1, int(retry_after_header or "60"))
         except ValueError:
             retry_after = 60
-        raise SpotifyServiceError(
-            f"Spotify API rate limit active: 429 / Too many requests (retry_after={retry_after})"
-        )
+        _save_rate_limit_state(retry_after)
+        raise SpotifyServiceError(_rate_limit_message or f"Spotify API rate limit active: 429 / Too many requests (retry_after={retry_after})")
 
     return response
 

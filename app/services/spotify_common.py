@@ -1,4 +1,5 @@
 import re
+from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.constants.pipeline_params import CORE_ARTIST_ALIAS_MAP, CORE_TITLE_ALIAS_MAP, MATCH_NOISE_KEYWORDS
@@ -6,7 +7,13 @@ from app.constants.pipeline_params import CORE_ARTIST_ALIAS_MAP, CORE_TITLE_ALIA
 COMMON_TITLE_STOPWORDS = {
     'official', 'audio', 'mv', 'm v', 'music', 'video', 'lyrics', 'lyric',
     'live', 'ver', 'version', 'remaster', 'remastered', 'inst', 'instrumental',
-    'cover', 'karaoke', 'sped', 'up', 'slowed'
+    'cover', 'karaoke', 'sped', 'up', 'slowed', 'acoustic'
+}
+
+VERSION_KEYWORDS = {
+    'live', 'concert', 'remix', 'remastered', 'remaster', 'instrumental', 'inst',
+    'acoustic', 'sped up', 'slowed', 'karaoke', 'nightcore', '8d', 'version',
+    'ver', 'cover', 'radio edit', 'edit'
 }
 
 ARTIST_ALIAS_MAP = {
@@ -103,7 +110,10 @@ MIXED_LANGUAGE_SPLIT_REGEX = re.compile(
 
 def _normalize_text(value: str) -> str:
     value = (value or '').lower().strip()
+    value = _normalize_parentheses(value)
     value = value.replace('&', ' and ')
+    value = re.sub(r'[\u2010-\u2015:|/]+', ' ', value)
+    value = re.sub(r'\b(feat|ft|featuring)\.?\b', ' featuring ', value)
     value = BRACKET_REGEX.sub(' ', value)
     value = re.sub(r'[^\w\uAC00-\uD7A3\s]', ' ', value)
     value = MULTISPACE_REGEX.sub(' ', value)
@@ -568,12 +578,27 @@ def _string_similarity(a: str, b: str) -> float:
         return 0.0
     if a_norm == b_norm:
         return 1.0
+    if a_compact == b_compact:
+        return 1.0
     if a_norm in b_norm or b_norm in a_norm:
         return 0.92
     overlap = _token_overlap_ratio(a_norm, b_norm)
     if overlap > 0:
-        return overlap
-    return 0.0
+        return max(overlap, SequenceMatcher(None, a_norm, b_norm).ratio() * 0.82)
+    return round(SequenceMatcher(None, a_norm, b_norm).ratio() * 0.82, 4)
+
+
+def _title_alias_match(input_title: str, candidate_title: str) -> Tuple[bool, str]:
+    input_variants = _expand_alias_variants(input_title, TITLE_ALIAS_MAP)
+    candidate_variants = _expand_alias_variants(candidate_title, TITLE_ALIAS_MAP)
+    input_keys = {_normalize_text(variant).replace(' ', '') for variant in input_variants if variant}
+
+    for variant in candidate_variants:
+        key = _normalize_text(variant).replace(' ', '')
+        if key and key in input_keys:
+            return True, variant
+
+    return False, ''
 
 
 def _artist_alias_match(input_artist: str, candidate_artists: List[str]) -> Tuple[bool, str]:
@@ -628,6 +653,22 @@ def _suspicious_penalty(name: str, artists: List[str]) -> float:
     return min(penalty, 0.24)
 
 
+def _version_penalty(input_title: str, candidate_title: str) -> float:
+    input_norm = _normalize_text(input_title)
+    candidate_norm = _normalize_text(candidate_title)
+    penalty = 0.0
+
+    for keyword in VERSION_KEYWORDS:
+        input_has = keyword in input_norm
+        candidate_has = keyword in candidate_norm
+        if candidate_has and not input_has:
+            penalty += 0.04
+        elif input_has != candidate_has:
+            penalty += 0.02
+
+    return min(penalty, 0.18)
+
+
 def compute_match_score(input_title: str, input_artist: str, track: Dict[str, Any]) -> Tuple[float, Dict[str, Any]]:
     track_name = track.get('name', '')
     track_artists = [a.get('name', '') for a in track.get('artists', [])]
@@ -635,40 +676,86 @@ def compute_match_score(input_title: str, input_artist: str, track: Dict[str, An
     clean_input_artist = _clean_artist_name_for_search(input_artist)
     input_title_variants = _title_variants(input_title)
     title_score, title_match_detail = _best_title_similarity(input_title_variants, track_name)
+    normalized_title_score = _string_similarity(_remove_title_noise(input_title), _remove_title_noise(track_name))
     artist_alias_matched, matched_alias = _artist_alias_match(clean_input_artist, track_artists)
+    title_alias_matched, matched_title_alias = _title_alias_match(input_title, track_name)
+    if title_alias_matched:
+        title_score = max(title_score, 1.0)
     artist_score = 1.0 if artist_alias_matched else _artist_match_score(clean_input_artist, track_artists)
+    normalized_artist_score = _artist_match_score(resolve_artist_alias(clean_input_artist), track_artists)
+    artist_score = max(artist_score, normalized_artist_score)
+    token_score = max(
+        _token_overlap_ratio(input_title, track_name),
+        _token_overlap_ratio(f"{input_artist} {input_title}", f"{' '.join(track_artists)} {track_name}"),
+    )
+    alias_bonus = 0.0
+    if artist_alias_matched:
+        alias_bonus += 0.05
+    if title_alias_matched:
+        alias_bonus += 0.05
+    exact_bonus = 0.0
+    if _normalize_cache_text(input_title) == _normalize_cache_text(track_name):
+        exact_bonus += 0.04
+    if clean_input_artist and artist_score >= 0.999:
+        exact_bonus += 0.03
     popularity_bonus = min((track.get('popularity') or 0) / 1000, 0.03)
     penalty = _suspicious_penalty(track_name, track_artists)
+    version_penalty = _version_penalty(input_title, track_name)
     artist_mismatch_penalty = 0.0
 
     if clean_input_artist:
         if artist_score < 0.15:
-            artist_mismatch_penalty = 0.35
+            artist_mismatch_penalty = 0.14
         elif artist_score < 0.35:
-            artist_mismatch_penalty = 0.18
+            artist_mismatch_penalty = 0.07
 
     if clean_input_artist:
         final = (
-            (title_score * 0.58)
-            + (artist_score * 0.37)
+            (title_score * 0.45)
+            + (artist_score * 0.35)
+            + (normalized_title_score * 0.05)
+            + (normalized_artist_score * 0.05)
+            + (token_score * 0.10)
+            + alias_bonus
+            + exact_bonus
             + popularity_bonus
             - penalty
+            - version_penalty
             - artist_mismatch_penalty
         )
     else:
-        final = (title_score * 0.9) + popularity_bonus - penalty
+        final = (
+            (title_score * 0.72)
+            + (normalized_title_score * 0.12)
+            + (token_score * 0.10)
+            + alias_bonus
+            + exact_bonus
+            + popularity_bonus
+            - penalty
+            - version_penalty
+        )
 
     if clean_input_artist and title_score >= 0.85 and artist_score < 0.2:
-        final = min(final, 0.69)
+        final = min(final, 0.64)
 
     final = max(0.0, min(round(final, 4), 1.0))
     return final, {
         'title_score': round(title_score, 4),
         'artist_score': round(artist_score, 4),
+        'normalized_title_score': round(normalized_title_score, 4),
+        'normalized_artist_score': round(normalized_artist_score, 4),
+        'token_score': round(token_score, 4),
+        'alias_bonus': round(alias_bonus, 4),
+        'exact_bonus': round(exact_bonus, 4),
+        'title_exact_match': _normalize_cache_text(input_title) == _normalize_cache_text(track_name),
+        'artist_exact_match': bool(clean_input_artist and artist_score >= 0.999),
         'artist_alias_matched': artist_alias_matched,
+        'title_alias_matched': title_alias_matched,
         'matched_alias': matched_alias,
+        'matched_title_alias': matched_title_alias,
         **title_match_detail,
         'penalty': round(penalty, 4),
+        'version_penalty': round(version_penalty, 4),
         'popularity_bonus': round(popularity_bonus, 4),
         'artist_mismatch_penalty': round(artist_mismatch_penalty, 4),
     }

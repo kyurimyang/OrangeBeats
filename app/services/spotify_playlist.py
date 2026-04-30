@@ -3,15 +3,18 @@ from typing import Any, Dict, List
 from app.services.spotify_api import add_tracks_to_playlist, create_playlist
 from app.services.spotify_common import _is_suspicious_song, build_match_cache_key
 from app.services.spotify_exceptions import SpotifyServiceError
-from app.services.spotify_matching import get_match_debug, pick_best_track_match
+from app.services.spotify_matching import explain_match_reason, get_match_debug, pick_best_track_match
 
 LOW_CONF_MIN_SCORE = 0.15
 ALLOWED_LOW_CONF_REASONS = {
-    "artist_alias_candidate",
+    "probable_match",
+    "review_needed",
     "title_matched_artist_alias_candidate",
     "artist_matched_title_mismatch",
     "top_candidate_artist_romanization_title_mismatch",
-    "title_alias_candidate",
+    "artist_matched_title_alias_candidate",
+    "version_candidate",
+    "partial_match_needs_review",
 }
 
 
@@ -33,6 +36,29 @@ def _low_confidence_skip_reason(match: Dict[str, Any]) -> str:
     return ""
 
 
+def _matching_rate_percent(matched_count: int, low_confidence_count: int, unmatched_count: int) -> float:
+    total = matched_count + low_confidence_count + unmatched_count
+    if total <= 0:
+        return 0.0
+    return round(((matched_count + low_confidence_count) / total) * 100, 1)
+
+
+def _candidate_summary(candidate: Dict[str, Any], fallback_case: str) -> Dict[str, Any]:
+    return {
+        'name': candidate.get('name', ''),
+        'artists': candidate.get('artists', []),
+        'score': candidate.get('score', 0.0),
+        'popularity': candidate.get('popularity', 0),
+        'orientation': candidate.get('orientation', 'artist_title'),
+        'chosen_case': candidate.get('chosen_case', fallback_case),
+        'match_status': candidate.get('match_status', ''),
+        'low_confidence_reason': candidate.get('low_confidence_reason', ''),
+        'unmatched_reason': candidate.get('unmatched_reason', ''),
+        'user_message': candidate.get('user_message', ''),
+        'score_detail': candidate.get('score_detail', {}),
+    }
+
+
 def create_playlist_from_songs(
     access_token: str,
     playlist_name: str,
@@ -42,13 +68,6 @@ def create_playlist_from_songs(
 ) -> Dict[str, Any]:
     if not songs:
         raise SpotifyServiceError('생성할 곡 목록이 없습니다.')
-
-    playlist = create_playlist(
-        access_token=access_token,
-        name=playlist_name,
-        description=playlist_description,
-        public=public,
-    )
 
     matched_uris: List[str] = []
     playlist_uris: List[str] = []
@@ -99,9 +118,14 @@ def create_playlist_from_songs(
 
         if not match:
             debug = get_match_debug(title, artist or '')
+            unmatched_reason = debug.get('unmatched_reason') or 'no_search_result'
             unmatched.append({
                 'song': song,
-                'reason': debug.get('unmatched_reason') or 'spotify 검색 실패 또는 저신뢰 매칭',
+                'reason': unmatched_reason,
+                'unmatched_reason': unmatched_reason,
+                'match_status': 'unmatched',
+                'score_detail': {},
+                'user_message': explain_match_reason(str(unmatched_reason).split('(', 1)[0]),
                 'search_title': debug.get('search_title', title),
                 'search_artist': debug.get('search_artist', artist or ''),
                 'chosen_case': debug.get('selected_case', song_meta['chosen_case']),
@@ -111,7 +135,7 @@ def create_playlist_from_songs(
             continue
 
         match_status = match.get('match_status', 'matched')
-        if match_status != 'matched':
+        if match_status not in {'matched', 'probable_match'}:
             low_conf_reason = match.get('low_confidence_reason', '') or match.get('reason', '')
             low_confidence_item = {
                 'input': {
@@ -119,10 +143,15 @@ def create_playlist_from_songs(
                     'title': title,
                 },
                 'matched_name': match.get('name', ''),
+                'matched_title': match.get('name', ''),
                 'matched_artists': match.get('artists', []),
                 'score': match.get('score', 0.0),
                 'match_status': match_status,
                 'reason': low_conf_reason,
+                'low_confidence_reason': low_conf_reason,
+                'unmatched_reason': match.get('unmatched_reason', ''),
+                'user_message': match.get('user_message') or explain_match_reason(low_conf_reason),
+                'score_detail': match.get('score_detail', {}),
                 'search_title': match.get('search_title', ''),
                 'search_artist': match.get('search_artist', ''),
                 'chosen_case': match.get('chosen_case', song_meta['chosen_case']),
@@ -131,16 +160,7 @@ def create_playlist_from_songs(
                 'parse_reason': song_meta['reason'],
                 'parse_score': song_meta['score'],
                 'top_candidates': [
-                    {
-                        'name': candidate['name'],
-                        'artists': candidate['artists'],
-                        'score': candidate['score'],
-                        'popularity': candidate.get('popularity', 0),
-                        'orientation': candidate['orientation'],
-                        'chosen_case': candidate.get('chosen_case', match.get('chosen_case', song_meta['chosen_case'])),
-                        'match_status': candidate.get('match_status', ''),
-                        'low_confidence_reason': candidate.get('low_confidence_reason', ''),
-                    }
+                    _candidate_summary(candidate, match.get('chosen_case', song_meta['chosen_case']))
                     for candidate in match.get('top_candidates', [])
                 ],
             }
@@ -157,6 +177,7 @@ def create_playlist_from_songs(
                     'matched_name': match.get('name', ''),
                     'score': match.get('score', 0.0),
                     'skip_reason': skip_reason,
+                    'user_message': explain_match_reason(skip_reason),
                 })
             else:
                 uri = match.get('uri')
@@ -169,9 +190,12 @@ def create_playlist_from_songs(
                         'title': title,
                     },
                     'matched_name': match.get('name', ''),
+                    'matched_title': match.get('name', ''),
                     'matched_artists': match.get('artists', []),
                     'score': match.get('score', 0.0),
                     'reason': _low_confidence_allowed_reason(match) or low_conf_reason,
+                    'low_confidence_reason': low_conf_reason,
+                    'user_message': match.get('user_message') or explain_match_reason(low_conf_reason),
                     'match_status': match_status,
                     'uri': uri,
                 })
@@ -189,8 +213,14 @@ def create_playlist_from_songs(
                 'title': title,
             },
             'matched_name': match.get('name', ''),
+            'matched_title': match.get('name', ''),
             'matched_artists': match.get('artists', []),
             'score': match.get('score', 0.0),
+            'match_status': match_status,
+            'low_confidence_reason': match.get('low_confidence_reason', ''),
+            'unmatched_reason': match.get('unmatched_reason', ''),
+            'user_message': match.get('user_message') or explain_match_reason(match_status),
+            'score_detail': match.get('score_detail', {}),
             'chosen_case': match.get('chosen_case', song_meta['chosen_case']),
             'reason': match.get('reason', ''),
             'orientation': match.get('orientation', 'title_artist'),
@@ -206,19 +236,38 @@ def create_playlist_from_songs(
             'swap_guard_applied': song_meta['swap_guard_applied'],
             'swap_guard_reason': song_meta['swap_guard_reason'],
             'top_candidates': [
-                {
-                    'name': candidate['name'],
-                    'artists': candidate['artists'],
-                    'score': candidate['score'],
-                    'popularity': candidate.get('popularity', 0),
-                    'orientation': candidate['orientation'],
-                    'chosen_case': candidate.get('chosen_case', match.get('chosen_case', song_meta['chosen_case'])),
-                    'match_status': candidate.get('match_status', ''),
-                    'low_confidence_reason': candidate.get('low_confidence_reason', ''),
-                }
+                _candidate_summary(candidate, match.get('chosen_case', song_meta['chosen_case']))
                 for candidate in match.get('top_candidates', [])
             ],
         })
+
+    matching_rate = _matching_rate_percent(len(matched_uris), len(low_confidence), len(unmatched))
+
+    if not playlist_uris:
+        return {
+            'playlist_id': None,
+            'playlist_url': None,
+            'playlist_created': False,
+            'message': 'Spotify에 추가할 수 있는 매칭 곡이 없어 플레이리스트를 생성하지 않았습니다.',
+            'matched_count': len(matched_uris),
+            'unmatched_count': len(unmatched),
+            'low_confidence_count': len(low_confidence),
+            'matching_rate': matching_rate,
+            'added_low_confidence_count': len(added_low_confidence),
+            'added_low_confidence': added_low_confidence,
+            'skipped_low_confidence_count': len(skipped_low_confidence),
+            'skipped_low_confidence': skipped_low_confidence,
+            'matched': matched_debug,
+            'low_confidence': low_confidence,
+            'unmatched': unmatched,
+        }
+
+    playlist = create_playlist(
+        access_token=access_token,
+        name=playlist_name,
+        description=playlist_description,
+        public=public,
+    )
 
     if playlist_uris:
         add_tracks_to_playlist(
@@ -230,9 +279,11 @@ def create_playlist_from_songs(
     return {
         'playlist_id': playlist['id'],
         'playlist_url': playlist['external_urls']['spotify'],
+        'playlist_created': True,
         'matched_count': len(matched_uris),
         'unmatched_count': len(unmatched),
         'low_confidence_count': len(low_confidence),
+        'matching_rate': matching_rate,
         'added_low_confidence_count': len(added_low_confidence),
         'added_low_confidence': added_low_confidence,
         'skipped_low_confidence_count': len(skipped_low_confidence),
