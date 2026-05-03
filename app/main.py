@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_allowed_frontend_origins
-from app.routers import playlist, spotify, youtube
+from app.routers import playlist, qa, spotify, youtube
 from app.services.spotify_session_service import SpotifySessionService
 from app.sessions.memory import InMemoryOAuthStateStore, InMemorySpotifyTokenStore
 
@@ -27,3 +27,4 @@ app.add_middleware(
 app.include_router(youtube.router)
 app.include_router(spotify.router)
 app.include_router(playlist.router)
+app.include_router(qa.router)

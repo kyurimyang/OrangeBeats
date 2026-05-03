@@ -1,6 +1,7 @@
-from typing import Any, Dict, List
+﻿from typing import Any, Dict, List
 
 from app.services.spotify_api import add_tracks_to_playlist, create_playlist
+from app.services.artist_aliases import apply_saved_artist_aliases
 from app.services.spotify_common import _is_suspicious_song, build_match_cache_key
 from app.services.spotify_exceptions import SpotifyServiceError
 from app.services.spotify_matching import explain_match_reason, get_match_debug, pick_best_track_match
@@ -16,6 +17,258 @@ ALLOWED_LOW_CONF_REASONS = {
     "version_candidate",
     "partial_match_needs_review",
 }
+
+
+def _confidence_label(match_status: str, score: float, has_uri: bool) -> str:
+    if not has_uri or match_status == "invalid_candidate":
+        return "failed"
+    if match_status == "review_needed":
+        return "low"
+    if match_status == "matched" or score >= 0.82:
+        return "high"
+    if match_status == "probable_match" or score >= 0.70:
+        return "mid"
+    return "low"
+
+
+def _selection_recommended(confidence_label: str) -> bool:
+    return confidence_label in {"high", "mid"}
+
+
+def _sum_values(value: Any) -> float:
+    if isinstance(value, dict):
+        return round(sum(float(item or 0.0) for item in value.values()), 4)
+    return 0.0
+
+
+def _confidence_detail(match: Dict[str, Any] | None, confidence_label: str = "failed") -> Dict[str, Any]:
+    if not match:
+        return {
+            "pattern": "failed",
+            "match_status": "unmatched",
+            "candidate_decision": "rejected",
+        }
+
+    detail = match.get("score_detail", {}) or {}
+    evidence_detail = detail.get("evidence_confidence")
+    if isinstance(evidence_detail, dict):
+        return {
+            **evidence_detail,
+            "match_status": str(match.get("match_status") or ""),
+            "api_rank": detail.get("api_rank"),
+            "query_used": detail.get("query_used", ""),
+            "query_type": detail.get("query_type", ""),
+            "query_reliability": detail.get("query_reliability", ""),
+            "search_engine_signal_applied": bool(detail.get("search_engine_signal")),
+            "rank_bonus_applied": bool(evidence_detail.get("query_evidence", {}).get("applied")),
+            "notation_difference_detected": bool(detail.get("notation_difference_detected")),
+            "notation_difference_reason": detail.get("notation_difference_reason", ""),
+            "matched_evidence": detail.get("matched_evidence", []),
+            "missing_evidence": detail.get("missing_evidence", []),
+            "blocked_reason": detail.get("blocked_reason") or detail.get("search_engine_signal_blocked_reason", ""),
+            "candidate_decision": evidence_detail.get("decision"),
+            "raw_detail": detail,
+        }
+
+    match_status = str(match.get("match_status") or detail.get("match_status") or "")
+    pattern = detail.get("pattern") or match_status or ",".join(detail.get("pattern_tags", [])[:1]) or "unknown"
+    decision = detail.get("candidate_decision")
+    if not decision:
+        if confidence_label == "failed":
+            decision = "rejected"
+        elif confidence_label == "low":
+            decision = "warning"
+        else:
+            decision = "selectable"
+
+    return {
+        "pattern": pattern,
+        "match_status": match_status,
+        "title_score": float(detail.get("title_variant_score", detail.get("title_score", 0.0)) or 0.0),
+        "artist_score": float(detail.get("artist_variant_score", detail.get("artist_score", 0.0)) or 0.0),
+        "token_score": float(detail.get("input_candidate_token_overlap", detail.get("token_score", 0.0)) or 0.0),
+        "alias_bonus": _sum_values({k: v for k, v in (detail.get("bonuses") or {}).items() if "alias" in k or "variant" in k}),
+        "exact_bonus": _sum_values({k: v for k, v in (detail.get("bonuses") or {}).items() if "exact" in k}),
+        "penalty": _sum_values(detail.get("penalties") or {}),
+        "final_score": float(detail.get("final_score", match.get("score", 0.0)) or 0.0),
+        "api_rank": detail.get("api_rank"),
+        "query_used": detail.get("query_used", ""),
+        "query_type": detail.get("query_type", ""),
+        "query_reliability": detail.get("query_reliability", ""),
+        "search_engine_signal_applied": bool(detail.get("search_engine_signal")),
+        "rank_bonus_applied": bool(detail.get("rank_bonus_applied", detail.get("search_engine_signal"))),
+        "notation_difference_detected": bool(detail.get("notation_difference_detected")),
+        "notation_difference_reason": detail.get("notation_difference_reason", ""),
+        "matched_evidence": detail.get("matched_evidence", []),
+        "missing_evidence": detail.get("missing_evidence", []),
+        "blocked_reason": detail.get("blocked_reason") or detail.get("search_engine_signal_blocked_reason", ""),
+        "candidate_decision": decision,
+        "raw_detail": detail,
+    }
+
+
+def _result_from_match(song: Dict[str, Any], match: Dict[str, Any] | None) -> Dict[str, Any]:
+    input_artist = (song.get("artist") or "").strip()
+    input_title = (song.get("title") or "").strip()
+
+    if not match:
+        debug = get_match_debug(input_title, input_artist)
+        reason = debug.get("unmatched_reason") or "no reliable Spotify match"
+        return {
+            "input_artist": input_artist,
+            "input_title": input_title,
+            "matched": False,
+            "spotify_track_id": None,
+            "spotify_uri": None,
+            "spotify_title": None,
+            "spotify_artist": None,
+            "album_image": None,
+            "confidence": 0,
+            "confidence_label": "failed",
+            "reason": explain_match_reason(str(reason).split("(", 1)[0]) or reason,
+            "confidence_detail": _confidence_detail(None),
+            "selected": False,
+            "match_status": "unmatched",
+            "top_candidates": debug.get("top_candidates", []),
+        }
+
+    score = float(match.get("score") or 0.0)
+    match_status = str(match.get("match_status") or "matched")
+    spotify_uri = match.get("uri")
+    confidence_label = _confidence_label(match_status, score, bool(spotify_uri))
+    reason = (
+        match.get("user_message")
+        or explain_match_reason(match.get("low_confidence_reason") or match.get("reason") or match_status)
+        or match.get("reason")
+        or "Spotify candidate found"
+    )
+
+    return {
+        "input_artist": input_artist,
+        "input_title": input_title,
+        "matched": bool(spotify_uri) and confidence_label != "failed",
+        "spotify_track_id": match.get("id"),
+        "spotify_uri": spotify_uri,
+        "spotify_title": match.get("name"),
+        "spotify_artist": ", ".join(match.get("artists", [])),
+        "album_image": match.get("album_image"),
+        "confidence": round(score, 4),
+        "confidence_label": confidence_label,
+        "reason": reason,
+        "confidence_detail": _confidence_detail(match, confidence_label),
+        "selected": bool(spotify_uri) and _selection_recommended(confidence_label),
+        "match_status": match_status,
+        "top_candidates": match.get("top_candidates", []),
+    }
+
+
+def analyze_spotify_candidates(
+    access_token: str,
+    songs: List[Dict[str, Any]],
+    market: str = "KR",
+    use_artist_aliases: bool = True,
+) -> List[Dict[str, Any]]:
+    results: List[Dict[str, Any]] = []
+    request_match_cache: Dict[tuple[str, str], Any] = {}
+    if use_artist_aliases:
+        apply_saved_artist_aliases()
+
+    for song in songs:
+        title = (song.get("title") or "").strip()
+        artist = (song.get("artist") or "").strip()
+        if not title:
+            results.append(_result_from_match(song, None))
+            continue
+
+        if _is_suspicious_song(song):
+            results.append(
+                {
+                    "input_artist": artist,
+                    "input_title": title,
+                    "matched": False,
+                    "spotify_track_id": None,
+                    "spotify_uri": None,
+                    "spotify_title": None,
+                    "spotify_artist": None,
+                    "album_image": None,
+                    "confidence": 0,
+                    "confidence_label": "failed",
+                    "reason": "artist/title information is not reliable enough",
+                    "selected": False,
+                    "match_status": "unmatched",
+                    "top_candidates": [],
+                }
+            )
+            continue
+
+        song_meta = {
+            "raw": song.get("raw", ""),
+            "left": song.get("left", ""),
+            "right": song.get("right", ""),
+            "swap_applied": song.get("swap_applied", False),
+            "global_direction": song.get("global_direction", "per_line"),
+            "chosen_case": song.get("chosen_case", "original"),
+            "score": song.get("score", 0.0),
+            "reason": song.get("reason", ""),
+            "swap_guard_applied": song.get("swap_guard_applied", False),
+            "swap_guard_reason": song.get("swap_guard_reason", ""),
+        }
+        cache_key = build_match_cache_key(title, artist)
+        if cache_key in request_match_cache:
+            match = request_match_cache[cache_key]
+        else:
+            match = pick_best_track_match(
+                access_token=access_token,
+                title=title,
+                artist=artist or None,
+                market=market,
+                song_meta=song_meta,
+            )
+            request_match_cache[cache_key] = match
+
+        results.append(_result_from_match(song, match))
+
+    return results
+
+
+def create_playlist_from_track_uris(
+    access_token: str,
+    playlist_name: str,
+    track_uris: List[str],
+    playlist_description: str = "",
+    public: bool = True,
+) -> Dict[str, Any]:
+    unique_uris: List[str] = []
+    seen = set()
+    for uri in track_uris:
+        normalized = (uri or "").strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        unique_uris.append(normalized)
+
+    if not unique_uris:
+        raise SpotifyServiceError("선택된 곡이 없습니다.")
+
+    playlist = create_playlist(
+        access_token=access_token,
+        name=playlist_name or "YouTube Playlist",
+        description=playlist_description,
+        public=public,
+    )
+    add_tracks_to_playlist(
+        access_token=access_token,
+        playlist_id=playlist["id"],
+        track_uris=unique_uris,
+    )
+
+    return {
+        "success": True,
+        "playlist_id": playlist["id"],
+        "playlist_url": playlist["external_urls"]["spotify"],
+        "added_count": len(unique_uris),
+        "deduped_count": len(track_uris) - len(unique_uris),
+    }
 
 
 def _low_confidence_allowed_reason(match: Dict[str, Any]) -> str:
@@ -292,3 +545,4 @@ def create_playlist_from_songs(
         'low_confidence': low_confidence,
         'unmatched': unmatched,
     }
+
