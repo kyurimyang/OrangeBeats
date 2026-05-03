@@ -87,7 +87,34 @@ ARTIST_ALIAS_MAP.update({
     "\ubc31\uc544": ["Baek A", "BAEK A"],
     "\ub85c\uaefc": ["Loco", "LOCO"],
 })
+ARTIST_ALIAS_MAP.update({
+    "\uc218\ud37c\ube44": ["SUPERBEE", "superbee"],
+    "\ud0a4\ub4dc\ubc00\ub9ac": ["Kid Milli", "kidmilli"],
+    "\uc2e4\ud0a4\ubcf4\uc774\uc988": ["SILKYBOIS", "silkybois"],
+    "\uac1c\ucf54": ["Gaeko", "gaeko"],
+    "\uc790\uc774\uc5b8\ud2f0": ["Zion.T", "ziont"],
+    "\uac78\uc2a4\ub370\uc774": ["Girl's Day", "girls day", "girlsday"],
+    "\uc628\uc564\uc624\ud504": ["ONF"],
+    "\ub370\uc774\uc2dd\uc2a4": ["DAY6", "Day6"],
+    "\ubc29\ud0c4\uc18c\ub144\ub2e8": ["BTS"],
+    "\ubbf8\ub3c4\uc640 \ud30c\ub77c\uc194": ["Mido and Falasol"],
+    "\uc625\uc0c1\ub2ec\ube5b": ["OKDAL"],
+    "\uc815\uc2b9\ud658": ["Jung Seung Hwan"],
+    "\uae40\ub3d9\ub960": ["Kim Dong Ryul"],
+    "\uc774\ucc2c\ud601": ["LEE CHANHYUK", "Lee Chanhyuk"],
+    "\ub2e4\ube44\uce58": ["DAVICHI", "Davichi"],
+    "\uc5d0\uc2a4\ud30c": ["aespa", "Aespa"],
+    "\ud601\uc624": ["HYUKOH", "Hyukoh"],
+    "\uc774\ubb34\uc9c4": ["LEE MU JIN", "Lee Mujin", "Lee Mu Jin"],
+    "\ub3c4\uc601": ["DOYOUNG", "Doyoung"],
+    "\uc720\ub2e4\ube48 \ubc34\ub4dc": ["YdBB", "Yudabinband"],
+})
 TITLE_ALIAS_MAP = dict(CORE_TITLE_ALIAS_MAP)
+TITLE_ALIAS_MAP.update({
+    "\uc591\ud654\ub300\uad50": ["Yanghwa BRDG", "yanghwa bridge", "yanghwabrdg"],
+    "\uc2e0\ud55c\uc740\ud589": ["SHINHAN BANK", "shinhan bank", "shinhanbank"],
+    "\ud654\uc7a5 \uc9c0\uc6e0\uc5b4": ["No Make Up", "nomakeup"],
+})
 
 SUSPICIOUS_KEYWORDS = {
     'karaoke', 'cover', 'tribute', 'inst', 'instrumental', 'mr', 'live', 'concert',

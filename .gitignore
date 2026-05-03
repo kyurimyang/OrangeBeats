@@ -212,3 +212,8 @@ node_modules/
 .spotify_session.json
 .spotify_rate_limit.json
 .spotify_auth_states.json
+
+# Runtime learning/cache data
+data/qa_posts.json
+data/match_overrides.json
+data/artist_aliases.json

@@ -102,3 +102,12 @@ def get_thumbnail_base64_from_youtube_url(youtube_url: str) -> str:
     image_bytes = _download_image(thumbnail_url)
     jpeg_bytes = _compress_to_spotify_jpeg(image_bytes)
     return base64.b64encode(jpeg_bytes).decode("utf-8")
+
+
+def get_thumbnail_base64_from_image_url(image_url: str) -> str:
+    image_url = (image_url or "").strip()
+    if not image_url:
+        raise YouTubeThumbnailError("thumbnail_url이 비어 있습니다.")
+    image_bytes = _download_image(image_url)
+    jpeg_bytes = _compress_to_spotify_jpeg(image_bytes)
+    return base64.b64encode(jpeg_bytes).decode("utf-8")

@@ -3,20 +3,19 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Orange Beats Minihome Lab</title>
+  <title>Orange Beats Playlist Lab</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <div class="app-shell">
     <div class="app-frame">
-      <aside class="side-column left-column">
+      <aside class="side-column">
         <section class="panel intro-panel">
           <div class="panel-tab mint-tab">MINI HOME</div>
           <div class="stamp-badge">orange beats</div>
-          <h2 class="panel-headline">YouTube to Spotify<br />테스트 미니룸</h2>
+          <h1 class="panel-headline">Orange Beats<br />Playlist Workshop</h1>
           <p class="panel-copy">
-            유튜브 링크에서 추출된 곡, Spotify 매칭 결과, 생성 상태를
-            한 번에 확인하는 디버깅 중심 테스트 보드입니다.
+            YouTube 설명란/댓글에서 곡을 추출하고 Spotify 검색 후보를 직접 확인한 뒤, 선택한 곡만 플레이리스트에 담습니다.
           </p>
           <div class="pixel-character" aria-hidden="true">
             <span class="pixel-face">♪</span>
@@ -27,216 +26,197 @@
         <section class="panel">
           <div class="panel-tab orange-tab">STATUS</div>
           <div class="mini-stat-list">
-            <div class="mini-stat">
-              <span class="mini-label">Spotify 로그인</span>
-              <strong id="loginSummaryText">확인 전</strong>
-            </div>
-            <div class="mini-stat">
-              <span class="mini-label">최근 액션</span>
-              <strong id="recentActionText">대기 중</strong>
-            </div>
-            <div class="mini-stat">
-              <span class="mini-label">최근 제목</span>
-              <strong id="recentYoutubeTitle">-</strong>
-            </div>
-            <div class="mini-stat">
-              <span class="mini-label">최근 단계</span>
-              <strong id="recentStageText">-</strong>
-            </div>
+            <div class="mini-stat"><span class="mini-label">Spotify 로그인</span><strong id="loginSummaryText">확인 중</strong></div>
+            <div class="mini-stat"><span class="mini-label">최근 액션</span><strong id="recentActionText">대기 중</strong></div>
+            <div class="mini-stat"><span class="mini-label">최근 제목</span><strong id="recentYoutubeTitle">-</strong></div>
+            <div class="mini-stat"><span class="mini-label">최근 단계</span><strong id="recentStageText">-</strong></div>
+            <div class="mini-stat"><span class="mini-label">현재 mode</span><strong id="currentModeText">text</strong></div>
           </div>
         </section>
 
         <section class="panel">
-          <div class="panel-tab mint-tab">HOW TO</div>
-          <ol class="guide-list">
-            <li>Spotify 로그인으로 토큰 상태를 먼저 확인합니다.</li>
-            <li>YouTube URL, `title_mode`, `mode`를 선택합니다.</li>
-            <li>분석 결과를 먼저 보고, 이후 플레이리스트 생성을 실행합니다.</li>
-            <li>오른쪽 패널과 하단 목록으로 실패 지점을 바로 확인합니다.</li>
-          </ol>
-        </section>
-
-        <section class="panel">
-          <div class="panel-tab orange-tab">NOTE</div>
+          <div class="panel-tab mint-tab">NOTE</div>
           <div id="noticeBoard" class="notice-box">
-            콜백 후 이 페이지로 돌아오면 로그인 상태가 자동으로 다시 확인됩니다.
+            Spotify 로그인 후 YouTube URL을 분석하면 플레이리스트가 바로 생성되지 않고, 먼저 Spotify 매칭 후보를 확인합니다.
           </div>
         </section>
       </aside>
 
       <main class="main-column">
         <section class="panel hero-panel">
-          <div class="hero-topline">CYWORLD STYLE DEBUG ROOM</div>
-          <h1 class="hero-title">Orange Beats Playlist Workshop</h1>
-          <p class="hero-copy">
-            작은 박스를 나눠 배치한 레트로 포털형 테스트 화면입니다.
-            추출 단계, 매칭 결과, Spotify 생성 상태를 한눈에 점검할 수 있습니다.
-          </p>
+          <div class="hero-topline">CANDIDATE-FIRST PLAYLIST ROOM</div>
+          <h2 class="hero-title">Orange Beats Minihome Lab</h2>
+          <p class="hero-copy">확정처럼 보이는 표현은 피하고, Spotify 검색 후보를 사람이 마지막으로 고르는 MVP 흐름입니다.</p>
         </section>
 
-        <section class="panel form-panel">
-          <div class="panel-tab mint-tab">CONTROL</div>
-          <div class="form-grid">
-            <label class="field-block" for="backendBaseUrl">
-              <span class="field-label">Backend Base URL</span>
-              <input id="backendBaseUrl" type="text" value="http://127.0.0.1:8000" placeholder="http://127.0.0.1:8000" />
-            </label>
+        <nav class="tab-nav" aria-label="화면 이동">
+          <button class="tab-button is-active" type="button" data-tab-target="runTab">실행</button>
+          <button class="tab-button" type="button" data-tab-target="summaryTab">요약</button>
+          <button class="tab-button" type="button" data-tab-target="candidatesTab">후보 선택</button>
+          <button class="tab-button" type="button" data-tab-target="qaTab">QA 게시판</button>
+          <button class="tab-button" type="button" data-tab-target="debugTab">Raw Debug</button>
+        </nav>
 
-            <label class="field-block field-wide" for="youtubeUrl">
-              <span class="field-label">YouTube URL</span>
-              <input id="youtubeUrl" type="text" placeholder="https://www.youtube.com/watch?v=..." />
-            </label>
+        <section id="runTab" class="tab-panel is-active">
+          <section class="panel form-panel">
+            <div class="panel-tab mint-tab">RUN</div>
+            <div class="form-grid">
+              <label class="field-block" for="backendBaseUrl">
+                <span class="field-label">Backend Base URL</span>
+                <input id="backendBaseUrl" type="text" value="http://127.0.0.1:8000" placeholder="http://127.0.0.1:8000" />
+              </label>
+              <label class="field-block field-wide" for="youtubeUrl">
+                <span class="field-label">YouTube URL</span>
+                <input id="youtubeUrl" type="text" placeholder="https://www.youtube.com/watch?v=..." />
+              </label>
+              <label class="field-block" for="titleMode">
+                <span class="field-label">title_mode</span>
+                <select id="titleMode">
+                  <option value="youtube">youtube</option>
+                  <option value="custom">custom</option>
+                </select>
+              </label>
+              <label class="field-block" for="mode">
+                <span class="field-label">mode</span>
+                <select id="mode">
+                  <option value="text">text</option>
+                  <option value="ocr">ocr</option>
+                  <option value="acr">acr</option>
+                </select>
+              </label>
+              <label class="field-block field-wide" for="playlistName">
+                <span class="field-label">플레이리스트명</span>
+                <input id="playlistName" type="text" placeholder="비워두면 YouTube 제목을 사용합니다" />
+              </label>
+            </div>
+            <div class="action-row">
+              <button id="spotifyLoginBtn" class="action-btn mint-btn" type="button">Spotify 로그인</button>
+              <button id="analyzeBtn" class="action-btn soft-btn" type="button">YouTube 분석 및 후보 찾기</button>
+              <button id="createPlaylistBtn" class="action-btn orange-btn" type="button">선택한 곡으로 플레이리스트 생성</button>
+            </div>
+          </section>
 
-            <label class="field-block" for="titleMode">
-              <span class="field-label">title_mode</span>
-              <select id="titleMode">
-                <option value="youtube">youtube</option>
-                <option value="custom">custom</option>
+          <section class="panel status-panel">
+            <div class="panel-tab orange-tab">RUN STATUS</div>
+            <div id="statusBox" class="status-box idle">준비 완료. Spotify 로그인 후 YouTube URL을 분석해주세요.</div>
+          </section>
+        </section>
+
+        <section id="summaryTab" class="tab-panel">
+          <section class="panel">
+            <div class="panel-tab mint-tab">SUMMARY</div>
+            <div class="summary-grid">
+              <div class="summary-chip"><span class="chip-label">success</span><strong id="summarySuccess">-</strong></div>
+              <div class="summary-chip"><span class="chip-label">message</span><strong id="summaryMessage">-</strong></div>
+              <div class="summary-chip"><span class="chip-label">mode</span><strong id="summaryMode">-</strong></div>
+              <div class="summary-chip"><span class="chip-label">youtube_title</span><strong id="summaryYoutubeTitle">-</strong></div>
+              <div class="summary-chip"><span class="chip-label">playlist_name</span><strong id="summaryPlaylistName">-</strong></div>
+              <div class="summary-chip"><span class="chip-label">selected_stage</span><strong id="infoStage">-</strong></div>
+              <div class="summary-chip"><span class="chip-label">ocr_used</span><strong id="infoOcrUsed">-</strong></div>
+              <div class="summary-chip"><span class="chip-label">acr_used</span><strong id="infoAcrUsed">-</strong></div>
+              <div class="summary-chip"><span class="chip-label">전체 추출곡 수</span><strong id="overviewExtractedCount">0</strong></div>
+              <div class="summary-chip status-success"><span class="chip-label">Spotify 매칭 후보</span><strong id="overviewMatchedCount">0</strong></div>
+              <div class="summary-chip status-warn"><span class="chip-label">확인 필요 후보</span><strong id="overviewLowConfidenceCount">0</strong></div>
+              <div class="summary-chip status-danger"><span class="chip-label">후보 없음</span><strong id="overviewUnmatchedCount">0</strong></div>
+              <div class="summary-chip"><span class="chip-label">현재 선택된 곡</span><strong id="overviewSelectedCount">0</strong></div>
+              <div class="summary-chip"><span class="chip-label">analysis_time</span><strong id="infoAnalysisElapsed">-</strong></div>
+              <div class="summary-chip"><span class="chip-label">spotify_time</span><strong id="infoSpotifyElapsed">-</strong></div>
+              <div class="summary-chip"><span class="chip-label">total_time</span><strong id="overviewTotalElapsed">-</strong></div>
+            </div>
+            <div class="playlist-link-wrap">
+              <a id="openSpotifyBtn" class="playlist-link-btn is-disabled" href="#" target="_blank" rel="noopener noreferrer" aria-disabled="true" hidden>
+                Spotify 플레이리스트 열기
+              </a>
+              <div id="playlistLinkHint" class="link-hint">아직 생성된 플레이리스트 링크가 없습니다.</div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-tab orange-tab">ERROR BOX</div>
+            <div id="errorBox" class="error-box is-empty">현재 에러가 없습니다.</div>
+          </section>
+
+          <span id="infoExtractedCount" hidden>0</span>
+          <span id="infoMatchedCount" hidden>0</span>
+          <span id="infoUnmatchedCount" hidden>0</span>
+          <span id="infoLowConfidenceCount" hidden>0</span>
+          <span id="infoMatchingRate" hidden>-</span>
+          <span id="infoTotalElapsed" hidden>-</span>
+          <span id="infoCoverStatus" hidden>-</span>
+          <span id="overviewMatchingRate" hidden>-</span>
+        </section>
+
+        <section id="candidatesTab" class="tab-panel">
+          <section class="panel">
+            <div class="panel-tab mint-tab">SPOTIFY CANDIDATES</div>
+            <div class="candidate-actions">
+              <label class="alias-toggle">
+                <input id="useArtistAliasesCheckbox" type="checkbox" checked />
+                저장된 artist alias 사용
+              </label>
+              <button id="selectAllBtn" class="filter-button" type="button">전체 선택</button>
+              <button id="clearAllBtn" class="filter-button" type="button">전체 해제</button>
+              <button id="selectRecommendedBtn" class="filter-button" type="button">추천 후보만 선택</button>
+              <button id="clearArtistAliasesBtn" class="filter-button danger-lite" type="button">artist alias 초기화</button>
+              <button id="createSelectedInlineBtn" class="action-btn orange-btn compact-action" type="button">선택한 곡으로 바로 생성</button>
+            </div>
+            <div class="candidate-summary" id="candidateSummary">분석 후 Spotify 매칭 후보가 여기에 표시됩니다.</div>
+            <div class="inline-playlist-result">
+              <a id="inlineOpenSpotifyBtn" class="playlist-link-btn is-disabled" href="#" target="_blank" rel="noopener noreferrer" aria-disabled="true" hidden>
+                Spotify 플레이리스트 열기
+              </a>
+              <span id="inlinePlaylistHint">후보를 고른 뒤 이 화면에서 바로 생성할 수 있습니다.</span>
+            </div>
+            <div id="songResultsList" class="result-list empty-state">아직 표시할 후보가 없습니다.</div>
+          </section>
+          <div class="legacy-lists" hidden>
+            <div id="songsList"></div>
+            <div id="matchedSongsList"></div>
+            <div id="lowConfidenceSongsList"></div>
+            <div id="failedSongsList"></div>
+          </div>
+        </section>
+
+        <section id="qaTab" class="tab-panel">
+          <section class="panel">
+            <div class="panel-tab mint-tab">QA WRITE</div>
+            <form id="qaForm" class="qa-form">
+              <input id="qaTitle" type="text" placeholder="제목" />
+              <input id="qaAuthor" type="text" placeholder="작성자" />
+              <select id="qaCategory">
+                <option value="question">질문</option>
+                <option value="bug">오류</option>
+                <option value="matching">매칭</option>
+                <option value="suggestion">개선 의견</option>
               </select>
-            </label>
+              <textarea id="qaContent" rows="4" placeholder="내용을 입력해주세요"></textarea>
+              <button class="action-btn mint-btn" type="submit">QA 등록</button>
+            </form>
+          </section>
 
-            <label class="field-block" for="mode">
-              <span class="field-label">mode</span>
-              <select id="mode">
-                <option value="text">text</option>
-                <option value="ocr">ocr</option>
-                <option value="acr">acr</option>
-              </select>
-            </label>
+          <section class="panel">
+            <div class="panel-tab orange-tab">QA LIST</div>
+            <button id="qaRefreshBtn" class="filter-button" type="button">목록 새로고침</button>
+            <div id="qaList" class="qa-list empty-state">등록된 QA가 없습니다.</div>
+          </section>
 
-            <label class="field-block field-wide" for="playlistName">
-              <span class="field-label">플레이리스트명</span>
-              <input id="playlistName" type="text" placeholder="예: 새벽 감성 테스트 플레이리스트" />
-            </label>
-          </div>
-
-          <div class="action-row">
-            <button id="spotifyLoginBtn" class="action-btn mint-btn" type="button">Spotify 로그인</button>
-            <button id="analyzeBtn" class="action-btn soft-btn" type="button">YouTube 분석</button>
-            <button id="createPlaylistBtn" class="action-btn orange-btn" type="button">플레이리스트 생성</button>
-          </div>
+          <section class="panel">
+            <div class="panel-tab mint-tab">QA DETAIL</div>
+            <div id="qaDetail" class="qa-detail empty-state">QA 목록에서 글을 선택해주세요.</div>
+          </section>
         </section>
 
-        <section class="panel status-panel">
-          <div class="panel-tab orange-tab">RUN STATUS</div>
-          <div id="statusBox" class="status-box idle">준비 완료. Spotify 로그인 후 테스트를 시작해 주세요.</div>
-          <div class="summary-strip">
-            <div class="summary-chip">
-              <span class="chip-label">success</span>
-              <strong id="summarySuccess">-</strong>
-            </div>
-            <div class="summary-chip">
-              <span class="chip-label">message</span>
-              <strong id="summaryMessage">-</strong>
-            </div>
-            <div class="summary-chip">
-              <span class="chip-label">youtube_title</span>
-              <strong id="summaryYoutubeTitle">-</strong>
-            </div>
-            <div class="summary-chip">
-              <span class="chip-label">playlist_name</span>
-              <strong id="summaryPlaylistName">-</strong>
-            </div>
-          </div>
-        </section>
-
-        <section class="panel result-overview">
-          <div class="panel-tab mint-tab">OVERVIEW</div>
-          <div class="overview-grid">
-            <div class="overview-card mint-card">
-              <span class="overview-label">추출 곡 수</span>
-              <strong id="overviewExtractedCount">0</strong>
-            </div>
-            <div class="overview-card orange-card">
-              <span class="overview-label">매칭 성공</span>
-              <strong id="overviewMatchedCount">0</strong>
-            </div>
-            <div class="overview-card orange-card">
-              <span class="overview-label">매칭 실패</span>
-              <strong id="overviewUnmatchedCount">0</strong>
-            </div>
-            <div class="overview-card mint-card">
-              <span class="overview-label">저신뢰 곡 수</span>
-              <strong id="overviewLowConfidenceCount">0</strong>
-            </div>
-            <div class="overview-card mint-card">
-              <span class="overview-label">매칭률</span>
-              <strong id="overviewMatchingRate">-</strong>
-            </div>
-            <div class="overview-card orange-card">
-              <span class="overview-label">전체 소요 시간</span>
-              <strong id="overviewTotalElapsed">-</strong>
-            </div>
-          </div>
+        <section id="debugTab" class="tab-panel">
+          <section class="panel debug-panel">
+            <div class="panel-tab orange-tab">RAW DEBUG</div>
+            <div id="debugHighlights" class="debug-highlight-list empty-state">아직 디버그 정보가 없습니다.</div>
+            <details class="raw-json-details" open>
+              <summary>raw response JSON</summary>
+              <pre id="resultBox">아직 결과가 없습니다.</pre>
+            </details>
+          </section>
         </section>
       </main>
-
-      <aside class="side-column right-column">
-        <section class="panel">
-          <div class="panel-tab orange-tab">SPOTIFY</div>
-          <a
-            id="openSpotifyBtn"
-            class="playlist-link-btn is-disabled"
-            href="#"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-disabled="true"
-            hidden
-          >
-            스포티파이에서 플레이리스트 확인하기
-          </a>
-          <div id="playlistLinkHint" class="link-hint">아직 생성된 플레이리스트 링크가 없습니다.</div>
-        </section>
-
-        <section class="panel">
-          <div class="panel-tab mint-tab">QUICK INFO</div>
-          <div class="info-table">
-            <div class="info-row"><span>selected_stage</span><strong id="infoStage">-</strong></div>
-            <div class="info-row"><span>ocr_used</span><strong id="infoOcrUsed">-</strong></div>
-            <div class="info-row"><span>extracted_count</span><strong id="infoExtractedCount">0</strong></div>
-            <div class="info-row"><span>matched_count</span><strong id="infoMatchedCount">0</strong></div>
-            <div class="info-row"><span>unmatched_count</span><strong id="infoUnmatchedCount">0</strong></div>
-            <div class="info-row"><span>low_confidence_count</span><strong id="infoLowConfidenceCount">0</strong></div>
-            <div class="info-row"><span>matching_rate</span><strong id="infoMatchingRate">-</strong></div>
-            <div class="info-row"><span>analysis_time</span><strong id="infoAnalysisElapsed">-</strong></div>
-            <div class="info-row"><span>spotify_time</span><strong id="infoSpotifyElapsed">-</strong></div>
-            <div class="info-row"><span>total_time</span><strong id="infoTotalElapsed">-</strong></div>
-            <div class="info-row"><span>cover_upload_status</span><strong id="infoCoverStatus">-</strong></div>
-          </div>
-        </section>
-
-        <section class="panel">
-          <div class="panel-tab orange-tab">ERROR BOX</div>
-          <div id="errorBox" class="error-box is-empty">현재 에러가 없습니다.</div>
-        </section>
-      </aside>
-
-      <section class="results-row">
-        <section class="panel result-panel">
-          <div class="panel-tab mint-tab">EXTRACTED SONGS</div>
-          <div id="songsList" class="result-list empty-state">아직 추출된 곡이 없습니다.</div>
-        </section>
-
-        <section class="panel result-panel">
-          <div class="panel-tab mint-tab">MATCHED</div>
-          <div id="matchedSongsList" class="result-list empty-state">매칭 성공 곡이 여기에 표시됩니다.</div>
-        </section>
-
-        <section class="panel result-panel">
-          <div class="panel-tab orange-tab">LOW CONFIDENCE</div>
-          <div id="lowConfidenceSongsList" class="result-list empty-state">저신뢰 곡이 여기에 표시됩니다.</div>
-        </section>
-
-        <section class="panel result-panel">
-          <div class="panel-tab orange-tab">UNMATCHED</div>
-          <div id="failedSongsList" class="result-list empty-state">매칭 실패 곡이 여기에 표시됩니다.</div>
-        </section>
-
-        <section class="panel debug-panel">
-          <div class="panel-tab mint-tab">RAW RESPONSE</div>
-          <pre id="resultBox">아직 결과가 없습니다.</pre>
-        </section>
-      </section>
     </div>
   </div>
 

@@ -36,6 +36,7 @@ SPOTIFY_SESSION_COOKIE_SECURE = os.getenv("SPOTIFY_SESSION_COOKIE_SECURE", "").s
 ACRCLOUD_HOST = os.getenv("ACRCLOUD_HOST", "").strip()
 ACRCLOUD_ACCESS_KEY = os.getenv("ACRCLOUD_ACCESS_KEY", "").strip()
 ACRCLOUD_ACCESS_SECRET = os.getenv("ACRCLOUD_ACCESS_SECRET", "").strip()
+ADMIN_KEY = os.getenv("ADMIN_KEY", "").strip()
 
 
 def _normalize_origin(origin: str | None) -> str:
