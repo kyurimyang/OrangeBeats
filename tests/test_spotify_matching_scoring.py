@@ -1,7 +1,7 @@
 import unittest
 
 from app.services.spotify_common import compute_match_score
-from app.services.spotify_matching import _classify_candidate, _score_tracks, _track_dedupe_key
+from app.services.spotify_matching import _build_case_queries, _classify_candidate, _score_tracks, _track_dedupe_key
 
 
 def track(name, artists, popularity=50, album_images=None, duration_ms=None):
@@ -35,6 +35,30 @@ def fallback_source(track_obj, title, artist):
 
 
 class SpotifyMatchingScoringTests(unittest.TestCase):
+    def test_search_queries_follow_spotify_search_api_shape(self):
+        queries = _build_case_queries("Ditto", "NewJeans")
+
+        self.assertEqual(
+            [query["query"] for query in queries],
+            ['track:"Ditto" artist:"NewJeans"', "Ditto NewJeans", "Ditto"],
+        )
+        self.assertLessEqual(len(queries), 3)
+
+    def test_tracks_are_deduped_by_track_id(self):
+        first = track("Song", ["Artist"], popularity=10)
+        duplicate = track("Song", ["Artist"], popularity=90)
+        duplicate["id"] = first["id"]
+
+        scored = _score_tracks(
+            [first, duplicate],
+            primary_source(first, "Song", "Artist"),
+            input_title="Song",
+            input_artist="Artist",
+            chosen_case="original",
+        )
+
+        self.assertEqual(len(scored), 1)
+
     def test_exact_match_is_high_confidence(self):
         score, detail = compute_match_score("The Last", "Yoon Sang", track("The Last", ["Yoon Sang"]))
 
@@ -209,7 +233,7 @@ class SpotifyMatchingScoringTests(unittest.TestCase):
         self.assertTrue(scored[0]["score_detail"]["title_alias_matched"])
         self.assertTrue(scored[0]["score_detail"]["artist_alias_matched"])
 
-    def test_rank1_high_query_without_evidence_is_invalid_candidate(self):
+    def test_rank1_high_query_without_metadata_is_kept_for_review(self):
         candidate = track("Coming Of Age Story", ["Unknown Romanized Artist"])
         scored = _score_tracks(
             [candidate],
@@ -223,9 +247,9 @@ class SpotifyMatchingScoringTests(unittest.TestCase):
         self.assertEqual(detail["query_reliability"], "high")
         self.assertFalse(detail["notation_difference_detected"])
         self.assertFalse(detail["search_engine_signal"])
-        self.assertEqual(detail["pattern"], "invalid_candidate")
-        self.assertEqual(detail["candidate_decision"], "rejected")
-        self.assertEqual(_classify_candidate(scored[0], has_artist=True, input_artist="\uac00\uc218"), "invalid_candidate")
+        self.assertEqual(detail["applied_pattern"], "SEARCH_RANK1_REVIEW")
+        self.assertEqual(detail["candidate_decision"], "warning")
+        self.assertEqual(_classify_candidate(scored[0], has_artist=True, input_artist="\uac00\uc218"), "review_needed")
 
     def test_rank1_high_query_artist_alias_promotes_to_probable_or_better(self):
         candidate = track("TIME CAPSULE", ["DAVICHI"])
@@ -241,7 +265,8 @@ class SpotifyMatchingScoringTests(unittest.TestCase):
         self.assertEqual(detail["query_reliability"], "high")
         self.assertTrue(detail["artist_alias_matched"])
         self.assertTrue(detail["search_engine_signal"])
-        self.assertIn(_classify_candidate(scored[0], has_artist=True, input_artist="\ub2e4\ube44\uce58"), {"matched", "probable_match"})
+        self.assertEqual(_classify_candidate(scored[0], has_artist=True, input_artist="\ub2e4\ube44\uce58"), "review_needed")
+        self.assertEqual(detail["applied_pattern"], "ARTIST_STRONG_TITLE_WEAK")
 
     def test_korean_title_english_spotify_metadata_promotes_to_mid_not_high_without_title_alias(self):
         candidate = track(
@@ -265,11 +290,62 @@ class SpotifyMatchingScoringTests(unittest.TestCase):
         self.assertGreaterEqual(scored[0]["score"], 0.55)
         self.assertEqual(
             _classify_candidate(scored[0], has_artist=True, input_artist="\uae40\ub3d9\ub960"),
-            "probable_match",
+            "review_needed",
         )
         self.assertFalse(detail["title_alias_matched"])
-        self.assertEqual(detail["evidence_confidence"]["pattern"], "official_metadata_candidate")
-        self.assertEqual(detail["evidence_confidence"]["decision"], "confirm_before_select")
+        self.assertEqual(detail["applied_pattern"], "ARTIST_STRONG_TITLE_WEAK")
+        self.assertEqual(detail["evidence_confidence"]["decision"], "warning")
+
+    def test_pattern_b_keeps_korean_title_english_spotify_title_for_review(self):
+        cases = [
+            ("\uc785\ucd98", "\ud55c\ub85c\ub85c", "Let Me Love My Youth", "HANRORO"),
+            ("\uc815\ub958\uc7a5", "\ud55c\ub85c\ub85c", "The last stop of our pain", "HANRORO"),
+            ("\ud53c\uc640 \uac08\uc99d", "\uac80\uc815\uce58\ub9c8", "Blood and thirst", "The Black Skirts"),
+        ]
+
+        for input_title, input_artist, spotify_title, spotify_artist in cases:
+            with self.subTest(input_title=input_title):
+                candidate = track(
+                    spotify_title,
+                    [spotify_artist],
+                    popularity=45,
+                    album_images=[{"url": "https://example.test/album.jpg"}],
+                )
+                scored = _score_tracks(
+                    [candidate],
+                    primary_source(candidate, input_title, input_artist),
+                    input_title=input_title,
+                    input_artist=input_artist,
+                    chosen_case="original",
+                )
+
+                detail = scored[0]["score_detail"]
+                self.assertEqual(scored[0]["match_status"], "review_needed")
+                self.assertEqual(detail["applied_pattern"], "ARTIST_STRONG_TITLE_WEAK")
+                self.assertTrue(detail["translated_title_candidate"])
+                self.assertTrue(detail["official_metadata_candidate"])
+                self.assertGreaterEqual(scored[0]["score"], 0.55)
+                self.assertLessEqual(scored[0]["score"], 0.68)
+
+    def test_exact_title_with_official_metadata_artist_is_high_confidence(self):
+        candidate = track(
+            "0+0",
+            ["HANRORO"],
+            popularity=60,
+            album_images=[{"url": "https://example.test/album.jpg"}],
+        )
+        scored = _score_tracks(
+            [candidate],
+            primary_source(candidate, "0+0", "\ud55c\ub85c\ub85c"),
+            input_title="0+0",
+            input_artist="\ud55c\ub85c\ub85c",
+            chosen_case="original",
+        )
+
+        detail = scored[0]["score_detail"]
+        self.assertEqual(detail["applied_pattern"], "EXACT_MATCH")
+        self.assertEqual(scored[0]["match_status"], "matched")
+        self.assertGreaterEqual(scored[0]["score"], 0.85)
 
     def test_karaoke_rank1_blocks_search_engine_signal(self):
         candidate = track("The Last Karaoke", ["KY Noraebang"])

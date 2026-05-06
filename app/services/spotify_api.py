@@ -41,16 +41,14 @@ def search_tracks_query(
     access_token: str,
     query: str,
     market: Optional[str] = None,
-    limit: int = 3,
+    limit: int = 5,
 ) -> List[Dict[str, Any]]:
     query = (query or '').strip()
     if not query:
         return []
 
-    limit = max(1, min(int(limit), 10))
-    params = {'q': query, 'type': 'track', 'limit': limit}
-    if market:
-        params['market'] = market
+    limit = max(1, min(int(limit), 5))
+    params = {'q': query, 'type': 'track', 'market': market or 'KR', 'limit': limit}
 
     url = f'{SPOTIFY_API_BASE}/search'
     resp = spotify_request('GET', url, access_token=access_token, params=params)
@@ -66,9 +64,9 @@ def search_track(
     title: str,
     artist: Optional[str] = None,
     market: Optional[str] = None,
-    limit: int = 3,
+    limit: int = 5,
 ) -> List[Dict[str, Any]]:
-    limit = max(1, min(int(limit), 10))
+    limit = max(1, min(int(limit), 5))
     query_parts = []
     if title:
         query_parts.append(f'track:"{title}"')
