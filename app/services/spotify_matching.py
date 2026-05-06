@@ -32,8 +32,8 @@ MIN_ARTIST_SCORE = 0.45
 EXACT_ARTIST_SCORE = 0.999
 EXACT_ARTIST_MIN_TITLE_SCORE = 0.50
 MAX_CACHE_SIZE = 300
-SEARCH_LIMIT = 3
-MAX_QUERY_COUNT = 2
+SEARCH_LIMIT = 5
+MAX_QUERY_COUNT = 3
 SWAP_GUARD_MARGIN = 0.05
 
 # Candidate classification thresholds. These do not trigger extra Spotify requests.
@@ -145,6 +145,8 @@ def _candidate_to_result(
         "duration_ms": track.get("duration_ms"),
         "popularity": int(track.get("popularity") or 0),
         "score": score,
+        "status": "",
+        "reason": [],
         "score_detail": detail,
         "orientation": "title_artist" if chosen_case == "swapped" else "artist_title",
         "chosen_case": chosen_case,
@@ -167,6 +169,9 @@ def _candidate_score_log(candidate: Dict[str, Any]) -> str:
         f"base={base_score:.2f} "
         f"title={float(detail.get('title_score', 0.0)):.2f} "
         f"artist={float(detail.get('artist_score', 0.0)):.2f} "
+        f"rank={float(detail.get('spotify_rank_score', 0.0)):.2f} "
+        f"album={float(detail.get('album_score', 0.0)):.2f} "
+        f"popularity={float(detail.get('popularity_score', 0.0)):.2f} "
         f"token={float(detail.get('token_score', 0.0)):.2f} "
         f"patterns={detail.get('pattern_tags', [])} "
         f"bonuses={detail.get('bonuses', dict())} "
@@ -720,7 +725,7 @@ def _mark_invalid_candidate(
     return invalid
 
 
-def _evidence_score_detail(candidate: Dict[str, Any]) -> Dict[str, Any]:
+def _legacy_evidence_score_detail(candidate: Dict[str, Any]) -> Dict[str, Any]:
     detail = candidate.get("score_detail", {}) or {}
     pattern_tags = set(detail.get("pattern_tags", []))
     title_score = float(detail.get("title_variant_score", detail.get("title_score", 0.0)) or 0.0)
@@ -897,18 +902,345 @@ def _evidence_score_detail(candidate: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _spotify_rank_score(api_rank: int) -> float:
+    if api_rank <= 0 or api_rank > SEARCH_LIMIT:
+        return 0.0
+    return round((SEARCH_LIMIT - api_rank + 1) / SEARCH_LIMIT, 4)
+
+
+def _album_similarity_score(candidate: Dict[str, Any], detail: Dict[str, Any]) -> float:
+    album_name = str(candidate.get("album") or "")
+    if not album_name:
+        return 0.0
+    input_variants = [str(value) for value in detail.get("input_title_variants", []) if value]
+    if not input_variants:
+        input_variants = [str(candidate.get("search_title") or "")]
+    album_variants = _build_title_compare_variants(album_name)
+    score, _input, _album, _exact = _best_variant_similarity(input_variants, album_variants)
+    return round(score, 4)
+
+
+def _evidence_type(score: float, *, alias: bool = False, romanization: bool = False, official_metadata: bool = False) -> str:
+    if alias:
+        return "alias"
+    if romanization:
+        return "romanization"
+    if official_metadata:
+        return "translation_alias"
+    if score >= 0.95:
+        return "exact"
+    if score >= 0.55:
+        return "partial"
+    return "mismatch"
+
+
+def _build_score_reasons(
+    *,
+    title_score: float,
+    artist_score: float,
+    api_rank: int,
+    album_score: float,
+    popularity_score: float,
+    pattern: str,
+    penalty_reasons: List[str],
+) -> List[str]:
+    reasons = [
+        f"artist_similarity={artist_score:.4f} weighted=45%",
+        f"title_similarity={title_score:.4f} weighted=30%",
+        f"spotify_search_rank={api_rank} weighted=15%",
+        f"album_similarity={album_score:.4f} weighted=5%",
+        f"popularity={popularity_score:.4f} weighted=5%",
+    ]
+    if pattern == "rank1_artist_strong_title_mismatch":
+        reasons.append("artist strongly matched and Spotify rank is 1, kept as low_confidence despite title mismatch")
+    reasons.extend(penalty_reasons)
+    return reasons
+
+
+def _query_title_artist_present(query_used: str, input_title: str, input_artist: str) -> bool:
+    return _query_contains_title_and_artist(query_used, input_title, input_artist)
+
+
+def _collect_candidate_evidence(candidate: Dict[str, Any]) -> Dict[str, Any]:
+    detail = candidate.get("score_detail", {}) or {}
+    api_rank = int(detail.get("api_rank", 999) or 999)
+    query_used = str(detail.get("query_used") or "")
+    query_reliability = str(detail.get("query_reliability") or "low")
+    input_title = str(candidate.get("search_title") or "")
+    input_artist = str(candidate.get("search_artist") or "")
+    candidate_title = str(candidate.get("name") or "")
+    candidate_artists = [str(artist) for artist in candidate.get("artists", []) if artist]
+    title_similarity = float(detail.get("title_variant_score", detail.get("title_score", 0.0)) or 0.0)
+    artist_similarity = float(detail.get("artist_variant_score", detail.get("artist_score", 0.0)) or 0.0)
+    artist_alias_matched = bool(detail.get("artist_alias_matched"))
+    token_overlap = float(detail.get("input_candidate_token_overlap", detail.get("token_score", 0.0)) or 0.0)
+    album_image_exists = bool(candidate.get("album_image"))
+    popularity = int(candidate.get("popularity") or 0)
+    isrc = str((candidate.get("external_ids") or {}).get("isrc") or "")
+    query_contains_title_and_artist = _query_title_artist_present(query_used, input_title, input_artist)
+    korean_to_english_metadata = (
+        (_has_korean(input_title) or _has_korean(input_artist))
+        and (_has_english(candidate_title) or any(_has_english(artist) for artist in candidate_artists))
+    )
+    official_metadata_signal = (
+        api_rank == 1
+        and query_reliability == "high"
+        and query_contains_title_and_artist
+        and bool(candidate_artists)
+        and korean_to_english_metadata
+        and album_image_exists
+    )
+    artist_strong = (
+        artist_similarity >= 0.8
+        or artist_alias_matched
+        or bool(detail.get("romanization_matched"))
+        or official_metadata_signal
+    )
+    return {
+        "api_rank": api_rank,
+        "query_used": query_used,
+        "query_reliability": query_reliability,
+        "query_contains_title_and_artist": query_contains_title_and_artist,
+        "title_similarity": round(title_similarity, 4),
+        "artist_similarity": round(artist_similarity, 4),
+        "artist_alias_matched": artist_alias_matched,
+        "artist_strong": artist_strong,
+        "token_overlap": round(token_overlap, 4),
+        "album_image_exists": album_image_exists,
+        "album_similarity": _album_similarity_score(candidate, detail),
+        "popularity": popularity,
+        "popularity_score": round(min(max(popularity, 0), 100) / 100.0, 4),
+        "isrc_match": bool(isrc),
+        "isrc": isrc,
+        "official_metadata_signal": official_metadata_signal,
+        "korean_to_english_metadata": korean_to_english_metadata,
+    }
+
+
+def _classify_evidence_pattern(evidence: Dict[str, Any]) -> Dict[str, Any]:
+    api_rank = int(evidence["api_rank"])
+    title_similarity = float(evidence["title_similarity"])
+    artist_similarity = float(evidence["artist_similarity"])
+    artist_alias_matched = bool(evidence["artist_alias_matched"])
+    artist_strong = bool(evidence["artist_strong"])
+    high_query = evidence["query_reliability"] == "high"
+    rank1 = api_rank == 1
+    album_image_exists = bool(evidence["album_image_exists"])
+    query_has_both = bool(evidence["query_contains_title_and_artist"])
+
+    if title_similarity >= 0.9 and (artist_similarity >= 0.8 or artist_alias_matched or artist_strong):
+        return {
+            "applied_pattern": "EXACT_MATCH",
+            "match_status": "matched",
+            "decision": "auto_select_recommended",
+            "final_score": max(0.85, min(1.0, 0.85 + title_similarity * 0.08 + min(artist_similarity, 1.0) * 0.07)),
+            "translated_title_candidate": False,
+            "reason": ["title and artist evidence are both strong"],
+        }
+
+    if artist_strong and title_similarity < 0.3 and rank1 and high_query:
+        return {
+            "applied_pattern": "ARTIST_STRONG_TITLE_WEAK",
+            "match_status": "review_needed",
+            "decision": "warning",
+            "final_score": 0.64 if album_image_exists else 0.58,
+            "translated_title_candidate": True,
+            "reason": ["artist evidence is strong, title is weak, rank1 high-reliability query suggests translated title metadata"],
+        }
+
+    if rank1 and query_has_both and high_query and album_image_exists:
+        return {
+            "applied_pattern": "SEARCH_ENGINE_CONFIDENT",
+            "match_status": "review_needed",
+            "decision": "warning",
+            "final_score": 0.62,
+            "translated_title_candidate": bool(evidence["korean_to_english_metadata"] and title_similarity < 0.55),
+            "reason": ["rank1 high-reliability query with official-looking metadata"],
+        }
+
+    if title_similarity >= 0.8 and artist_similarity < 0.3 and not artist_alias_matched:
+        return {
+            "applied_pattern": "TITLE_ONLY_MATCH",
+            "match_status": "review_needed",
+            "decision": "warning",
+            "final_score": 0.5,
+            "translated_title_candidate": False,
+            "reason": ["title matched but artist evidence weak"],
+        }
+
+    if artist_strong and title_similarity < 0.3 and api_rank >= 2:
+        return {
+            "applied_pattern": "ARTIST_ONLY_MATCH",
+            "match_status": "low_confidence",
+            "decision": "warning",
+            "final_score": 0.52 if album_image_exists else 0.45,
+            "translated_title_candidate": bool(evidence["korean_to_english_metadata"]),
+            "reason": ["artist evidence is strong but title evidence is weak outside rank1"],
+        }
+
+    if title_similarity < 0.2 and artist_similarity < 0.2 and not artist_alias_matched and api_rank >= 2:
+        return {
+            "applied_pattern": "INVALID",
+            "match_status": "invalid_candidate",
+            "decision": "rejected",
+            "final_score": 0.0,
+            "translated_title_candidate": False,
+            "reason": ["title, artist, and query evidence are all weak"],
+        }
+
+    if rank1:
+        return {
+            "applied_pattern": "SEARCH_RANK1_REVIEW",
+            "match_status": "review_needed",
+            "decision": "warning",
+            "final_score": max(0.4, min(0.6, 0.35 + float(evidence["title_similarity"]) * 0.15 + float(evidence["artist_similarity"]) * 0.20)),
+            "translated_title_candidate": bool(evidence["korean_to_english_metadata"] and title_similarity < 0.55),
+            "reason": ["rank1 candidate retained for review"],
+        }
+
+    return {
+        "applied_pattern": "WEAK_EVIDENCE_REVIEW",
+        "match_status": "review_needed",
+        "decision": "warning",
+        "final_score": max(0.2, min(0.55, title_similarity * 0.25 + artist_similarity * 0.25 + float(evidence["token_overlap"]) * 0.10)),
+        "translated_title_candidate": False,
+        "reason": ["candidate has partial evidence and needs review"],
+    }
+
+
+def _evidence_score_detail(candidate: Dict[str, Any]) -> Dict[str, Any]:
+    detail = candidate.get("score_detail", {}) or {}
+    evidence = _collect_candidate_evidence(candidate)
+    pattern_result = _classify_evidence_pattern(evidence)
+    title_score = float(evidence["title_similarity"])
+    artist_score = float(evidence["artist_similarity"])
+    rank_score = _spotify_rank_score(int(evidence["api_rank"]))
+    album_score = float(evidence["album_similarity"])
+    popularity_score = float(evidence["popularity_score"])
+    title_type = _evidence_type(title_score, official_metadata=bool(evidence["translated_title_candidate"]) if "translated_title_candidate" in evidence else False)
+    artist_type = _evidence_type(
+        artist_score,
+        alias=bool(evidence["artist_alias_matched"]),
+        romanization=bool(detail.get("romanization_matched") or evidence["official_metadata_signal"]),
+    )
+    title_evidence = {
+        "type": title_type,
+        "score": round(title_score * 0.30, 4),
+        "reason": "title evidence collected before pattern classification",
+    }
+    artist_evidence = {
+        "type": artist_type,
+        "score": round(artist_score * 0.45, 4),
+        "reason": "artist evidence collected before pattern classification",
+    }
+    query_evidence = {
+        "type": "spotify_search_rank",
+        "score": round(rank_score * 0.15, 4),
+        "reason": f"Spotify search rank {evidence['api_rank']}",
+        "applied": int(evidence["api_rank"]) <= SEARCH_LIMIT,
+    }
+    metadata_evidence = {
+        "album": candidate.get("album", ""),
+        "album_similarity": round(album_score, 4),
+        "album_score": round(album_score * 0.05, 4),
+        "album_image_exists": bool(evidence["album_image_exists"]),
+        "popularity": int(evidence["popularity"]),
+        "popularity_score": round(popularity_score * 0.05, 4),
+        "isrc_match": bool(evidence["isrc_match"]),
+        "isrc": evidence["isrc"],
+        "score": round(album_score * 0.05 + popularity_score * 0.05, 4),
+    }
+
+    penalty_reasons: List[str] = []
+    penalty_score = 0.0
+    pattern_tags = set(detail.get("pattern_tags", []))
+    if "non_original_audio_pattern" in pattern_tags:
+        penalty_score += 0.35
+        penalty_reasons.append("non_original_audio")
+    if "short_title_false_positive_pattern" in pattern_tags:
+        penalty_score += 0.20
+        penalty_reasons.append("short_title_false_positive")
+    applied_pattern = str(pattern_result["applied_pattern"])
+    translated_pattern = applied_pattern in {"ARTIST_STRONG_TITLE_WEAK", "SEARCH_ENGINE_CONFIDENT"}
+    if "title_only_overconfidence_pattern" in pattern_tags and not translated_pattern:
+        penalty_score += 0.12
+        penalty_reasons.append("title_only_overconfidence")
+    if "artist_only_overconfidence_pattern" in pattern_tags and not translated_pattern:
+        penalty_score += 0.12
+        penalty_reasons.append("artist_only_overconfidence")
+
+    final_score = max(0.0, round(float(pattern_result["final_score"]) - penalty_score, 4))
+    if applied_pattern == "EXACT_MATCH":
+        final_score = max(final_score, 0.85)
+    if applied_pattern == "INVALID":
+        final_score = 0.0
+
+    return {
+        "title_evidence": title_evidence,
+        "artist_evidence": artist_evidence,
+        "query_evidence": query_evidence,
+        "metadata_evidence": metadata_evidence,
+        "risk_penalty": {"score": round(penalty_score, 4), "reasons": penalty_reasons},
+        "pattern": pattern_result["applied_pattern"],
+        "applied_pattern": pattern_result["applied_pattern"],
+        "match_status": pattern_result["match_status"],
+        "score_cap": 1.0,
+        "final_score": final_score,
+        "decision": pattern_result["decision"],
+        "translated_title_candidate": bool(pattern_result["translated_title_candidate"]),
+        "official_metadata_candidate": bool(evidence["official_metadata_signal"]),
+        "search_engine_signal_reason": ",".join(pattern_result["reason"]),
+        "evidence_detail": evidence,
+        "reason": pattern_result["reason"] + _build_score_reasons(
+            title_score=title_score,
+            artist_score=artist_score,
+            api_rank=int(evidence["api_rank"]),
+            album_score=album_score,
+            popularity_score=popularity_score,
+            pattern=pattern_result["applied_pattern"],
+            penalty_reasons=penalty_reasons,
+        ),
+    }
+
+
 def _apply_evidence_score(candidate: Dict[str, Any]) -> Dict[str, Any]:
     evidence_detail = _evidence_score_detail(candidate)
     enriched = dict(candidate)
     score_detail = dict(enriched.get("score_detail", {}))
     score_detail["evidence_confidence"] = evidence_detail
+    score_detail["evidence_detail"] = evidence_detail.get("evidence_detail", {})
     score_detail["pattern"] = evidence_detail["pattern"]
+    score_detail["applied_pattern"] = evidence_detail["applied_pattern"]
+    score_detail["match_status"] = evidence_detail["match_status"]
     score_detail["score_cap"] = evidence_detail["score_cap"]
     score_detail["final_score"] = evidence_detail["final_score"]
     score_detail["candidate_decision"] = evidence_detail["decision"]
+    score_detail["translated_title_candidate"] = bool(evidence_detail.get("translated_title_candidate"))
+    score_detail["official_metadata_candidate"] = bool(
+        evidence_detail.get("official_metadata_candidate")
+        or score_detail.get("official_metadata_candidate")
+    )
+    score_detail["search_engine_signal_reason"] = (
+        evidence_detail.get("search_engine_signal_reason")
+        or score_detail.get("search_engine_signal_reason", "")
+    )
+    if evidence_detail["applied_pattern"] != "INVALID":
+        score_detail["pattern_tags"] = [
+            tag for tag in score_detail.get("pattern_tags", []) if tag != "invalid_candidate"
+        ]
     score_detail["rank_bonus_applied"] = bool(evidence_detail["query_evidence"]["applied"])
+    score_detail["spotify_rank_score"] = float(evidence_detail["query_evidence"].get("score", 0.0))
+    score_detail["album_score"] = float(evidence_detail["metadata_evidence"].get("album_similarity", 0.0))
+    score_detail["popularity_score"] = float(evidence_detail["metadata_evidence"].get("popularity", 0)) / 100.0
     enriched["score_detail"] = score_detail
     enriched["score"] = evidence_detail["final_score"]
+    enriched["final_score"] = evidence_detail["final_score"]
+    enriched["applied_pattern"] = evidence_detail["applied_pattern"]
+    enriched["match_status"] = evidence_detail["match_status"]
+    enriched["matched"] = evidence_detail["match_status"] in {"matched", "review_needed", "low_confidence", "probable_match"}
+    enriched["translated_title_candidate"] = bool(evidence_detail.get("translated_title_candidate"))
+    enriched["official_metadata_candidate"] = bool(score_detail.get("official_metadata_candidate"))
+    enriched["reason"] = list(evidence_detail.get("reason", []))
     return enriched
 
 
@@ -1237,13 +1569,7 @@ def _log_match(
 
 
 def _track_dedupe_key(track: Dict[str, Any]) -> Tuple[Any, ...]:
-    artists = tuple((artist or {}).get("name", "") for artist in track.get("artists", []))
-    return (
-        track.get("id") or "",
-        track.get("uri") or "",
-        track.get("name", ""),
-        artists,
-    )
+    return (track.get("id") or track.get("uri") or "",)
 
 
 def _build_case_queries(title: str, artist: str) -> List[Dict[str, str]]:
@@ -1275,15 +1601,6 @@ def _build_case_queries(title: str, artist: str) -> List[Dict[str, str]]:
                 "query": f'track:"{primary_title}" artist:"{primary_artist}"',
             }
         )
-    elif primary_title:
-        queries.append(
-            {
-                "mode": "track_only",
-                "title": primary_title,
-                "artist": "",
-                "query": f'track:"{primary_title}"',
-            }
-        )
 
     fallback_query = " ".join(part for part in [primary_title, primary_artist] if part).strip()
     if fallback_query and len(queries) < MAX_QUERY_COUNT:
@@ -1296,6 +1613,16 @@ def _build_case_queries(title: str, artist: str) -> List[Dict[str, str]]:
                     "query": fallback_query,
                 }
             )
+
+    if primary_title and len(queries) < MAX_QUERY_COUNT and all(query["query"] != primary_title for query in queries):
+        queries.append(
+            {
+                "mode": "query",
+                "title": primary_title,
+                "artist": primary_artist,
+                "query": primary_title,
+            }
+        )
 
     return queries[:MAX_QUERY_COUNT]
 
@@ -1323,6 +1650,7 @@ def _score_tracks(
         track_name = track.get("name", "")
         track_artists = [artist.get("name", "") for artist in track.get("artists", [])]
         source = track_sources.get(_track_dedupe_key(track), {})
+        source_api_rank = int(source.get("api_rank") or api_rank + 1)
         detail = _enrich_variant_detail(
             input_title=input_title,
             input_artist=input_artist,
@@ -1345,7 +1673,7 @@ def _score_tracks(
                 candidate_artists=track_artists,
                 detail=detail,
                 source=source,
-                api_rank=api_rank,
+                api_rank=source_api_rank - 1,
             )
             candidate = _candidate_to_result(
                 track,
@@ -1370,7 +1698,7 @@ def _score_tracks(
             candidate_artists=track_artists,
             detail=detail,
             base_score=base_score,
-            api_rank=api_rank,
+            api_rank=source_api_rank - 1,
         )
 
         score, detail = apply_pattern_adjustments(
@@ -1385,7 +1713,7 @@ def _score_tracks(
             input_artist=input_artist,
             candidate_title=track_name,
             candidate_artists=track_artists,
-            api_rank=api_rank + 1,
+            api_rank=source_api_rank,
             query_type=source.get("query_type", "primary" if api_rank == 0 else "fallback"),
             query_used=source.get("query_used", ""),
         )
@@ -1418,17 +1746,23 @@ def _score_tracks(
         candidate["candidate_rank"] = len(scored_candidates)
         scored_candidates.append(candidate)
 
-    return rank_candidates(scored_candidates)
+    return [
+        _attach_candidate_status(candidate, has_artist=bool(input_artist), input_artist=input_artist)
+        for candidate in rank_candidates(scored_candidates)
+    ]
 
 
 def _classify_candidate(candidate: Dict[str, Any], *, has_artist: bool, input_artist: str = "") -> str:
     """Classify a Spotify candidate without making extra searches."""
     score = float(candidate.get("score", 0.0))
     detail = candidate.get("score_detail", {})
+    evidence = detail.get("evidence_confidence") or {}
+    evidence_status = str(evidence.get("match_status") or detail.get("match_status") or "")
+    if evidence_status in {"matched", "review_needed", "low_confidence", "invalid_candidate"}:
+        return evidence_status
     pattern_tags = set(detail.get("pattern_tags", []))
     if detail.get("pattern") == "invalid_candidate" or "invalid_candidate" in pattern_tags:
         return "invalid_candidate"
-    evidence = detail.get("evidence_confidence") or {}
     decision = evidence.get("decision") or detail.get("candidate_decision")
     pattern = evidence.get("pattern") or detail.get("pattern")
     if decision == "auto_select_recommended":
@@ -1501,6 +1835,7 @@ def _candidate_is_acceptable(candidate: Dict[str, Any], *, has_artist: bool, inp
 def _candidate_is_recoverable(candidate: Dict[str, Any], *, has_artist: bool, input_artist: str = "") -> bool:
     return _classify_candidate(candidate, has_artist=has_artist, input_artist=input_artist) in {
         "review_needed",
+        "low_confidence",
     }
 
 
@@ -1517,18 +1852,19 @@ def _attach_candidate_status(candidate: Dict[str, Any], *, has_artist: bool, inp
     status = _classify_candidate(candidate, has_artist=has_artist, input_artist=input_artist)
     reason = _candidate_reason(candidate, has_artist=has_artist, input_artist=input_artist)
     enriched["match_status"] = status
+    enriched["status"] = "low_confidence" if status in {"probable_match", "review_needed"} else status
     enriched["user_message"] = _reason_message(reason if status == "unmatched" else status)
     enriched["unmatched_reason"] = reason if status == "unmatched" else ""
     score_detail = dict(enriched.get("score_detail", {}))
     if status == "invalid_candidate":
         score_detail["candidate_decision"] = "rejected"
-    elif status == "review_needed":
+    elif status in {"review_needed", "low_confidence"}:
         score_detail["candidate_decision"] = "warning"
     else:
         score_detail["candidate_decision"] = "selectable"
     enriched["score_detail"] = score_detail
     if status != "matched":
-        enriched["low_confidence"] = status in {"probable_match", "review_needed"}
+        enriched["low_confidence"] = status in {"probable_match", "review_needed", "low_confidence"}
         enriched["low_confidence_reason"] = _low_confidence_reason_for_status(
             candidate,
             status,
@@ -1579,6 +1915,7 @@ def _pick_best_acceptable_candidate(
 
     status_priority = {
         "review_needed": 2,
+        "low_confidence": 1,
         "unmatched": 0,
     }
     return max(
@@ -1677,6 +2014,7 @@ def _evaluate_case(
 ) -> Dict[str, Any]:
     input_title = (title or "").strip()
     input_artist = (artist or "").strip()
+    market = market or "KR"
 
     result = {
         "case_name": case_name,
@@ -1729,7 +2067,7 @@ def _evaluate_case(
         if index > 0 and fetched_tracks:
             result["fallback_used"] = True
 
-        for track in fetched_tracks:
+        for rank_index, track in enumerate(fetched_tracks, start=1):
             track_key = _track_dedupe_key(track)
             if track_key not in track_sources:
                 track_sources[track_key] = {
@@ -1737,6 +2075,8 @@ def _evaluate_case(
                     "search_artist": strategy["artist"] or input_artist,
                     "query_type": "primary" if index == 0 else "fallback",
                     "query_used": strategy["query"],
+                    "api_rank": str(rank_index),
+                    "query_index": str(index),
                 }
             raw_tracks.append(track)
 
@@ -1965,7 +2305,7 @@ def pick_best_track_match(
     best = dict(chosen_candidate)
     best["top_candidates"] = selected_case_result.get("scored_candidates", [])[:3]
     best["chosen_case"] = selected_case
-    best["reason"] = decision_reason
+    best["selection_reason"] = decision_reason
     best["search_queries"] = selected_queries
     best["parse_reason"] = str(song_meta.get("reason") or "")
 

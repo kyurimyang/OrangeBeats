@@ -1,4 +1,4 @@
-import time
+﻿import time
 from typing import Annotated, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -16,6 +16,9 @@ from app.services.youtube_thumbnail import (
     get_thumbnail_base64_from_youtube_url,
 )
 from app.sessions.session_id import get_session_id
+
+from app.ocr.ocr_pipeline import run_ocr_pipeline
+from app.services.text_source_builder import build_combined_text
 
 router = APIRouter(prefix="/playlist", tags=["Playlist"])
 SpotifySessionDep = Annotated[SpotifySessionService, Depends(get_spotify_session_service)]

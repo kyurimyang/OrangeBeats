@@ -114,6 +114,7 @@ def _result_from_match(song: Dict[str, Any], match: Dict[str, Any] | None) -> Di
     if not match:
         debug = get_match_debug(input_title, input_artist)
         reason = debug.get("unmatched_reason") or "no reliable Spotify match"
+        reason_text = explain_match_reason(str(reason).split("(", 1)[0]) or reason
         return {
             "input_artist": input_artist,
             "input_title": input_title,
@@ -124,8 +125,11 @@ def _result_from_match(song: Dict[str, Any], match: Dict[str, Any] | None) -> Di
             "spotify_artist": None,
             "album_image": None,
             "confidence": 0,
+            "score": 0,
+            "status": "unmatched",
             "confidence_label": "failed",
-            "reason": explain_match_reason(str(reason).split("(", 1)[0]) or reason,
+            "reason": [reason_text],
+            "reason_text": reason_text,
             "confidence_detail": _confidence_detail(None),
             "selected": False,
             "match_status": "unmatched",
@@ -136,12 +140,19 @@ def _result_from_match(song: Dict[str, Any], match: Dict[str, Any] | None) -> Di
     match_status = str(match.get("match_status") or "matched")
     spotify_uri = match.get("uri")
     confidence_label = _confidence_label(match_status, score, bool(spotify_uri))
+    reason_key = match.get("low_confidence_reason")
+    if not reason_key and not isinstance(match.get("reason"), list):
+        reason_key = match.get("reason")
     reason = (
         match.get("user_message")
-        or explain_match_reason(match.get("low_confidence_reason") or match.get("reason") or match_status)
-        or match.get("reason")
+        or explain_match_reason(reason_key or match_status)
+        or reason_key
         or "Spotify candidate found"
     )
+    reason_array = match.get("reason") if isinstance(match.get("reason"), list) else []
+    if not reason_array:
+        reason_array = [str(reason)]
+    status = str(match.get("status") or ("low_confidence" if confidence_label == "low" else match_status))
 
     return {
         "input_artist": input_artist,
@@ -153,8 +164,17 @@ def _result_from_match(song: Dict[str, Any], match: Dict[str, Any] | None) -> Di
         "spotify_artist": ", ".join(match.get("artists", [])),
         "album_image": match.get("album_image"),
         "confidence": round(score, 4),
+        "score": round(score, 4),
+        "final_score": round(float(match.get("final_score", score) or 0.0), 4),
+        "status": status,
+        "applied_pattern": match.get("applied_pattern") or (match.get("score_detail") or {}).get("applied_pattern", ""),
+        "evidence_detail": (match.get("score_detail") or {}).get("evidence_detail", {}),
+        "translated_title_candidate": bool(match.get("translated_title_candidate") or (match.get("score_detail") or {}).get("translated_title_candidate")),
+        "official_metadata_candidate": bool(match.get("official_metadata_candidate") or (match.get("score_detail") or {}).get("official_metadata_candidate")),
+        "search_engine_signal_reason": (match.get("score_detail") or {}).get("search_engine_signal_reason", ""),
         "confidence_label": confidence_label,
-        "reason": reason,
+        "reason": reason_array,
+        "reason_text": str(reason),
         "confidence_detail": _confidence_detail(match, confidence_label),
         "selected": bool(spotify_uri) and _selection_recommended(confidence_label),
         "match_status": match_status,
