@@ -1039,13 +1039,19 @@ def _classify_evidence_pattern(evidence: Dict[str, Any]) -> Dict[str, Any]:
         }
 
     if artist_strong and title_similarity < 0.3 and rank1 and high_query:
+        confident_metadata = bool(evidence["official_metadata_signal"] or (query_has_both and album_image_exists))
         return {
             "applied_pattern": "ARTIST_STRONG_TITLE_WEAK",
-            "match_status": "review_needed",
-            "decision": "warning",
-            "final_score": 0.64 if album_image_exists else 0.58,
+            "match_status": "matched" if confident_metadata else "review_needed",
+            "decision": "auto_select_recommended" if confident_metadata else "warning",
+            "final_score": 0.86 if confident_metadata else 0.66,
             "translated_title_candidate": True,
-            "reason": ["artist evidence is strong, title is weak, rank1 high-reliability query suggests translated title metadata"],
+            "reason": [
+                "artist evidence is strong, title is weak, rank1 high-reliability query suggests translated title metadata",
+                "auto selected because Spotify returned the official-looking rank1 candidate",
+            ] if confident_metadata else [
+                "artist evidence is strong, title is weak, rank1 high-reliability query suggests translated title metadata",
+            ],
         }
 
     if rank1 and query_has_both and high_query and album_image_exists:

@@ -6,7 +6,7 @@ from app.services.spotify_common import _is_suspicious_song, build_match_cache_k
 from app.services.spotify_exceptions import SpotifyServiceError
 from app.services.spotify_matching import explain_match_reason, get_match_debug, pick_best_track_match
 
-LOW_CONF_MIN_SCORE = 0.15
+LOW_CONF_MIN_SCORE = 0.60
 ALLOWED_LOW_CONF_REASONS = {
     "probable_match",
     "review_needed",
@@ -22,6 +22,8 @@ ALLOWED_LOW_CONF_REASONS = {
 def _confidence_label(match_status: str, score: float, has_uri: bool) -> str:
     if not has_uri or match_status == "invalid_candidate":
         return "failed"
+    if match_status in {"review_needed", "low_confidence"} and score >= LOW_CONF_MIN_SCORE:
+        return "mid"
     if match_status == "review_needed":
         return "low"
     if match_status == "matched" or score >= 0.82:
@@ -33,6 +35,16 @@ def _confidence_label(match_status: str, score: float, has_uri: bool) -> str:
 
 def _selection_recommended(confidence_label: str) -> bool:
     return confidence_label in {"high", "mid"}
+
+
+def _is_successful_match(match: Dict[str, Any]) -> bool:
+    if not match.get("uri"):
+        return False
+    match_status = str(match.get("match_status") or "")
+    score = float(match.get("score") or 0.0)
+    if match_status in {"matched", "probable_match"}:
+        return True
+    return match_status in {"review_needed", "low_confidence"} and score >= LOW_CONF_MIN_SCORE
 
 
 def _sum_values(value: Any) -> float:
@@ -408,7 +420,7 @@ def create_playlist_from_songs(
             continue
 
         match_status = match.get('match_status', 'matched')
-        if match_status not in {'matched', 'probable_match'}:
+        if not _is_successful_match(match):
             low_conf_reason = match.get('low_confidence_reason', '') or match.get('reason', '')
             low_confidence_item = {
                 'input': {

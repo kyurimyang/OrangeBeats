@@ -268,7 +268,7 @@ class SpotifyMatchingScoringTests(unittest.TestCase):
         self.assertEqual(_classify_candidate(scored[0], has_artist=True, input_artist="\ub2e4\ube44\uce58"), "review_needed")
         self.assertEqual(detail["applied_pattern"], "ARTIST_STRONG_TITLE_WEAK")
 
-    def test_korean_title_english_spotify_metadata_promotes_to_mid_not_high_without_title_alias(self):
+    def test_korean_title_english_spotify_metadata_auto_matches_without_title_alias(self):
         candidate = track(
             "A Long Goodbye",
             ["Kim Dong Ryul"],
@@ -290,11 +290,11 @@ class SpotifyMatchingScoringTests(unittest.TestCase):
         self.assertGreaterEqual(scored[0]["score"], 0.55)
         self.assertEqual(
             _classify_candidate(scored[0], has_artist=True, input_artist="\uae40\ub3d9\ub960"),
-            "review_needed",
+            "matched",
         )
         self.assertFalse(detail["title_alias_matched"])
         self.assertEqual(detail["applied_pattern"], "ARTIST_STRONG_TITLE_WEAK")
-        self.assertEqual(detail["evidence_confidence"]["decision"], "warning")
+        self.assertEqual(detail["evidence_confidence"]["decision"], "auto_select_recommended")
 
     def test_pattern_b_keeps_korean_title_english_spotify_title_for_review(self):
         cases = [
@@ -320,12 +320,12 @@ class SpotifyMatchingScoringTests(unittest.TestCase):
                 )
 
                 detail = scored[0]["score_detail"]
-                self.assertEqual(scored[0]["match_status"], "review_needed")
+                self.assertEqual(scored[0]["match_status"], "matched")
                 self.assertEqual(detail["applied_pattern"], "ARTIST_STRONG_TITLE_WEAK")
                 self.assertTrue(detail["translated_title_candidate"])
                 self.assertTrue(detail["official_metadata_candidate"])
-                self.assertGreaterEqual(scored[0]["score"], 0.55)
-                self.assertLessEqual(scored[0]["score"], 0.68)
+                self.assertGreaterEqual(scored[0]["score"], 0.85)
+                self.assertEqual(detail["candidate_decision"], "selectable")
 
     def test_exact_title_with_official_metadata_artist_is_high_confidence(self):
         candidate = track(
