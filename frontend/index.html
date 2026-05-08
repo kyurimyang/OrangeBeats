@@ -147,17 +147,16 @@
         </section>
 
         <section id="candidatesTab" class="tab-panel">
+          <section id="ocrInfoBanner" class="panel ocr-info-banner" hidden>
+            <div class="panel-tab mint-tab">OCR 분석 정보</div>
+            <div id="ocrInfoContent"></div>
+          </section>
           <section class="panel">
             <div class="panel-tab mint-tab">SPOTIFY CANDIDATES</div>
             <div class="candidate-actions">
-              <label class="alias-toggle">
-                <input id="useArtistAliasesCheckbox" type="checkbox" checked />
-                저장된 artist alias 사용
-              </label>
               <button id="selectAllBtn" class="filter-button" type="button">전체 선택</button>
               <button id="clearAllBtn" class="filter-button" type="button">전체 해제</button>
               <button id="selectRecommendedBtn" class="filter-button" type="button">추천 후보만 선택</button>
-              <button id="clearArtistAliasesBtn" class="filter-button danger-lite" type="button">artist alias 초기화</button>
               <button id="createSelectedInlineBtn" class="action-btn orange-btn compact-action" type="button">선택한 곡으로 바로 생성</button>
             </div>
             <div class="candidate-summary" id="candidateSummary">분석 후 Spotify 매칭 후보가 여기에 표시됩니다.</div>
@@ -176,6 +175,7 @@
             <div id="failedSongsList"></div>
           </div>
         </section>
+
 
         <section id="qaTab" class="tab-panel">
           <section class="panel">
@@ -220,6 +220,6 @@
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=20260507-ocr-info-banner"></script>
 </body>
 </html>

@@ -3,10 +3,10 @@ import subprocess
 from pathlib import Path
 from typing import List
 
-ACR_MAX_SEGMENTS = 10
+ACR_MAX_SEGMENTS = 20
 ACR_SEGMENT_SECONDS = 10
 MIN_SAMPLE_INTERVAL_SECONDS = 30
-MAX_SAMPLE_INTERVAL_SECONDS = 60
+MAX_SAMPLE_INTERVAL_SECONDS = 180  # 3분 상한 — 60분 영상도 20개 세그먼트로 전체 커버
 
 
 def sample_interval(duration_seconds: int | None, max_samples: int) -> int:

@@ -89,8 +89,9 @@ def spotify_login(
 @router.get("/callback")
 def spotify_callback(
     session_service: SpotifySessionDep,
-    code: str = Query(...),
     state: str = Query(...),
+    code: str | None = Query(default=None),
+    error: str | None = Query(default=None),
 ):
     print("=== /spotify/callback called ===")
     print("callback state =", state)
@@ -103,6 +104,13 @@ def spotify_callback(
         print("invalid state")
         return RedirectResponse(
             url=_build_frontend_redirect(frontend_redirect, "failed", "invalid_state"),
+            status_code=302,
+        )
+
+    if error or not code:
+        print("spotify auth error =", error)
+        return RedirectResponse(
+            url=_build_frontend_redirect(frontend_redirect, "failed", error or "no_code"),
             status_code=302,
         )
 

@@ -2,6 +2,7 @@
 #.\.venv\Scripts\python.exe -m uvicorn app.main:app --port 8000
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.config import get_allowed_frontend_origins
 from app.routers import playlist, qa, spotify, youtube
@@ -28,3 +29,6 @@ app.include_router(youtube.router)
 app.include_router(spotify.router)
 app.include_router(playlist.router)
 app.include_router(qa.router)
+
+app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
+

@@ -769,7 +769,6 @@ def _swap_allowed_by_evidence(
     adjusted_margin: float,
     swap_margin: float,
 ) -> tuple[bool, str]:
-    left_artist_evidence = _known_artist_evidence(left)
     right_artist_evidence = _known_artist_evidence(right)
     left_strong_artist_evidence = _strong_artist_identity_evidence(left)
     right_strong_artist_evidence = _strong_artist_identity_evidence(right)
@@ -1194,6 +1193,9 @@ def _append_song(results: list[dict], artist: str, title: str, meta: dict | None
         "artist_parentheses_preserved",
         "track_number_prefix",
         "nested_pair_extracted",
+        "timestamp",
+        "source",
+        "source_mode",
     ]:
         if key in meta:
             song[key] = meta.get(key)
@@ -1221,6 +1223,8 @@ def parse_unstructured_lines_to_json(text: str) -> dict:
         if not parts:
             continue
 
+        if ts_match:
+            parts["_timestamp"] = ts_match.group("ts")
         pair_candidates.append(parts)
 
     global_direction, direction_meta = _resolve_global_direction(pair_candidates)
@@ -1235,6 +1239,8 @@ def parse_unstructured_lines_to_json(text: str) -> dict:
         artist = parsed.get("artist", "")
         title = parsed.get("title", "")
         if artist and title:
+            if parts.get("_timestamp"):
+                parsed["timestamp"] = parts["_timestamp"]
             _log_parse_line(parsed)
             _append_song(results, artist=artist, title=title, meta=parsed)
 
@@ -1376,6 +1382,9 @@ def deduplicate_songs(songs: list[dict]) -> list[dict]:
             "artist_parentheses_preserved",
             "track_number_prefix",
             "nested_pair_extracted",
+            "timestamp",
+            "source",
+            "source_mode",
         ]:
             if meta_key in song:
                 entry[meta_key] = song.get(meta_key)

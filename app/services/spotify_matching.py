@@ -1250,6 +1250,88 @@ def _apply_evidence_score(candidate: Dict[str, Any]) -> Dict[str, Any]:
     return enriched
 
 
+def _apply_ocr_matching_policy(candidate: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    if not candidate:
+        return candidate
+
+    enriched = dict(candidate)
+    score_detail = dict(enriched.get("score_detail", {}) or {})
+    evidence_confidence = dict(score_detail.get("evidence_confidence", {}) or {})
+    evidence = dict(evidence_confidence.get("evidence_detail") or score_detail.get("evidence_detail") or {})
+    artist_similarity = float(
+        evidence.get(
+            "artist_similarity",
+            score_detail.get("artist_variant_score", score_detail.get("artist_score", 0.0)),
+        )
+        or 0.0
+    )
+    title_similarity = float(
+        evidence.get(
+            "title_similarity",
+            score_detail.get("title_variant_score", score_detail.get("title_score", 0.0)),
+        )
+        or 0.0
+    )
+    artist_alias_matched = bool(evidence.get("artist_alias_matched") or score_detail.get("artist_alias_matched"))
+    artist_strong = bool(evidence.get("artist_strong")) or artist_similarity >= 0.8 or artist_alias_matched
+    pattern_tags = set(score_detail.get("pattern_tags", []))
+    applied_pattern = str(score_detail.get("applied_pattern") or evidence_confidence.get("applied_pattern") or "")
+
+    ocr_reasons: List[str] = []
+    should_review = False
+
+    if artist_similarity < 0.5 and not artist_alias_matched:
+        should_review = True
+        ocr_reasons.append("제목은 유사하지만 가수 근거가 부족해 검토가 필요합니다.")
+    if "title_only_overconfidence_pattern" in pattern_tags or applied_pattern == "TITLE_ONLY_MATCH":
+        should_review = True
+        ocr_reasons.append("title_only_overconfidence: OCR 입력에서는 제목 단독 일치를 자동 선택하지 않습니다.")
+    if title_similarity >= 0.8 and not artist_strong:
+        should_review = True
+        ocr_reasons.append("OCR 오인식 가능성이 있어 제목 단독 근거는 검토 후보로 유지합니다.")
+
+    if not should_review:
+        return enriched
+
+    capped_score = min(float(enriched.get("score") or 0.0), 0.79 if artist_similarity <= 0.0 else 0.74)
+    capped_score = min(capped_score, 0.60 if artist_similarity < 0.5 else capped_score)
+    if title_similarity >= 0.8:
+        capped_score = max(capped_score, 0.55)
+
+    evidence_confidence["match_status"] = "review_needed"
+    evidence_confidence["decision"] = "warning"
+    evidence_confidence["final_score"] = round(capped_score, 4)
+    evidence_confidence["ocr_policy_applied"] = True
+    existing_reason = list(evidence_confidence.get("reason") or [])
+    evidence_confidence["reason"] = ocr_reasons + [
+        reason for reason in existing_reason
+        if "artist evidence is strong" not in str(reason).lower()
+        and "title and artist evidence are both strong" not in str(reason).lower()
+    ]
+
+    score_detail["evidence_confidence"] = evidence_confidence
+    score_detail["match_status"] = "review_needed"
+    score_detail["candidate_decision"] = "warning"
+    score_detail["final_score"] = round(capped_score, 4)
+    score_detail["ocr_policy_applied"] = True
+    score_detail["ocr_policy_reason"] = " ".join(ocr_reasons)
+    enriched["score_detail"] = score_detail
+    enriched["score"] = round(capped_score, 4)
+    enriched["final_score"] = round(capped_score, 4)
+    enriched["match_status"] = "review_needed"
+    enriched["matched"] = False
+    enriched["status"] = "low_confidence"
+    enriched["low_confidence"] = True
+    enriched["low_confidence_reason"] = "title_only_overconfidence" if title_similarity >= 0.8 else "partial_match_needs_review"
+    enriched["reason"] = ocr_reasons + [
+        reason for reason in list(enriched.get("reason") or [])
+        if "artist evidence is strong" not in str(reason).lower()
+        and "title and artist evidence are both strong" not in str(reason).lower()
+    ]
+    enriched["user_message"] = "제목은 유사하지만 가수 근거가 부족해 검토가 필요합니다. OCR 오인식 가능성이 있어 자동 선택하지 않았습니다."
+    return enriched
+
+
 def _official_metadata_signal(
     *,
     input_title: str,
@@ -1958,6 +2040,7 @@ def _build_unmatched_reason(
 
 def _summarize_case_result(case_result: Dict[str, Any]) -> Dict[str, Any]:
     best = case_result.get("best_candidate") or {}
+    scored_candidates = case_result.get("scored_candidates", []) or []
     return {
         "case_name": case_result.get("case_name", "original"),
         "input_title": case_result.get("input_title", ""),
@@ -1968,6 +2051,7 @@ def _summarize_case_result(case_result: Dict[str, Any]) -> Dict[str, Any]:
         "matched_name": best.get("name", ""),
         "matched_artists": best.get("artists", []),
         "unmatched_reason": case_result.get("unmatched_reason", ""),
+        "candidate_logs": [_candidate_score_log(candidate) for candidate in scored_candidates[:SEARCH_LIMIT]],
     }
 
 
@@ -2199,6 +2283,7 @@ def pick_best_track_match(
     song_meta = song_meta or {}
     swap_guard_applied = bool(song_meta.get("swap_guard_applied", False))
     swap_guard_reason = str(song_meta.get("swap_guard_reason") or "")
+    source_mode = str(song_meta.get("source_mode") or "").strip().lower()
 
     if cache_key in _MATCH_CACHE:
         cached = _MATCH_CACHE[cache_key]
@@ -2226,7 +2311,7 @@ def pick_best_track_match(
             unmatched_reason="" if cached else str(cached_debug.get("unmatched_reason", "")),
             early_return=early_return,
         )
-        return cached
+        return _apply_ocr_matching_policy(cached) if source_mode == "ocr" else cached
 
     case_inputs = _extract_case_inputs(input_title, input_artist, song_meta)
     case_results = [
@@ -2309,6 +2394,8 @@ def pick_best_track_match(
         return None
 
     best = dict(chosen_candidate)
+    if source_mode == "ocr":
+        best = _apply_ocr_matching_policy(best) or best
     best["top_candidates"] = selected_case_result.get("scored_candidates", [])[:3]
     best["chosen_case"] = selected_case
     best["selection_reason"] = decision_reason
