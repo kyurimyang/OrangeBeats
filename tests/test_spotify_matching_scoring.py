@@ -1,7 +1,13 @@
 import unittest
 
 from app.services.spotify_common import compute_match_score
-from app.services.spotify_matching import _build_case_queries, _classify_candidate, _score_tracks, _track_dedupe_key
+from app.services.spotify_matching import (
+    _apply_ocr_matching_policy,
+    _build_case_queries,
+    _classify_candidate,
+    _score_tracks,
+    _track_dedupe_key,
+)
 
 
 def track(name, artists, popularity=50, album_images=None, duration_ms=None):
@@ -203,6 +209,29 @@ class SpotifyMatchingScoringTests(unittest.TestCase):
             _classify_candidate(scored[0], has_artist=True, input_artist="\uc2e4\ud0a4\ubcf4\uc774\uc988"),
             "review_needed",
         )
+
+    def test_ocr_policy_blocks_title_only_auto_selection(self):
+        candidate = track("\uadf8\ub300\ub77c\uc11c", ["GUMMY"])
+        scored = _score_tracks(
+            [candidate],
+            primary_source(candidate, "\uadf8\ub300\ub77c\uc11c", "\ucf00\uc774\uc70c"),
+            input_title="\uadf8\ub300\ub77c\uc11c",
+            input_artist="\ucf00\uc774\uc70c",
+            chosen_case="original",
+        )[0]
+        scored["match_status"] = "matched"
+        scored["score"] = 0.9
+        scored["score_detail"]["evidence_confidence"]["match_status"] = "matched"
+        scored["score_detail"]["evidence_confidence"]["decision"] = "auto_select_recommended"
+        scored["score_detail"]["evidence_confidence"]["final_score"] = 0.9
+        scored["score_detail"]["evidence_detail"]["artist_similarity"] = 0.0
+
+        reviewed = _apply_ocr_matching_policy(scored)
+
+        self.assertEqual(reviewed["match_status"], "review_needed")
+        self.assertFalse(reviewed["matched"])
+        self.assertLess(reviewed["score"], 0.8)
+        self.assertIn("가수 근거가 부족", reviewed["user_message"])
 
     def test_silkybois_candidate_gets_artist_variant_but_prod_penalty(self):
         candidate = track("THERE SHE GOES (PROD BY BOYCOLD)", ["SILKYBOIS"])

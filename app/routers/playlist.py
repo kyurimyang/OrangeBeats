@@ -1,10 +1,11 @@
 ﻿import time
-from typing import Annotated, Dict, List
+import math
+from pathlib import Path
+from typing import Annotated, Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.dependencies.spotify_session import get_spotify_session_service
-from app.services.artist_aliases import apply_saved_artist_aliases, clear_artist_aliases, save_artist_aliases
 from app.services.pipeline_service import run_youtube_pipeline
 from app.services.spotify_cover import SpotifyCoverUploadError, upload_playlist_cover_image
 from app.services.spotify_playlist import analyze_spotify_candidates, create_playlist_from_track_uris
@@ -22,6 +23,20 @@ from app.services.text_source_builder import build_combined_text
 
 router = APIRouter(prefix="/playlist", tags=["Playlist"])
 SpotifySessionDep = Annotated[SpotifySessionService, Depends(get_spotify_session_service)]
+
+
+def _json_safe(value: Any) -> Any:
+    if value is None or isinstance(value, (str, bool, int)):
+        return value
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_json_safe(item) for item in value]
+    return str(value)
 
 
 def _spotify_http_status(exc: SpotifyServiceError) -> int:
@@ -60,6 +75,9 @@ def _dedupe_pipeline_songs(raw_songs: List[Dict]) -> List[Dict[str, str]]:
             {
                 "artist": artist,
                 "title": title,
+                "source": item.get("source", ""),
+                "source_mode": item.get("source_mode", ""),
+                "timestamp": item.get("timestamp", ""),
                 "raw": item.get("raw", ""),
                 "left": item.get("left", ""),
                 "right": item.get("right", ""),
@@ -75,6 +93,64 @@ def _dedupe_pipeline_songs(raw_songs: List[Dict]) -> List[Dict[str, str]]:
     return songs
 
 
+def _is_edit_distance_at_most_one(left: str, right: str) -> bool:
+    if left == right:
+        return True
+
+    left_len = len(left)
+    right_len = len(right)
+    if abs(left_len - right_len) > 1:
+        return False
+
+    edits = 0
+    left_index = 0
+    right_index = 0
+    while left_index < left_len and right_index < right_len:
+        if left[left_index] == right[right_index]:
+            left_index += 1
+            right_index += 1
+            continue
+
+        edits += 1
+        if edits > 1:
+            return False
+
+        if left_len == right_len:
+            left_index += 1
+            right_index += 1
+        elif left_len > right_len:
+            left_index += 1
+        else:
+            right_index += 1
+
+    return True
+
+
+def _fuzzy_dedup_songs(songs: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    if len(songs) < 10:
+        return songs
+
+    deduped: List[Dict[str, str]] = []
+    for song in songs:
+        artist = (song.get("artist") or "").strip().casefold()
+        title = (song.get("title") or "").strip().casefold()
+        if not title:
+            continue
+
+        is_duplicate = False
+        for existing in deduped:
+            existing_artist = (existing.get("artist") or "").strip().casefold()
+            existing_title = (existing.get("title") or "").strip().casefold()
+            if artist == existing_artist and _is_edit_distance_at_most_one(title, existing_title):
+                is_duplicate = True
+                break
+
+        if not is_duplicate:
+            deduped.append(song)
+
+    return deduped
+
+
 def _playlist_name(title_mode: str, user_playlist_name: str, youtube_title: str) -> str:
     if title_mode == "custom":
         return user_playlist_name or youtube_title or "YouTube 변환 플레이리스트"
@@ -86,6 +162,7 @@ def _youtube_thumbnail_url(youtube_result: Dict) -> str:
     if not video_id:
         return ""
     return f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
+
 
 
 def _require_spotify_access_token(request: Request, session_service: SpotifySessionService) -> str:
@@ -109,11 +186,223 @@ def _run_youtube_analysis(youtube_url: str, mode: str) -> tuple[Dict, List[Dict[
             detail=youtube_result.get("error", "YouTube 분석에 실패했습니다."),
         )
 
-    songs = _dedupe_pipeline_songs(youtube_result.get("songs", []))
+    songs = _fuzzy_dedup_songs(_dedupe_pipeline_songs(youtube_result.get("songs", [])))
+    for song in songs:
+        song["source_mode"] = mode
     if not songs:
         raise HTTPException(status_code=400, detail="YouTube에서 추출된 곡이 없습니다.")
 
     return youtube_result, songs, analysis_elapsed_ms
+
+
+def _source_only_candidate(song: Dict[str, str]) -> Dict:
+    artist = (song.get("artist") or "").strip()
+    title = (song.get("title") or "").strip()
+    return {
+        "input_artist": artist,
+        "input_title": title,
+        "matched": False,
+        "spotify_track_id": None,
+        "spotify_uri": None,
+        "spotify_title": None,
+        "spotify_artist": None,
+        "album_image": None,
+        "confidence": 0,
+        "score": 0,
+        "final_score": 0,
+        "status": "source_only",
+        "confidence_label": "failed",
+        "reason": ["OCR/텍스트에서 추출된 곡입니다. Spotify 후보 검색은 아직 실행하지 않았습니다."],
+        "reason_text": "OCR/텍스트에서 추출된 곡입니다. Spotify 후보 검색은 아직 실행하지 않았습니다.",
+        "selected": False,
+        "match_status": "unmatched",
+        "top_candidates": [],
+        "source_only": True,
+        "raw": song.get("raw", ""),
+    }
+
+
+def _compact_youtube_result(youtube_result: Dict, songs: List[Dict[str, str]]) -> Dict:
+    youtube_title = (youtube_result.get("youtube_title") or "").strip()
+    debug = youtube_result.get("debug", {}) if isinstance(youtube_result.get("debug"), dict) else {}
+    vision_debug = debug.get("vision", {}) if isinstance(debug.get("vision"), dict) else {}
+    vision_text = str(vision_debug.get("raw_text") or youtube_result.get("vision_text") or "")
+    raw_ocr_text = str(vision_debug.get("raw_ocr_text") or youtube_result.get("ocr_text") or "")
+    ocr_blocks = vision_debug.get("ocr_blocks", youtube_result.get("ocr_blocks", []))
+    selected_ocr_block = vision_debug.get("selected_ocr_block", youtube_result.get("selected_ocr_block", {}))
+
+    compact = {
+        "success": youtube_result.get("success", False),
+        "input_url": youtube_result.get("input_url", ""),
+        "video_id": youtube_result.get("video_id", ""),
+        "youtube_title": youtube_title,
+        "selected_stage": youtube_result.get("selected_stage"),
+        "text_stage": youtube_result.get("text_stage"),
+        "mode": youtube_result.get("mode", ""),
+        "ocr_used": youtube_result.get("ocr_used", False),
+        "acr_used": youtube_result.get("acr_used", False),
+        "songs": songs,
+        "signals": youtube_result.get("signals", {}),
+        "metrics": youtube_result.get("metrics", {}),
+    }
+
+    if vision_text:
+        compact["vision_text"] = vision_text
+        compact["ocr_text"] = raw_ocr_text or vision_text
+        compact["ocr_blocks"] = ocr_blocks
+        compact["selected_ocr_block"] = selected_ocr_block
+        compact["debug"] = {"vision": vision_debug}
+    else:
+        compact["debug"] = debug
+
+    return compact
+
+
+def _build_analysis_response(
+    *,
+    youtube_url: str,
+    youtube_result: Dict,
+    songs: List[Dict[str, str]],
+    results: List[Dict],
+    title_mode: str,
+    user_playlist_name: str,
+    mode: str,
+    analysis_elapsed_ms: int,
+    spotify_elapsed_ms: int,
+    total_elapsed_ms: int,
+    message: str,
+    spotify_error: str = "",
+) -> Dict:
+    youtube_title = (youtube_result.get("youtube_title") or "").strip()
+    candidate_count = sum(1 for item in results if item.get("matched") and item.get("spotify_uri"))
+    needs_review_count = sum(1 for item in results if item.get("confidence_label") in {"mid", "low"})
+    failed_count = sum(1 for item in results if item.get("confidence_label") == "failed")
+
+    matched_tracks = [item for item in results if item.get("matched") and item.get("spotify_uri")]
+    unmatched_tracks = [item for item in results if not (item.get("matched") and item.get("spotify_uri"))]
+
+    compact_youtube_result = _compact_youtube_result(youtube_result, songs)
+
+    return {
+        "success": not spotify_error,
+        "partial_success": bool(youtube_result.get("partial_success")),
+        "warning": str(youtube_result.get("warning") or ""),
+        "message": message,
+        "playlist_name": _playlist_name(title_mode, user_playlist_name, youtube_title),
+        "youtube_url": youtube_url,
+        "youtube_title": youtube_title,
+        "thumbnail_url": _youtube_thumbnail_url(youtube_result),
+        "title_mode": title_mode,
+        "mode": mode,
+        "selected_stage": youtube_result.get("selected_stage"),
+        "ocr_used": youtube_result.get("ocr_used", False),
+        "acr_used": youtube_result.get("acr_used", False),
+        "extracted_count": len(songs),
+        "spotify_candidate_count": candidate_count,
+        "candidate_count": candidate_count,
+        "needs_review_count": needs_review_count,
+        "failed_count": failed_count,
+        "results": results,
+        "songs": songs,
+        "extracted_songs": songs,
+        "matched_tracks": matched_tracks,
+        "unmatched_tracks": unmatched_tracks,
+        "ocr_text": compact_youtube_result.get("ocr_text", compact_youtube_result.get("vision_text", "")),
+        "ocr_blocks": compact_youtube_result.get("ocr_blocks", []),
+        "selected_ocr_block": compact_youtube_result.get("selected_ocr_block", {}),
+        "youtube_result": compact_youtube_result,
+        "spotify_error": spotify_error,
+        "debug": {
+            "youtube": compact_youtube_result.get("debug", {}),
+            "selected_stage": youtube_result.get("selected_stage"),
+            "spotify_error": spotify_error,
+        },
+        "timings": {
+            "analysis_elapsed_ms": analysis_elapsed_ms,
+            "spotify_elapsed_ms": spotify_elapsed_ms,
+            "total_elapsed_ms": total_elapsed_ms,
+        },
+        "analysis_elapsed_ms": analysis_elapsed_ms,
+        "spotify_elapsed_ms": spotify_elapsed_ms,
+        "total_elapsed_ms": total_elapsed_ms,
+    }
+
+
+def _build_ocr_preview_response(
+    *,
+    youtube_url: str,
+    youtube_result: Dict,
+    songs: List[Dict[str, str]],
+    title_mode: str,
+    user_playlist_name: str,
+    mode: str,
+    analysis_elapsed_ms: int,
+    total_elapsed_ms: int,
+    message: str,
+) -> Dict:
+    youtube_title = (youtube_result.get("youtube_title") or "").strip()
+    results = [_source_only_candidate(song) for song in songs]
+    debug = youtube_result.get("debug", {}) if isinstance(youtube_result.get("debug"), dict) else {}
+    vision_debug = debug.get("vision", {}) if isinstance(debug.get("vision"), dict) else {}
+    vision_text = str(vision_debug.get("raw_text") or youtube_result.get("vision_text") or "")
+
+    partial_success = bool(youtube_result.get("partial_success"))
+    warning = str(youtube_result.get("warning") or "")
+    return {
+        "success": True,
+        "partial_success": partial_success,
+        "warning": warning,
+        "message": message,
+        "playlist_name": _playlist_name(title_mode, user_playlist_name, youtube_title),
+        "youtube_url": youtube_url,
+        "youtube_title": youtube_title,
+        "title_mode": title_mode,
+        "mode": mode,
+        "selected_stage": youtube_result.get("selected_stage"),
+        "ocr_used": True,
+        "acr_used": False,
+        "extracted_count": len(songs),
+        "spotify_candidate_count": 0,
+        "candidate_count": 0,
+        "needs_review_count": 0,
+        "failed_count": len(results),
+        "results": results,
+        "songs": songs,
+        "extracted_songs": songs,
+        "matched_tracks": [],
+        "unmatched_tracks": results,
+        "ocr_text": vision_text,
+        "ocr_blocks": vision_debug.get("ocr_blocks", []),
+        "selected_ocr_block": vision_debug.get("selected_ocr_block", {}),
+        "spotify_matching_skipped": True,
+        "youtube_result": {
+            "success": youtube_result.get("success", False),
+            "selected_stage": youtube_result.get("selected_stage"),
+            "text_stage": youtube_result.get("text_stage"),
+            "youtube_title": youtube_title,
+            "ocr_used": True,
+            "acr_used": False,
+            "vision_text": vision_text,
+            "ocr_text": vision_debug.get("raw_ocr_text", vision_text),
+            "ocr_blocks": vision_debug.get("ocr_blocks", []),
+            "selected_ocr_block": vision_debug.get("selected_ocr_block", {}),
+            "signals": youtube_result.get("signals", {}),
+            "metrics": youtube_result.get("metrics", {}),
+            "debug": {"vision": vision_debug},
+        },
+        "debug": {
+            "selected_stage": youtube_result.get("selected_stage"),
+            "vision": vision_debug,
+        },
+        "timings": {
+            "analysis_elapsed_ms": analysis_elapsed_ms,
+            "spotify_elapsed_ms": 0,
+            "total_elapsed_ms": total_elapsed_ms,
+        },
+        "analysis_elapsed_ms": analysis_elapsed_ms,
+        "spotify_elapsed_ms": 0,
+        "total_elapsed_ms": total_elapsed_ms,
+    }
 
 
 @router.post("/from-youtube")
@@ -126,21 +415,21 @@ def create_playlist_from_youtube(
     title_mode = (payload.get("title_mode") or "youtube").strip().lower()
     user_playlist_name = (payload.get("playlist_name") or "").strip()
     mode = _normalize_mode(payload.get("mode") or "text")
-    use_artist_aliases = payload.get("use_artist_aliases", payload.get("use_match_overrides", True)) is not False
     total_started_at = time.perf_counter()
 
     if not youtube_url:
         raise HTTPException(status_code=400, detail="YouTube URL이 필요합니다.")
 
     access_token = _require_spotify_access_token(request, session_service)
-    youtube_result, songs, analysis_elapsed_ms = _run_youtube_analysis(youtube_url, mode)
+    try:
+        youtube_result, songs, analysis_elapsed_ms = _run_youtube_analysis(youtube_url, mode)
+    except HTTPException:
+        raise
     youtube_title = (youtube_result.get("youtube_title") or "").strip()
     final_playlist_name = _playlist_name(title_mode, user_playlist_name, youtube_title)
 
     try:
         spotify_started_at = time.perf_counter()
-        if use_artist_aliases:
-            apply_saved_artist_aliases()
         spotify_result = create_playlist_from_songs(
             access_token=access_token,
             playlist_name=final_playlist_name,
@@ -175,14 +464,13 @@ def create_playlist_from_youtube(
             "total_elapsed_ms": total_elapsed_ms,
         }
 
-        return {
+        response_payload = {
             "success": True,
             "message": spotify_result.get("message", ""),
             "youtube_url": youtube_url,
             "youtube_title": youtube_title,
             "title_mode": title_mode,
             "mode": mode,
-            "use_artist_aliases": use_artist_aliases,
             "selected_stage": youtube_result.get("selected_stage"),
             "ocr_used": youtube_result.get("ocr_used", False),
             "acr_used": youtube_result.get("acr_used", False),
@@ -202,9 +490,9 @@ def create_playlist_from_youtube(
             "cover_upload_status": cover_upload_status,
             "cover_upload_error": cover_upload_error,
         }
+        return _json_safe(response_payload)
 
     except SpotifyServiceError as exc:
-        print("SpotifyServiceError =", str(exc))
         raise HTTPException(status_code=_spotify_http_status(exc), detail=str(exc)) from exc
 
 
@@ -217,63 +505,143 @@ def analyze_youtube_for_playlist(
     youtube_url = (payload.get("youtube_url") or payload.get("url") or "").strip()
     title_mode = (payload.get("title_mode") or "youtube").strip().lower()
     user_playlist_name = (payload.get("playlist_name") or "").strip()
-    mode = _normalize_mode(payload.get("mode") or "text")
-    use_artist_aliases = payload.get("use_artist_aliases", payload.get("use_match_overrides", True)) is not False
+    mode = _normalize_mode(payload.get("mode") or payload.get("extraction_mode") or "text")
+    skip_spotify_matching = bool(payload.get("skip_spotify_matching", False))
     total_started_at = time.perf_counter()
 
     if not youtube_url:
         raise HTTPException(status_code=400, detail="YouTube URL이 필요합니다.")
 
+    print("[playlist/analyze-youtube] request payload =", payload)
+    print("[playlist/analyze-youtube] analysis start mode =", mode)
     access_token = _require_spotify_access_token(request, session_service)
-    youtube_result, songs, analysis_elapsed_ms = _run_youtube_analysis(youtube_url, mode)
+    analysis_started_at = time.perf_counter()
+    youtube_result = run_youtube_pipeline(youtube_url, mode=mode)
+    analysis_elapsed_ms = int((time.perf_counter() - analysis_started_at) * 1000)
+    songs = _fuzzy_dedup_songs(_dedupe_pipeline_songs(youtube_result.get("songs", [])))
+    for song in songs:
+        song["source_mode"] = mode
+    print(
+        "[playlist/analyze-youtube] analysis end selected_stage=",
+        youtube_result.get("selected_stage"),
+        "songs=",
+        len(songs),
+    )
+
+    if not songs:
+        total_elapsed_ms = int((time.perf_counter() - total_started_at) * 1000)
+        no_songs_message = (
+            "화면에서 읽힌 텍스트가 부족해 곡을 추출하지 못했습니다. Raw Debug 탭에서 OCR 텍스트를 확인해주세요."
+            if mode == "ocr"
+            else "추출된 곡이 없습니다. Raw Debug 탭에서 분석 결과를 확인해주세요."
+        )
+        response_payload = _build_analysis_response(
+            youtube_url=youtube_url,
+            youtube_result=youtube_result,
+            songs=songs,
+            results=[],
+            title_mode=title_mode,
+            user_playlist_name=user_playlist_name,
+            mode=mode,
+            analysis_elapsed_ms=analysis_elapsed_ms,
+            spotify_elapsed_ms=0,
+            total_elapsed_ms=total_elapsed_ms,
+            message=no_songs_message,
+        )
+        print("[playlist/analyze-youtube] return partial response keys =", list(response_payload.keys()))
+        print("[playlist/analyze-youtube] before json_safe (no songs)")
+        safe_payload = _json_safe(response_payload)
+        print("[playlist/analyze-youtube] after json_safe (no songs)")
+        return safe_payload
+
+    if skip_spotify_matching:
+        total_elapsed_ms = int((time.perf_counter() - total_started_at) * 1000)
+        ocr_warning = str(youtube_result.get("warning") or "")
+        ocr_message = ocr_warning or "OCR/텍스트 곡 추출을 완료했습니다."
+        response_payload = _build_ocr_preview_response(
+            youtube_url=youtube_url,
+            youtube_result=youtube_result,
+            songs=songs,
+            title_mode=title_mode,
+            user_playlist_name=user_playlist_name,
+            mode=mode,
+            analysis_elapsed_ms=analysis_elapsed_ms,
+            total_elapsed_ms=total_elapsed_ms,
+            message=ocr_message,
+        )
+        print(
+            "[playlist/analyze-youtube] skip spotify matching, returning OCR/text response songs =",
+            len(songs),
+        )
+        print("[playlist/analyze-youtube] skip response ready keys =", list(response_payload.keys()))
+        print("[playlist/analyze-youtube] before json_safe (skip matching)")
+        safe_payload = _json_safe(response_payload)
+        print("[playlist/analyze-youtube] after json_safe (skip matching)")
+        return safe_payload
 
     try:
+        print("[playlist/analyze-youtube] spotify matching start")
         spotify_started_at = time.perf_counter()
         results = analyze_spotify_candidates(
             access_token=access_token,
             songs=songs,
             market="KR",
-            use_artist_aliases=use_artist_aliases,
+            source_mode=mode,
         )
         spotify_elapsed_ms = int((time.perf_counter() - spotify_started_at) * 1000)
+        print("[playlist/analyze-youtube] spotify matching end results =", len(results))
     except SpotifyServiceError as exc:
-        raise HTTPException(status_code=_spotify_http_status(exc), detail=str(exc)) from exc
+        total_elapsed_ms = int((time.perf_counter() - total_started_at) * 1000)
+        response_payload = _build_analysis_response(
+            youtube_url=youtube_url,
+            youtube_result=youtube_result,
+            songs=songs,
+            results=[_source_only_candidate(song) for song in songs],
+            title_mode=title_mode,
+            user_playlist_name=user_playlist_name,
+            mode=mode,
+            analysis_elapsed_ms=analysis_elapsed_ms,
+            spotify_elapsed_ms=0,
+            total_elapsed_ms=total_elapsed_ms,
+            message="OCR/텍스트 곡 추출은 완료됐지만 Spotify 후보 검색에 실패했습니다.",
+            spotify_error=str(exc),
+        )
+        print("[playlist/analyze-youtube] spotify matching failed, returning partial response =", str(exc))
+        print("[playlist/analyze-youtube] before json_safe (spotify error)")
+        safe_payload = _json_safe(response_payload)
+        print("[playlist/analyze-youtube] after json_safe (spotify error)")
+        return safe_payload
 
     total_elapsed_ms = int((time.perf_counter() - total_started_at) * 1000)
-    youtube_title = (youtube_result.get("youtube_title") or "").strip()
-    candidate_count = sum(1 for item in results if item.get("matched") and item.get("spotify_uri"))
-    needs_review_count = sum(1 for item in results if item.get("confidence_label") in {"mid", "low"})
-    failed_count = sum(1 for item in results if item.get("confidence_label") == "failed")
-
-    return {
-        "success": True,
-        "message": "Spotify 매칭 후보를 찾았습니다.",
-        "playlist_name": _playlist_name(title_mode, user_playlist_name, youtube_title),
-        "youtube_title": youtube_title,
-        "thumbnail_url": _youtube_thumbnail_url(youtube_result),
-        "title_mode": title_mode,
-        "mode": mode,
-        "use_artist_aliases": use_artist_aliases,
-        "selected_stage": youtube_result.get("selected_stage"),
-        "ocr_used": youtube_result.get("ocr_used", False),
-        "acr_used": youtube_result.get("acr_used", False),
-        "extracted_count": len(songs),
-        "spotify_candidate_count": candidate_count,
-        "candidate_count": candidate_count,
-        "needs_review_count": needs_review_count,
-        "failed_count": failed_count,
-        "results": results,
-        "songs": songs,
-        "youtube_result": youtube_result,
-        "timings": {
-            "analysis_elapsed_ms": analysis_elapsed_ms,
-            "spotify_elapsed_ms": spotify_elapsed_ms,
-            "total_elapsed_ms": total_elapsed_ms,
+    response_payload = _build_analysis_response(
+        youtube_url=youtube_url,
+        youtube_result=youtube_result,
+        songs=songs,
+        results=results,
+        title_mode=title_mode,
+        user_playlist_name=user_playlist_name,
+        mode=mode,
+        analysis_elapsed_ms=analysis_elapsed_ms,
+        spotify_elapsed_ms=spotify_elapsed_ms,
+        total_elapsed_ms=total_elapsed_ms,
+        message="Spotify 매칭 후보를 찾았습니다.",
+    )
+    print(
+        "[playlist/analyze-youtube] response summary =",
+        {
+            "mode": mode,
+            "selected_stage": response_payload.get("selected_stage"),
+            "songs": len(response_payload.get("songs", [])),
+            "results": len(response_payload.get("results", [])),
+            "matched_tracks": len(response_payload.get("matched_tracks", [])),
+            "unmatched_tracks": len(response_payload.get("unmatched_tracks", [])),
         },
-        "analysis_elapsed_ms": analysis_elapsed_ms,
-        "spotify_elapsed_ms": spotify_elapsed_ms,
-        "total_elapsed_ms": total_elapsed_ms,
-    }
+    )
+    print("[playlist/analyze-youtube] return response keys =", list(response_payload.keys()))
+    print("[playlist/analyze-youtube] before json_safe (full response)")
+    safe_payload = _json_safe(response_payload)
+    print("[playlist/analyze-youtube] after json_safe (full response)")
+    return safe_payload
 
 
 @router.post("/create-selected")
@@ -286,7 +654,6 @@ def create_playlist_from_selected_tracks(
     description = (payload.get("description") or "").strip()
     thumbnail_url = (payload.get("thumbnail_url") or "").strip()
     track_uris = payload.get("track_uris") or []
-    selected_matches = payload.get("selected_matches") or []
 
     if not isinstance(track_uris, list):
         raise HTTPException(status_code=400, detail="track_uris must be a list")
@@ -326,20 +693,54 @@ def create_playlist_from_selected_tracks(
             except (YouTubeThumbnailError, SpotifyCoverUploadError, Exception) as exc:
                 result["cover_upload_status"] = "failed"
                 result["cover_upload_error"] = str(exc)
-        if isinstance(selected_matches, list):
-            result["saved_artist_alias_count"] = save_artist_aliases(selected_matches)
-        else:
-            result["saved_artist_alias_count"] = 0
         return result
     except SpotifyServiceError as exc:
         raise HTTPException(status_code=_spotify_http_status(exc), detail=str(exc)) from exc
 
 
-@router.delete("/artist-aliases")
-def delete_artist_aliases():
-    deleted_count = clear_artist_aliases()
-    return {
+@router.post("/match-songs")
+def match_songs_with_spotify(
+    payload: Dict,
+    request: Request,
+    session_service: SpotifySessionDep,
+):
+    songs_raw = payload.get("songs") or []
+
+    songs = _fuzzy_dedup_songs(_dedupe_pipeline_songs(songs_raw))
+    if not songs:
+        raise HTTPException(status_code=400, detail="유효한 곡 정보가 없습니다.")
+
+    access_token = _require_spotify_access_token(request, session_service)
+
+    started_at = time.perf_counter()
+
+    try:
+        results = analyze_spotify_candidates(
+            access_token=access_token,
+            songs=songs,
+            market="KR",
+            source_mode="manual",
+        )
+    except SpotifyServiceError as exc:
+        raise HTTPException(status_code=_spotify_http_status(exc), detail=str(exc)) from exc
+
+    elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+    candidate_count = sum(1 for item in results if item.get("matched") and item.get("spotify_uri"))
+    needs_review_count = sum(1 for item in results if item.get("confidence_label") in {"mid", "low"})
+    failed_count = sum(1 for item in results if item.get("confidence_label") == "failed")
+    matched_tracks = [item for item in results if item.get("matched") and item.get("spotify_uri")]
+    unmatched_tracks = [item for item in results if not (item.get("matched") and item.get("spotify_uri"))]
+
+    return _json_safe({
         "success": True,
-        "deleted_count": deleted_count,
-        "message": "저장된 사용자 확정 artist alias를 초기화했습니다.",
-    }
+        "songs": songs,
+        "results": results,
+        "matched_tracks": matched_tracks,
+        "unmatched_tracks": unmatched_tracks,
+        "extracted_count": len(songs),
+        "spotify_candidate_count": candidate_count,
+        "candidate_count": candidate_count,
+        "needs_review_count": needs_review_count,
+        "failed_count": failed_count,
+        "spotify_elapsed_ms": elapsed_ms,
+    })

@@ -16,104 +16,87 @@ VERSION_KEYWORDS = {
     'ver', 'cover', 'radio edit', 'edit'
 }
 
-ARTIST_ALIAS_MAP = {
+# Single consolidated dict — all values are lists, no duplicate keys.
+# .update(CORE_ARTIST_ALIAS_MAP) runs last so external data can override.
+ARTIST_ALIAS_MAP: Dict[str, List[str]] = {
     '클래지콰이': ['clazziquai', 'clazziquai project'],
     '롤러코스터': ['roller coaster', 'rollercoaster'],
     '조원선': ['joe wonsun'],
     '윤상': ['yoon sang'],
     '악뮤': ['akmu', 'akdong musician'],
-    '소녀시대': ["girls' generation", 'girls generation', 'snsd'],
-    '아이유': ['iu'],
-    '백예린': ['yerin baek'],
-    '태연': ['taeyeon'],
-    '방탄소년단': ['bts'],
-    "릴러말즈": "Leellamarz",
-    "페노메코": "PENOMECO",
-    "블락비": "Block B",
-    "엔하이픈": "ENHYPEN",
-    "백현": "BAEKHYUN",
-    "아이콘": "iKON",
-    "지드래곤": "G-DRAGON",
-    "방탄소년단": "BTS",
-    "엑소": "EXO",
-    "지코": "ZICO",
-    "딘": "DEAN",
-    "크러쉬": "Crush",
-    "헤이즈": "Heize",
-    "엔시티": "NCT",
-    "엔시티 127": "NCT 127",
-    "엔시티 드림": "NCT DREAM",
-    "백예린": "Yerin Baek",
-    "원슈타인": "Wonstein",
-    "MC몽": "MC Mong",
-    "더보이즈": "THE BOYZ",
-    "라이즈": "RIIZE",
-    "트레저": "TREASURE",
-    "세븐틴": "SEVENTEEN",
-    "엔시티": "NCT",
-    "투바투": "TOMORROW X TOGETHER",
-    "TXT": "TOMORROW X TOGETHER",
-    "투모로우바이투게더": "TOMORROW X TOGETHER",
+    '소녀시대': ["Girls' Generation", 'Girls Generation', 'SNSD'],
+    '아이유': ['IU', 'iu'],
+    '백예린': ['Yerin Baek'],
+    '태연': ['TAEYEON', 'taeyeon'],
+    '방탄소년단': ['BTS'],
+    '릴러말즈': ['Leellamarz'],
+    '페노메코': ['PENOMECO'],
+    '블락비': ['Block B'],
+    '엔하이픈': ['ENHYPEN'],
+    '백현': ['BAEKHYUN'],
+    '아이콘': ['iKON'],
+    '지드래곤': ['G-DRAGON'],
+    '엑소': ['EXO'],
+    '지코': ['ZICO'],
+    '딘': ['DEAN'],
+    '크러쉬': ['Crush'],
+    '헤이즈': ['Heize'],
+    '엔시티': ['NCT'],
+    '엔시티 127': ['NCT 127'],
+    '엔시티 드림': ['NCT DREAM'],
+    '원슈타인': ['Wonstein'],
+    'MC몽': ['MC Mong'],
+    '더보이즈': ['THE BOYZ'],
+    '라이즈': ['RIIZE'],
+    '트레저': ['TREASURE'],
+    '세븐틴': ['SEVENTEEN'],
+    '투바투': ['TOMORROW X TOGETHER'],
+    'TXT': ['TOMORROW X TOGETHER'],
+    '투모로우바이투게더': ['TOMORROW X TOGETHER'],
+    '레드벨벳': ['Red Velvet', 'REDVELVET'],
+    '트와이스': ['TWICE'],
+    '원더걸스': ['Wonder Girls'],
+    '레인보우': ['RAINBOW', 'Rainbow'],
+    '비스트': ['BEAST'],
+    '인피니트': ['INFINITE'],
+    '샤이니': ['SHINee'],
+    'f(x)': ['F(x)', 'f（x）'],
+    '(G)I-DLE': ['GIDLE', 'I-DLE'],
+    '이희상': ['LEEHEESANG', 'Lee Hee Sang'],
+    '이준형': ['Lee Jun Hyung', 'LEE JUN HYUNG'],
+    '최유리': ['Choi Yu Ree', 'CHOI YU REE'],
+    '윤지영': ['Whys Young', 'Yoon Ji Young'],
+    '허회경': ['Heo Hoy Kyung', 'HEO HOY KYUNG'],
+    '백아': ['Baek A', 'BAEK A'],
+    '로꼬': ['Loco', 'LOCO'],
+    '수퍼비': ['SUPERBEE'],
+    '키드밀리': ['Kid Milli'],
+    '실키보이즈': ['SILKYBOIS'],
+    '개코': ['Gaeko'],
+    '자이언티': ['Zion.T'],
+    '걸스데이': ["Girl's Day", 'Girls Day'],
+    '온앤오프': ['ONF'],
+    '데이식스': ['DAY6', 'Day6'],
+    '미도와 파라솔': ['Mido and Falasol'],
+    '옥상달빛': ['OKDAL'],
+    '정승환': ['Jung Seung Hwan'],
+    '김동률': ['Kim Dong Ryul'],
+    '이찬혁': ['LEE CHANHYUK', 'Lee Chanhyuk'],
+    '다비치': ['DAVICHI', 'Davichi'],
+    '에스파': ['aespa', 'Aespa'],
+    '혁오': ['HYUKOH', 'Hyukoh'],
+    '이무진': ['LEE MU JIN', 'Lee Mujin', 'Lee Mu Jin'],
+    '도영': ['DOYOUNG', 'Doyoung'],
+    '유다빈 밴드': ['YdBB', 'Yudabinband'],
 }
 
 ARTIST_ALIAS_MAP.update(CORE_ARTIST_ALIAS_MAP)
-ARTIST_ALIAS_MAP.update({
-    "\ub808\ub4dc\ubca8\ubcb3": ["Red Velvet", "REDVELVET"],
-    "\ud2b8\uc640\uc774\uc2a4": ["TWICE"],
-    "\uc18c\ub140\uc2dc\ub300": ["Girls' Generation", "Girls Generation", "SNSD"],
-    "\uc6d0\ub354\uac78\uc2a4": ["Wonder Girls"],
-    "\ub808\uc778\ubcf4\uc6b0": ["RAINBOW", "Rainbow"],
-    "\ube44\uc2a4\ud2b8": ["BEAST"],
-    "\uc778\ud53c\ub2c8\ud2b8": ["INFINITE"],
-    "\uc0e4\uc774\ub2c8": ["SHINee"],
-    "\uc5d4\ud558\uc774\ud508": ["ENHYPEN"],
-    "\ub354\ubcf4\uc774\uc988": ["THE BOYZ"],
-    "\ub77c\uc774\uc988": ["RIIZE"],
-    "\ud2b8\ub808\uc800": ["TREASURE"],
-    "\uc138\ube10\ud2f4": ["SEVENTEEN"],
-    "\uc5d4\uc2dc\ud2f0 \ub4dc\ub9bc": ["NCT DREAM"],
-    "\uc5d4\uc2dc\ud2f0": ["NCT"],
-    "\ud22c\ubc14\ud22c": ["TOMORROW X TOGETHER"],
-    "\ud22c\ubaa8\ub85c\uc6b0\ubc14\uc774\ud22c\uac8c\ub354": ["TOMORROW X TOGETHER"],
-    "f(x)": ["F(x)", "f\uff08x\uff09"],
-    "(G)I-DLE": ["GIDLE", "(G)I-DLE", "I-DLE"],
-})
-ARTIST_ALIAS_MAP.update({
-    "\uc774\ud76c\uc0c1": ["LEEHEESANG", "Lee Hee Sang"],
-    "\uc774\uc900\ud615": ["Lee Jun Hyung", "LEE JUN HYUNG"],
-    "\ucd5c\uc720\ub9ac": ["Choi Yu Ree", "CHOI YU REE"],
-    "\uc724\uc9c0\uc601": ["Whys Young", "Yoon Ji Young"],
-    "\ud5c8\ud68c\uacbd": ["Heo Hoy Kyung", "HEO HOY KYUNG"],
-    "\ubc31\uc544": ["Baek A", "BAEK A"],
-    "\ub85c\uaefc": ["Loco", "LOCO"],
-})
-ARTIST_ALIAS_MAP.update({
-    "\uc218\ud37c\ube44": ["SUPERBEE", "superbee"],
-    "\ud0a4\ub4dc\ubc00\ub9ac": ["Kid Milli", "kidmilli"],
-    "\uc2e4\ud0a4\ubcf4\uc774\uc988": ["SILKYBOIS", "silkybois"],
-    "\uac1c\ucf54": ["Gaeko", "gaeko"],
-    "\uc790\uc774\uc5b8\ud2f0": ["Zion.T", "ziont"],
-    "\uac78\uc2a4\ub370\uc774": ["Girl's Day", "girls day", "girlsday"],
-    "\uc628\uc564\uc624\ud504": ["ONF"],
-    "\ub370\uc774\uc2dd\uc2a4": ["DAY6", "Day6"],
-    "\ubc29\ud0c4\uc18c\ub144\ub2e8": ["BTS"],
-    "\ubbf8\ub3c4\uc640 \ud30c\ub77c\uc194": ["Mido and Falasol"],
-    "\uc625\uc0c1\ub2ec\ube5b": ["OKDAL"],
-    "\uc815\uc2b9\ud658": ["Jung Seung Hwan"],
-    "\uae40\ub3d9\ub960": ["Kim Dong Ryul"],
-    "\uc774\ucc2c\ud601": ["LEE CHANHYUK", "Lee Chanhyuk"],
-    "\ub2e4\ube44\uce58": ["DAVICHI", "Davichi"],
-    "\uc5d0\uc2a4\ud30c": ["aespa", "Aespa"],
-    "\ud601\uc624": ["HYUKOH", "Hyukoh"],
-    "\uc774\ubb34\uc9c4": ["LEE MU JIN", "Lee Mujin", "Lee Mu Jin"],
-    "\ub3c4\uc601": ["DOYOUNG", "Doyoung"],
-    "\uc720\ub2e4\ube48 \ubc34\ub4dc": ["YdBB", "Yudabinband"],
-})
+
 TITLE_ALIAS_MAP = dict(CORE_TITLE_ALIAS_MAP)
 TITLE_ALIAS_MAP.update({
-    "\uc591\ud654\ub300\uad50": ["Yanghwa BRDG", "yanghwa bridge", "yanghwabrdg"],
-    "\uc2e0\ud55c\uc740\ud589": ["SHINHAN BANK", "shinhan bank", "shinhanbank"],
-    "\ud654\uc7a5 \uc9c0\uc6e0\uc5b4": ["No Make Up", "nomakeup"],
+    "양화대교": ["Yanghwa BRDG", "yanghwa bridge", "yanghwabrdg"],
+    "신한은행": ["SHINHAN BANK", "shinhan bank", "shinhanbank"],
+    "화장 지웠어": ["No Make Up", "nomakeup"],
 })
 
 SUSPICIOUS_KEYWORDS = {
@@ -131,7 +114,7 @@ TRAILING_ELLIPSIS_REGEX = re.compile(r'(?:\.\.\.|…)+$')
 TRAILING_PERIOD_REGEX = re.compile(r'\.+$')
 TITLE_SYMBOL_RELAX_REGEX = re.compile(r"[!\"'`~@#$%^&*_+=]+")
 MIXED_LANGUAGE_SPLIT_REGEX = re.compile(
-    r"^([\uAC00-\uD7A3][\uAC00-\uD7A3\s]+?)\s+([A-Za-z][A-Za-z\s'!?.,]+)$"
+    r"^([가-힣][가-힣\s]+?)\s+([A-Za-z][A-Za-z\s'!?.,]+)$"
 )
 
 
@@ -139,10 +122,10 @@ def _normalize_text(value: str) -> str:
     value = (value or '').lower().strip()
     value = _normalize_parentheses(value)
     value = value.replace('&', ' and ')
-    value = re.sub(r'[\u2010-\u2015:|/]+', ' ', value)
+    value = re.sub(r'[‐-―:|/]+', ' ', value)
     value = re.sub(r'\b(feat|ft|featuring)\.?\b', ' featuring ', value)
     value = BRACKET_REGEX.sub(' ', value)
-    value = re.sub(r'[^\w\uAC00-\uD7A3\s]', ' ', value)
+    value = re.sub(r'[^\w가-힣\s]', ' ', value)
     value = MULTISPACE_REGEX.sub(' ', value)
     return value.strip()
 
@@ -150,12 +133,12 @@ def _normalize_text(value: str) -> str:
 def _normalize_parentheses(value: str) -> str:
     return (
         str(value or '')
-        .replace('\uff08', '(')
-        .replace('\uff09', ')')
-        .replace('\uff3b', '[')
-        .replace('\uff3d', ']')
-        .replace('\uff5b', '{')
-        .replace('\uff5d', '}')
+        .replace('（', '(')
+        .replace('）', ')')
+        .replace('［', '[')
+        .replace('］', ']')
+        .replace('｛', '{')
+        .replace('｝', '}')
     )
 
 
@@ -201,7 +184,7 @@ def _strip_artist_bracketed_metadata(value: str) -> str:
 def _normalize_artist_key(value: str) -> str:
     value = _strip_artist_bracketed_metadata(value)
     value = value.lower().replace('&', ' and ')
-    value = re.sub(r'[^\w\uAC00-\uD7A3]', ' ', value)
+    value = re.sub(r'[^\w가-힣]', ' ', value)
     value = MULTISPACE_REGEX.sub('', value)
     return value.strip()
 
@@ -211,7 +194,7 @@ def _normalize_cache_text(value: str) -> str:
 
 
 def _has_korean(value: str) -> bool:
-    return bool(re.search(r'[\uAC00-\uD7A3]', value or ''))
+    return bool(re.search(r'[가-힣]', value or ''))
 
 
 def _has_english(value: str) -> bool:
@@ -219,6 +202,11 @@ def _has_english(value: str) -> bool:
 
 
 def _possible_artist_romanization_match(input_artist: str, candidate_artists: List[str] | str) -> bool:
+    """Return True when the Korean input artist plausibly maps to the candidate English artist.
+
+    Requires either a known alias resolution match or meaningful string similarity
+    between the resolved alias and a candidate name — not just "Korean input + any English".
+    """
     if not input_artist or not candidate_artists or not _has_korean(input_artist):
         return False
 
@@ -227,7 +215,30 @@ def _possible_artist_romanization_match(input_artist: str, candidate_artists: Li
     else:
         candidate_values = [artist for artist in candidate_artists if artist]
 
-    return bool(candidate_values and any(_has_english(artist) for artist in candidate_values))
+    if not candidate_values or not any(_has_english(artist) for artist in candidate_values):
+        return False
+
+    # Check whether alias resolution produces a name that matches a candidate
+    resolved = resolve_artist_alias(input_artist)
+    if resolved and _normalize_artist_key(resolved) != _normalize_artist_key(input_artist):
+        for candidate in candidate_values:
+            if _string_similarity(resolved, candidate) >= 0.55:
+                return True
+
+    # Check token overlap between the normalized Korean key and each candidate key
+    input_key = _normalize_artist_key(input_artist)
+    for candidate in candidate_values:
+        candidate_key = _normalize_artist_key(candidate)
+        if not input_key or not candidate_key:
+            continue
+        input_tokens = set(input_key.split()) if ' ' in input_key else {input_key}
+        candidate_tokens = set(candidate_key.split()) if ' ' in candidate_key else {candidate_key}
+        if input_tokens and candidate_tokens:
+            overlap = len(input_tokens & candidate_tokens) / max(len(input_tokens), len(candidate_tokens))
+            if overlap >= 0.3:
+                return True
+
+    return False
 
 
 def _artist_alias_compare_keys(value: str) -> set[str]:
@@ -518,7 +529,7 @@ def _title_variants(title: str) -> List[str]:
 
 def _normalized_title_compare_key(value: str) -> str:
     value = _normalize_text(BRACKET_REGEX.sub(' ', value or ''))
-    return re.sub(r'[^\w\uAC00-\uD7A3]', '', value)
+    return re.sub(r'[^\w가-힣]', '', value)
 
 
 def _candidate_title_compare_variants(candidate_title: str) -> List[str]:

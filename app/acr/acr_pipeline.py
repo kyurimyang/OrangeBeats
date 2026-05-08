@@ -1,3 +1,4 @@
+import difflib
 import shutil
 import tempfile
 from pathlib import Path
@@ -30,7 +31,7 @@ def _get_youtube_info(youtube_url: str) -> Dict:
 
 
 def _deduplicate_acr_songs(songs: List[Dict]) -> List[Dict]:
-    best_by_key: Dict[tuple[str, str], Dict] = {}
+    merged: List[Dict] = []
 
     for song in songs:
         artist = str(song.get("artist") or "").strip()
@@ -38,13 +39,30 @@ def _deduplicate_acr_songs(songs: List[Dict]) -> List[Dict]:
         if not title:
             continue
 
-        key = (artist.lower(), title.lower())
-        previous = best_by_key.get(key)
-        if previous and int(previous.get("score") or 0) >= int(song.get("score") or 0):
-            continue
-        best_by_key[key] = song
+        duplicate_index = None
+        for index, existing in enumerate(merged):
+            existing_artist = str(existing.get("artist") or "").strip().lower()
+            existing_title = str(existing.get("title") or "").strip().lower()
+            title_ratio = difflib.SequenceMatcher(None, title.lower(), existing_title).ratio()
+            artist_ratio = difflib.SequenceMatcher(None, artist.lower(), existing_artist).ratio()
+            artist_same = artist.lower() == existing_artist
+            # ACRCloud는 동일 곡을 세그먼트마다 아티스트 표기를 다르게 반환할 수 있음
+            # (피처링 포함/제외, 영문·한글 혼용 등) → 제목 동일 or 둘 다 유사하면 병합
+            same_title = title_ratio >= 0.95
+            both_similar = title_ratio >= 0.80 and artist_ratio >= 0.35
+            if (artist_same and title_ratio >= 0.86) or same_title or both_similar:
+                duplicate_index = index
+                break
 
-    return list(best_by_key.values())
+        if duplicate_index is None:
+            merged.append(song)
+            continue
+
+        existing = merged[duplicate_index]
+        if int(song.get("score") or 0) > int(existing.get("score") or 0):
+            merged[duplicate_index] = song
+
+    return merged
 
 
 def extract_songs_with_acr(youtube_url: str) -> Dict:
@@ -59,10 +77,11 @@ def extract_songs_with_acr(youtube_url: str) -> Dict:
             return {
                 "stage": "acr",
                 "selected_stage": "acr",
-                "success": True,
+                "success": False,
+                "error": "ACRCloud 자격증명이 설정되지 않았습니다. ACRCLOUD_HOST, ACRCLOUD_ACCESS_KEY, ACRCLOUD_ACCESS_SECRET 환경변수를 확인하세요.",
                 "songs": [],
                 "ocr_used": False,
-                "acr_used": True,
+                "acr_used": False,
                 "youtube_title": info.get("title", ""),
                 "signals": {
                     "sampled_segments": 0,
@@ -105,10 +124,11 @@ def extract_songs_with_acr(youtube_url: str) -> Dict:
         return {
             "stage": "acr",
             "selected_stage": "acr",
-            "success": True,
+            "success": False,
+            "error": str(exc),
             "songs": [],
             "ocr_used": False,
-            "acr_used": True,
+            "acr_used": False,
             "youtube_title": "",
             "signals": {
                 "sampled_segments": sampled_segments,

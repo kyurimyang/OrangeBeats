@@ -23,17 +23,18 @@ def _build_song_metrics(songs: list[dict]) -> dict:
     }
 
 
-def analyze_description(description: str) -> dict:
-    rule_based = parse_unstructured_lines_to_json(description)
+def analyze_text_block(text: str, *, stage: str, llm_blocks: list[str] | None = None) -> dict:
+    text = text or ""
+    rule_based = parse_unstructured_lines_to_json(text)
     rule_based = normalize_song_candidates(rule_based)
 
-    rule_success = is_text_stage_success(description, rule_based['songs'])
+    rule_success = is_text_stage_success(text, rule_based['songs'])
     rule_metrics = _build_song_metrics(rule_based['songs'])
-    rule_signals = count_text_signals(description)
+    rule_signals = count_text_signals(text)
 
     if rule_success:
         return {
-            'stage': 'description',
+            'stage': stage,
             'success': True,
             'method': 'rule_based',
             'signals': rule_signals,
@@ -41,54 +42,27 @@ def analyze_description(description: str) -> dict:
             'songs': rule_based['songs'],
         }
 
-    llm_raw = extract_songs_with_llm([description])
+    llm_raw = extract_songs_with_llm(llm_blocks if llm_blocks is not None else [text])
     llm_json = parse_json_from_text(llm_raw)
     llm_result = normalize_song_candidates(llm_json)
 
-    llm_success = is_text_stage_success(description, llm_result['songs'])
+    llm_success = is_text_stage_success(text, llm_result['songs'])
     llm_metrics = _build_song_metrics(llm_result['songs'])
 
     return {
-        'stage': 'description',
+        'stage': stage,
         'success': llm_success,
         'method': 'llm',
         'signals': rule_signals,
         'metrics': llm_metrics,
         'songs': llm_result['songs'],
     }
+
+
+def analyze_description(description: str) -> dict:
+    return analyze_text_block(description, stage='description')
 
 
 def analyze_comments(comments: list[str]) -> dict:
     comment_text = '\n'.join(comments)
-
-    rule_based = parse_unstructured_lines_to_json(comment_text)
-    rule_based = normalize_song_candidates(rule_based)
-    rule_success = is_text_stage_success(comment_text, rule_based['songs'])
-    rule_metrics = _build_song_metrics(rule_based['songs'])
-    rule_signals = count_text_signals(comment_text)
-
-    if rule_success:
-        return {
-            'stage': 'comments',
-            'success': True,
-            'method': 'rule_based',
-            'signals': rule_signals,
-            'metrics': rule_metrics,
-            'songs': rule_based['songs'],
-        }
-
-    llm_raw = extract_songs_with_llm(comments[:20])
-    llm_json = parse_json_from_text(llm_raw)
-    llm_result = normalize_song_candidates(llm_json)
-
-    llm_success = is_text_stage_success(comment_text, llm_result['songs'])
-    llm_metrics = _build_song_metrics(llm_result['songs'])
-
-    return {
-        'stage': 'comments',
-        'success': llm_success,
-        'method': 'llm',
-        'signals': rule_signals,
-        'metrics': llm_metrics,
-        'songs': llm_result['songs'],
-    }
+    return analyze_text_block(comment_text, stage='comments', llm_blocks=comments[:20])

@@ -1,7 +1,6 @@
 ﻿from typing import Any, Dict, List
 
 from app.services.spotify_api import add_tracks_to_playlist, create_playlist
-from app.services.artist_aliases import apply_saved_artist_aliases
 from app.services.spotify_common import _is_suspicious_song, build_match_cache_key
 from app.services.spotify_exceptions import SpotifyServiceError
 from app.services.spotify_matching import explain_match_reason, get_match_debug, pick_best_track_match
@@ -10,6 +9,7 @@ LOW_CONF_MIN_SCORE = 0.60
 ALLOWED_LOW_CONF_REASONS = {
     "probable_match",
     "review_needed",
+    "low_confidence",
     "title_matched_artist_alias_candidate",
     "artist_matched_title_mismatch",
     "top_candidate_artist_romanization_title_mismatch",
@@ -33,7 +33,9 @@ def _confidence_label(match_status: str, score: float, has_uri: bool) -> str:
     return "low"
 
 
-def _selection_recommended(confidence_label: str) -> bool:
+def _selection_recommended(confidence_label: str, *, source_mode: str = "") -> bool:
+    if source_mode == "ocr":
+        return confidence_label == "high"
     return confidence_label in {"high", "mid"}
 
 
@@ -119,15 +121,21 @@ def _confidence_detail(match: Dict[str, Any] | None, confidence_label: str = "fa
     }
 
 
-def _result_from_match(song: Dict[str, Any], match: Dict[str, Any] | None) -> Dict[str, Any]:
+def _result_from_match(
+    song: Dict[str, Any],
+    match: Dict[str, Any] | None,
+    *,
+    include_debug: bool = False,
+    source_mode: str = "",
+) -> Dict[str, Any]:
     input_artist = (song.get("artist") or "").strip()
     input_title = (song.get("title") or "").strip()
+    debug = get_match_debug(input_title, input_artist)
 
     if not match:
-        debug = get_match_debug(input_title, input_artist)
         reason = debug.get("unmatched_reason") or "no reliable Spotify match"
         reason_text = explain_match_reason(str(reason).split("(", 1)[0]) or reason
-        return {
+        result: Dict[str, Any] = {
             "input_artist": input_artist,
             "input_title": input_title,
             "matched": False,
@@ -147,11 +155,16 @@ def _result_from_match(song: Dict[str, Any], match: Dict[str, Any] | None) -> Di
             "match_status": "unmatched",
             "top_candidates": debug.get("top_candidates", []),
         }
+        if include_debug:
+            result["match_debug"] = debug
+        return result
 
     score = float(match.get("score") or 0.0)
     match_status = str(match.get("match_status") or "matched")
     spotify_uri = match.get("uri")
     confidence_label = _confidence_label(match_status, score, bool(spotify_uri))
+    is_ocr_mode = source_mode == "ocr" or str(song.get("source_mode") or "") == "ocr"
+    ocr_auto_selectable = not is_ocr_mode or confidence_label == "high"
     reason_key = match.get("low_confidence_reason")
     if not reason_key and not isinstance(match.get("reason"), list):
         reason_key = match.get("reason")
@@ -169,7 +182,7 @@ def _result_from_match(song: Dict[str, Any], match: Dict[str, Any] | None) -> Di
     return {
         "input_artist": input_artist,
         "input_title": input_title,
-        "matched": bool(spotify_uri) and confidence_label != "failed",
+        "matched": bool(spotify_uri) and confidence_label != "failed" and ocr_auto_selectable,
         "spotify_track_id": match.get("id"),
         "spotify_uri": spotify_uri,
         "spotify_title": match.get("name"),
@@ -188,9 +201,10 @@ def _result_from_match(song: Dict[str, Any], match: Dict[str, Any] | None) -> Di
         "reason": reason_array,
         "reason_text": str(reason),
         "confidence_detail": _confidence_detail(match, confidence_label),
-        "selected": bool(spotify_uri) and _selection_recommended(confidence_label),
+        "selected": bool(spotify_uri) and _selection_recommended(confidence_label, source_mode="ocr" if is_ocr_mode else ""),
         "match_status": match_status,
         "top_candidates": match.get("top_candidates", []),
+        "match_debug": debug,
     }
 
 
@@ -198,12 +212,10 @@ def analyze_spotify_candidates(
     access_token: str,
     songs: List[Dict[str, Any]],
     market: str = "KR",
-    use_artist_aliases: bool = True,
+    source_mode: str = "",
 ) -> List[Dict[str, Any]]:
     results: List[Dict[str, Any]] = []
     request_match_cache: Dict[tuple[str, str], Any] = {}
-    if use_artist_aliases:
-        apply_saved_artist_aliases()
 
     for song in songs:
         title = (song.get("title") or "").strip()
@@ -244,6 +256,7 @@ def analyze_spotify_candidates(
             "reason": song.get("reason", ""),
             "swap_guard_applied": song.get("swap_guard_applied", False),
             "swap_guard_reason": song.get("swap_guard_reason", ""),
+            "source_mode": source_mode or song.get("source_mode", ""),
         }
         cache_key = build_match_cache_key(title, artist)
         if cache_key in request_match_cache:
@@ -258,7 +271,7 @@ def analyze_spotify_candidates(
             )
             request_match_cache[cache_key] = match
 
-        results.append(_result_from_match(song, match))
+        results.append(_result_from_match(song, match, source_mode=source_mode or str(song.get("source_mode") or "")))
 
     return results
 
@@ -542,6 +555,9 @@ def create_playlist_from_songs(
             'added_low_confidence': added_low_confidence,
             'skipped_low_confidence_count': len(skipped_low_confidence),
             'skipped_low_confidence': skipped_low_confidence,
+            'added_count': 0,
+            'playlist_added_tracks': 0,
+            'playlist_uri_count': 0,
             'matched': matched_debug,
             'low_confidence': low_confidence,
             'unmatched': unmatched,
@@ -573,8 +589,10 @@ def create_playlist_from_songs(
         'added_low_confidence': added_low_confidence,
         'skipped_low_confidence_count': len(skipped_low_confidence),
         'skipped_low_confidence': skipped_low_confidence,
+        'added_count': len(playlist_uris),
+        'playlist_added_tracks': len(playlist_uris),
+        'playlist_uri_count': len(playlist_uris),
         'matched': matched_debug,
         'low_confidence': low_confidence,
         'unmatched': unmatched,
     }
-
