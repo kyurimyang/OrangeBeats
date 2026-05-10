@@ -98,6 +98,16 @@ def extract_songs_with_ocr(youtube_url: str) -> Dict:
         has_songs = bool(songs)
         insufficient_text = len(vision_text) < _INSUFFICIENT_TEXT_CHARS or raw_text_count < _INSUFFICIENT_RAW_COUNT
         partial_success = has_songs and insufficient_text
+        ocr_failure_reason = ""
+        if not has_songs:
+            if actual_frame_count <= 0:
+                ocr_failure_reason = "frame_selection_failed"
+            elif raw_text_count <= 0:
+                ocr_failure_reason = "no_text_frame"
+            elif len(vision_text) < _INSUFFICIENT_TEXT_CHARS:
+                ocr_failure_reason = "low_quality_frame"
+            else:
+                ocr_failure_reason = "ocr_noise_too_high"
         warning = (
             "화면에서 읽힌 텍스트가 부족해 곡 목록이 완전하지 않을 수 있습니다."
             if partial_success else ""
@@ -109,6 +119,7 @@ def extract_songs_with_ocr(youtube_url: str) -> Dict:
             "selected_stage": "ocr",
             "text_stage": "vision",
             "success": has_songs,
+            "failure_reason": ocr_failure_reason,
             "partial_success": partial_success,
             "warning": warning,
             "songs": songs,
@@ -119,8 +130,11 @@ def extract_songs_with_ocr(youtube_url: str) -> Dict:
                 "interval_sec": OCR_INTERVAL_SECONDS,
                 "expected_frame_count": expected_frame_count,
                 "actual_frame_count": actual_frame_count,
+                "frames_sampled": ocr_result.get("frames_sampled", actual_frame_count),
+                "frames_with_text": ocr_result.get("frames_with_text", raw_text_count),
                 "sampled_frames": sampled_frames,
                 "raw_text_count": raw_text_count,
+                "selected_frame_score_detail": ocr_result.get("selected_frame_score_detail", {}),
                 "vision_text_lines": len(vision_text.splitlines()) if vision_text else 0,
                 "raw_vision_text_lines": len(raw_vision_text.splitlines()) if raw_vision_text else 0,
                 "selected_ocr_block_score": (ocr_result.get("selected_ocr_block") or {}).get("score", 0),
@@ -142,6 +156,9 @@ def extract_songs_with_ocr(youtube_url: str) -> Dict:
                     "interval_sec": OCR_INTERVAL_SECONDS,
                     "expected_frame_count": expected_frame_count,
                     "actual_frame_count": actual_frame_count,
+                    "frames_sampled": ocr_result.get("frames_sampled", actual_frame_count),
+                    "frames_with_text": ocr_result.get("frames_with_text", raw_text_count),
+                    "selected_frame_score_detail": ocr_result.get("selected_frame_score_detail", {}),
                     "raw_text_count": raw_text_count,
                     "insufficient_text": insufficient_text,
                     "errors": ocr_result.get("errors", []),
@@ -158,6 +175,7 @@ def extract_songs_with_ocr(youtube_url: str) -> Dict:
             "selected_stage": "ocr",
             "text_stage": "vision",
             "success": False,
+            "failure_reason": "frame_selection_failed" if not sampled_frames else "ocr_noise_too_high",
             "songs": [],
             "ocr_used": True,
             "acr_used": False,

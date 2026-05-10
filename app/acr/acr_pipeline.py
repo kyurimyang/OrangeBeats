@@ -86,6 +86,10 @@ def extract_songs_with_acr(youtube_url: str) -> Dict:
                 "signals": {
                     "sampled_segments": 0,
                     "recognized_segments": 0,
+                    "segments_total": 0,
+                    "segments_recognized": 0,
+                    "recognition_rate": 0.0,
+                    "unrecognized_reason": "low_confidence_audio",
                 },
                 "debug": {
                     "skipped": "missing_acrcloud_credentials",
@@ -102,6 +106,12 @@ def extract_songs_with_acr(youtube_url: str) -> Dict:
             if song:
                 recognized_segments += 1
                 recognized.append(song)
+        recognition_rate = recognized_segments / max(sampled_segments, 1)
+        unrecognized_reason = ""
+        if recognized_segments == 0:
+            unrecognized_reason = "not_in_db" if sampled_segments else "short_segment"
+        elif recognition_rate < 0.35:
+            unrecognized_reason = "transition"
 
         return {
             "stage": "acr",
@@ -110,10 +120,19 @@ def extract_songs_with_acr(youtube_url: str) -> Dict:
             "songs": _deduplicate_acr_songs(recognized),
             "ocr_used": False,
             "acr_used": True,
+            "segments_total": sampled_segments,
+            "segments_recognized": recognized_segments,
+            "recognition_rate": round(recognition_rate, 3),
+            "unrecognized_reason": unrecognized_reason,
+            "acr_limit_notice": "ACR은 서비스 DB에 등록되지 않은 음원, 짧은 구간, 전환부에서는 인식하지 못할 수 있습니다.",
             "youtube_title": info.get("title", ""),
             "signals": {
                 "sampled_segments": sampled_segments,
                 "recognized_segments": recognized_segments,
+                "segments_total": sampled_segments,
+                "segments_recognized": recognized_segments,
+                "recognition_rate": round(recognition_rate, 3),
+                "unrecognized_reason": unrecognized_reason,
             },
             "debug": {
                 "segment_seconds": ACR_SEGMENT_SECONDS,
@@ -133,6 +152,10 @@ def extract_songs_with_acr(youtube_url: str) -> Dict:
             "signals": {
                 "sampled_segments": sampled_segments,
                 "recognized_segments": recognized_segments,
+                "segments_total": sampled_segments,
+                "segments_recognized": recognized_segments,
+                "recognition_rate": round(recognized_segments / max(sampled_segments, 1), 3),
+                "unrecognized_reason": "low_confidence_audio",
             },
             "debug": {
                 "error": str(exc),

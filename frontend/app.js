@@ -369,6 +369,8 @@ function renderCandidateCard(item, index) {
   const spotifyLine = selectable
     ? `${escapeHtml(item.spotify_artist || "-")} - ${escapeHtml(item.spotify_title || "-")}`
     : "Spotify 후보 없음";
+  const score = typeof item.score === "number" ? item.score : item.confidence;
+  const searchTitle = item.search_title || item.match_debug?.search_title || item.confidence_detail?.query_used || item.input_title || "-";
 
   return `
     <article class="song-card candidate-card ${cardClass}">
@@ -384,7 +386,8 @@ function renderCandidateCard(item, index) {
         </div>
         <div class="song-card-meta">
           <strong>Spotify 검색 후보</strong>: ${spotifyLine}<br />
-          <strong>confidence</strong>: ${escapeHtml(formatScore(item.confidence))}<br />
+          <strong>점수</strong>: ${escapeHtml(formatScore(score))} · ${escapeHtml(labelForConfidence(item.confidence_label))}<br />
+          <strong>검색 기준</strong>: ${escapeHtml(searchTitle)}<br />
           <strong>reason</strong>: ${escapeHtml(item.reason || "-")}
         </div>
         ${renderConfidenceDetail(item)}
@@ -854,11 +857,17 @@ analyzeBtn.addEventListener("click", async () => {
       setStatus("success", "Spotify 매칭 후보를 찾았습니다. 후보 선택 탭에서 확인해주세요.");
     } else if (hasExtractedSongs) {
       setStatus("success", "OCR/텍스트에서 곡을 추출했습니다. Spotify 후보는 부족해 수동 확인이 필요합니다.");
+    } else if (data?.youtube_result?.is_ai_playlist) {
+      const aiMsg = data?.message || "AI 생성 음악 플레이리스트입니다. Spotify에서 찾을 수 없습니다.";
+      setStatus("warn", aiMsg);
+      renderErrorBox(`AI 플레이리스트 감지\n${aiMsg}`);
     } else {
-      const noSongsMsg = mode === "ocr"
-        ? "화면에서 읽힌 텍스트가 부족해 곡을 추출하지 못했습니다. Raw Debug 탭에서 OCR 텍스트를 확인해주세요."
-        : "곡 추출 결과가 없습니다. Raw Debug 탭에서 분석 결과를 확인해주세요.";
-      setStatus("error", noSongsMsg);
+      const fallbackRec = data?.youtube_result?.fallback_recommendation;
+      const hint = fallbackRec?.recommended_stage ? ` 추천: ${fallbackRec.message}` : "";
+      const noSongsMsg = data?.message || (mode === "ocr"
+        ? "OCR에서 곡을 추출하지 못했습니다."
+        : "곡 추출 결과가 없습니다. Raw Debug 탭에서 분석 결과를 확인해주세요.");
+      setStatus("warn", `곡을 찾지 못했습니다. ${noSongsMsg}${hint}`);
     }
     activateTab("candidatesTab");
   } catch (error) {

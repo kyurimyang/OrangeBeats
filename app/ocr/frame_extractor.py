@@ -23,6 +23,65 @@ def _get_video_duration(video_path: str) -> float:
         return 0.0
 
 
+def _build_sample_timestamps(duration: float, interval_sec: int, max_frames: Optional[int]) -> List[float]:
+    if duration <= 0:
+        return []
+
+    interval = max(int(interval_sec), 1)
+    regular = [float(t) for t in range(0, max(int(duration), 1), interval)]
+    intro = [float(t) for t in range(0, min(90, int(duration)) + 1, 15)]
+    outro_start = max(0, int(duration) - 90)
+    outro = [float(t) for t in range(outro_start, int(duration), 15)]
+
+    expected_regular_count = math.ceil(duration / interval)
+    limit = max_frames if max_frames is not None else expected_regular_count
+
+    selected: List[float] = []
+    for timestamp in intro + outro + regular:
+        timestamp = min(max(timestamp, 0.0), max(duration - 1.0, 0.0))
+        if timestamp in selected:
+            continue
+        selected.append(timestamp)
+        if limit and len(selected) >= limit:
+            break
+    return sorted(selected)
+
+
+def _extract_single_frame(video_path: str, output_path: str, timestamp: float) -> None:
+    cmd = [
+        "ffmpeg",
+        "-ss", str(timestamp),
+        "-i", video_path,
+        "-frames:v", "1",
+        "-q:v", "2",
+        output_path,
+        "-y",
+        "-loglevel", "error",
+    ]
+    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+
+
+def _extract_interval_frames(
+    video_path: str,
+    output_dir: str,
+    interval_sec: int,
+    max_frames: Optional[int],
+) -> None:
+    output_pattern = os.path.join(output_dir, "frame_%04d.jpg")
+    cmd = [
+        "ffmpeg",
+        "-i", video_path,
+        "-vf", f"fps=1/{interval_sec}",
+        "-q:v", "2",
+    ]
+
+    if max_frames is not None:
+        cmd.extend(["-frames:v", str(max_frames)])
+
+    cmd.extend([output_pattern, "-y", "-loglevel", "error"])
+    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+
+
 def extract_frames(
     video_path: str,
     output_dir: str,
@@ -30,7 +89,7 @@ def extract_frames(
     max_frames: Optional[int] = None,
 ) -> List[str]:
     if not os.path.exists(video_path):
-        raise FileNotFoundError(f"영상 파일을 찾을 수 없습니다: {video_path}")
+        raise FileNotFoundError(f"video file not found: {video_path}")
 
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
@@ -45,29 +104,17 @@ def extract_frames(
         f" max_frames={max_frames}"
     )
 
-    output_pattern = os.path.join(output_dir, "frame_%04d.jpg")
-    cmd = [
-        "ffmpeg",
-        "-i", video_path,
-        "-vf", f"fps=1/{interval_sec}",
-        "-q:v", "2",
-    ]
-
-    if max_frames is not None:
-        cmd.extend(["-frames:v", str(max_frames)])
-
-    cmd.extend([output_pattern, "-y", "-loglevel", "error"])
-
     try:
-        subprocess.run(
-            cmd,
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-        )
-    except subprocess.CalledProcessError as e:
-        error_message = e.stderr.decode("utf-8", errors="ignore")
-        raise RuntimeError(f"프레임 추출 실패: {error_message}") from e
+        timestamps = _build_sample_timestamps(duration, interval_sec, max_frames)
+        if timestamps:
+            for index, timestamp in enumerate(timestamps, start=1):
+                output_path = os.path.join(output_dir, f"frame_{index:04d}_{int(timestamp):06d}s.jpg")
+                _extract_single_frame(video_path, output_path, timestamp)
+        else:
+            _extract_interval_frames(video_path, output_dir, interval_sec, max_frames)
+    except subprocess.CalledProcessError as exc:
+        error_message = exc.stderr.decode("utf-8", errors="ignore") if exc.stderr else str(exc)
+        raise RuntimeError(f"frame extraction failed: {error_message}") from exc
 
     frames = sorted(
         str(Path(output_dir) / filename)

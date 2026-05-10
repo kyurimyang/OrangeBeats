@@ -1,5 +1,6 @@
 ﻿import time
 import math
+import json
 from pathlib import Path
 from typing import Annotated, Any, Dict, List
 
@@ -23,9 +24,12 @@ from app.services.text_source_builder import build_combined_text
 
 router = APIRouter(prefix="/playlist", tags=["Playlist"])
 SpotifySessionDep = Annotated[SpotifySessionService, Depends(get_spotify_session_service)]
+DEMO_CACHE_FILE = Path("data/demo_cache.json")
 
 
-def _json_safe(value: Any) -> Any:
+def _json_safe(value: Any, _seen: Any = None) -> Any:
+    if _seen is None:
+        _seen = set()
     if value is None or isinstance(value, (str, bool, int)):
         return value
     if isinstance(value, float):
@@ -33,10 +37,32 @@ def _json_safe(value: Any) -> Any:
     if isinstance(value, Path):
         return str(value)
     if isinstance(value, dict):
-        return {str(key): _json_safe(item) for key, item in value.items()}
+        oid = id(value)
+        if oid in _seen:
+            return {}
+        _seen.add(oid)
+        result = {str(key): _json_safe(item, _seen) for key, item in value.items()}
+        _seen.discard(oid)
+        return result
     if isinstance(value, (list, tuple, set)):
-        return [_json_safe(item) for item in value]
+        oid = id(value)
+        if oid in _seen:
+            return []
+        _seen.add(oid)
+        result = [_json_safe(item, _seen) for item in value]
+        _seen.discard(oid)
+        return result
     return str(value)
+
+
+def _load_demo_cache() -> Dict:
+    if not DEMO_CACHE_FILE.exists():
+        return {}
+    try:
+        data = json.loads(DEMO_CACHE_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
 def _spotify_http_status(exc: SpotifyServiceError) -> int:
@@ -242,6 +268,9 @@ def _compact_youtube_result(youtube_result: Dict, songs: List[Dict[str, str]]) -
         "ocr_used": youtube_result.get("ocr_used", False),
         "acr_used": youtube_result.get("acr_used", False),
         "songs": songs,
+        "failure_reason": youtube_result.get("failure_reason", ""),
+        "is_ai_playlist": youtube_result.get("is_ai_playlist", False),
+        "fallback_recommendation": youtube_result.get("fallback_recommendation", {}),
         "signals": youtube_result.get("signals", {}),
         "metrics": youtube_result.get("metrics", {}),
     }
@@ -256,6 +285,28 @@ def _compact_youtube_result(youtube_result: Dict, songs: List[Dict[str, str]]) -
         compact["debug"] = debug
 
     return compact
+
+
+def _make_no_songs_message(mode: str, youtube_result: Dict) -> str:
+    if youtube_result.get("is_ai_playlist"):
+        return "AI 생성 음악 플레이리스트입니다. Suno, Udio 등 AI가 만든 음악은 Spotify에 등록되어 있지 않아 곡을 찾을 수 없습니다."
+
+    if mode != "ocr":
+        fallback = youtube_result.get("fallback_recommendation", {})
+        rec = (fallback or {}).get("recommended_stage", "")
+        rec_msg = (fallback or {}).get("message", "")
+        if rec:
+            return f"텍스트에서 곡을 찾지 못했습니다. {rec_msg} ({rec.upper()} 모드를 시도해보세요)"
+        return "description과 댓글에서 곡 목록을 찾지 못했습니다."
+
+    reason_map = {
+        "frame_selection_failed": "영상 프레임 추출에 실패했습니다. yt-dlp가 이 영상에 접근할 수 없거나 네트워크 문제일 수 있습니다.",
+        "no_text_frame": "모든 프레임에서 텍스트를 인식하지 못했습니다. 트랙리스트가 화면에 없는 영상일 수 있습니다.",
+        "low_quality_frame": "화면에서 읽힌 텍스트가 너무 짧습니다. 자막이나 트랙리스트가 작거나 흐릿할 수 있습니다.",
+        "ocr_noise_too_high": "텍스트는 인식됐지만 곡 목록 형식을 파악하지 못했습니다. Raw Debug 탭에서 OCR 텍스트를 확인해보세요.",
+    }
+    failure = youtube_result.get("failure_reason", "")
+    return reason_map.get(failure, "OCR에서 곡을 추출하지 못했습니다.")
 
 
 def _build_analysis_response(
@@ -512,6 +563,11 @@ def analyze_youtube_for_playlist(
     if not youtube_url:
         raise HTTPException(status_code=400, detail="YouTube URL이 필요합니다.")
 
+    if bool(payload.get("demo", False)):
+        demo_payload = _load_demo_cache().get(youtube_url)
+        if demo_payload:
+            return _json_safe(demo_payload)
+
     print("[playlist/analyze-youtube] request payload =", payload)
     print("[playlist/analyze-youtube] analysis start mode =", mode)
     access_token = _require_spotify_access_token(request, session_service)
@@ -530,11 +586,7 @@ def analyze_youtube_for_playlist(
 
     if not songs:
         total_elapsed_ms = int((time.perf_counter() - total_started_at) * 1000)
-        no_songs_message = (
-            "화면에서 읽힌 텍스트가 부족해 곡을 추출하지 못했습니다. Raw Debug 탭에서 OCR 텍스트를 확인해주세요."
-            if mode == "ocr"
-            else "추출된 곡이 없습니다. Raw Debug 탭에서 분석 결과를 확인해주세요."
-        )
+        no_songs_message = _make_no_songs_message(mode, youtube_result)
         response_payload = _build_analysis_response(
             youtube_url=youtube_url,
             youtube_result=youtube_result,

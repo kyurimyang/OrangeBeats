@@ -257,6 +257,7 @@ def analyze_spotify_candidates(
             "swap_guard_applied": song.get("swap_guard_applied", False),
             "swap_guard_reason": song.get("swap_guard_reason", ""),
             "source_mode": source_mode or song.get("source_mode", ""),
+            "acr_spotify_track_id": song.get("acr_spotify_track_id", ""),
         }
         cache_key = build_match_cache_key(title, artist)
         if cache_key in request_match_cache:
@@ -391,6 +392,7 @@ def create_playlist_from_songs(
             'reason': song.get('reason', ''),
             'swap_guard_applied': song.get('swap_guard_applied', False),
             'swap_guard_reason': song.get('swap_guard_reason', ''),
+            'acr_spotify_track_id': song.get('acr_spotify_track_id', ''),
         }
 
         if not title:

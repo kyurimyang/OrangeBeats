@@ -217,4 +217,6 @@ node_modules/
 data/qa_posts.json
 data/match_overrides.json
 data/artist_aliases.json
+data/demo_cache.json
+data/sessions.json
 credentials/

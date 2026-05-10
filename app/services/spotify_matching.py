@@ -1,7 +1,7 @@
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.services.spotify_api import search_track, search_tracks_query
+from app.services.spotify_api import get_track, search_track, search_tracks_query
 from app.services.spotify_common import (
     ARTIST_ALIAS_MAP,
     TITLE_ALIAS_MAP,
@@ -155,6 +155,8 @@ def _candidate_to_result(
         "llm_reason": "",
         "search_title": search_title,
         "search_artist": search_artist,
+        "actual_query_used": "",
+        "rejection_reason": "",
     }
 
 
@@ -1771,8 +1773,10 @@ def _score_tracks(
                 search_artist=source.get("search_artist", input_artist),
                 chosen_case=chosen_case,
             )
+            candidate["actual_query_used"] = source.get("query_used", "")
             candidate["match_status"] = "invalid_candidate"
             candidate["unmatched_reason"] = "invalid_candidate"
+            candidate["rejection_reason"] = "low_title_sim"
             candidate["user_message"] = _reason_message("invalid_candidate")
             candidate = _apply_evidence_score(candidate)
             candidate["candidate_rank"] = len(scored_candidates)
@@ -1819,6 +1823,7 @@ def _score_tracks(
                 search_artist=source.get("search_artist", input_artist),
                 chosen_case=chosen_case,
             )
+        candidate["actual_query_used"] = source.get("query_used", "")
         metadata_signal = _official_metadata_signal(
             input_title=input_title,
             candidate=candidate,
@@ -1943,6 +1948,7 @@ def _attach_candidate_status(candidate: Dict[str, Any], *, has_artist: bool, inp
     enriched["status"] = "low_confidence" if status in {"probable_match", "review_needed"} else status
     enriched["user_message"] = _reason_message(reason if status == "unmatched" else status)
     enriched["unmatched_reason"] = reason if status == "unmatched" else ""
+    enriched["rejection_reason"] = "" if status in {"matched", "probable_match"} else _map_rejection_reason(reason)
     score_detail = dict(enriched.get("score_detail", {}))
     if status == "invalid_candidate":
         score_detail["candidate_decision"] = "rejected"
@@ -1962,6 +1968,21 @@ def _attach_candidate_status(candidate: Dict[str, Any], *, has_artist: bool, inp
         if enriched["low_confidence_reason"]:
             enriched["user_message"] = _reason_message(enriched["low_confidence_reason"])
     return enriched
+
+
+def _map_rejection_reason(reason: str) -> str:
+    reason = str(reason or "")
+    if "non_original" in reason or reason == "version_candidate":
+        return "non_original"
+    if "title" in reason:
+        return "low_title_sim"
+    if "artist" in reason:
+        if "romanization" in reason or "alias" in reason:
+            return "romanization_mismatch"
+        return "low_artist_sim"
+    if "no_search_result" in reason:
+        return "no_search_result"
+    return reason or "low_title_sim"
 
 
 def _pick_best_acceptable_candidate(
@@ -2092,6 +2113,114 @@ def _store_match_debug(
 def get_match_debug(title: str, artist: str) -> Dict[str, Any]:
     cache_key = build_match_cache_key(title, artist)
     return dict(_MATCH_DEBUG.get(cache_key, {}))
+
+
+def _apply_acr_id_boost(
+    candidate: Dict[str, Any],
+    *,
+    acr_spotify_track_id: str,
+    has_artist: bool,
+    input_artist: str,
+) -> Dict[str, Any]:
+    """ACR Spotify ID를 강한 evidence로 반영해 점수와 상태를 조정한다."""
+    enriched = dict(candidate)
+    score_detail = dict(enriched.get("score_detail", {}))
+    title_score = float(score_detail.get("title_variant_score", score_detail.get("title_score", 0.0)))
+    artist_score = float(score_detail.get("artist_variant_score", score_detail.get("artist_score", 0.0)))
+    current_score = float(enriched.get("score", 0.0))
+
+    # 점수·상태 결정: ACR ID는 검색 결과가 아닌 직접 식별이므로 문자열 유사도보다 신뢰도가 높음
+    if title_score >= 0.6 and (not has_artist or artist_score >= 0.4):
+        new_score = max(current_score, 0.88)
+        new_status = "matched"
+        boost_reason = "acr_id_title_artist_confirmed"
+    elif title_score >= 0.4 or (has_artist and artist_score >= 0.5):
+        new_score = max(current_score, 0.82)
+        new_status = "matched"
+        boost_reason = "acr_id_one_side_strong"
+    elif title_score >= 0.2 or (has_artist and artist_score >= 0.2):
+        # 번역 제목 / 로마자 표기 가능성 → review_needed
+        new_score = max(current_score, 0.65)
+        new_status = "review_needed"
+        boost_reason = "acr_id_low_string_possible_translation"
+    else:
+        # 문자열 유사도가 거의 없음 → 메타데이터 오류 가능성, 확인 필요
+        new_score = max(current_score, 0.58)
+        new_status = "review_needed"
+        boost_reason = "acr_id_string_mismatch_needs_review"
+
+    enriched["score"] = round(new_score, 4)
+    enriched["final_score"] = round(new_score, 4)
+    enriched["match_status"] = new_status
+    enriched["matched"] = new_status in {"matched", "probable_match", "review_needed"}
+    enriched["acr_spotify_id_used"] = True
+    enriched["acr_boost_applied"] = True
+    enriched["acr_boost_reason"] = boost_reason
+    score_detail["final_score"] = round(new_score, 4)
+    score_detail["match_status"] = new_status
+    score_detail["acr_spotify_id_used"] = True
+    score_detail["acr_spotify_track_id"] = acr_spotify_track_id
+    score_detail["acr_boost_reason"] = boost_reason
+    enriched["score_detail"] = score_detail
+    return enriched
+
+
+def _try_acr_direct_match(
+    access_token: str,
+    *,
+    input_title: str,
+    input_artist: str,
+    acr_spotify_track_id: str,
+    market: Optional[str],
+) -> Optional[Dict[str, Any]]:
+    """ACR이 제공한 Spotify track ID로 직접 트랙을 조회하고 스코어링한다.
+    검색 없이 1회 API 호출로 정확한 트랙을 가져오므로 동명곡 오매칭을 방지한다.
+    """
+    track = get_track(access_token, acr_spotify_track_id, market=market)
+    if not track:
+        print(f"[spotify-match:acr-direct] track_id={acr_spotify_track_id} not_found")
+        return None
+
+    track_name = track.get("name", "")
+    track_artists = [a.get("name", "") for a in track.get("artists", [])]
+
+    source = {
+        "search_title": input_title,
+        "search_artist": input_artist,
+        "query_type": "acr_direct",
+        "query_used": f"acr_id:{acr_spotify_track_id}",
+        "api_rank": "1",
+        "query_index": "0",
+    }
+    scored = _score_tracks(
+        [track],
+        {_track_dedupe_key(track): source},
+        input_title=input_title,
+        input_artist=input_artist,
+        chosen_case="original",
+    )
+    if not scored:
+        return None
+
+    candidate = _apply_acr_id_boost(
+        scored[0],
+        acr_spotify_track_id=acr_spotify_track_id,
+        has_artist=bool(input_artist),
+        input_artist=input_artist,
+    )
+    title_score = float(candidate.get("score_detail", {}).get("title_variant_score",
+                        candidate.get("score_detail", {}).get("title_score", 0.0)))
+    artist_score = float(candidate.get("score_detail", {}).get("artist_variant_score",
+                         candidate.get("score_detail", {}).get("artist_score", 0.0)))
+    print(
+        f"[spotify-match:acr-direct] input='{input_artist} - {input_title}' "
+        f"track_id={acr_spotify_track_id} "
+        f"found='{' '.join(track_artists)} - {track_name}' "
+        f"title={title_score:.2f} artist={artist_score:.2f} "
+        f"score={candidate['score']:.2f} status={candidate['match_status']} "
+        f"boost={candidate['acr_boost_reason']}"
+    )
+    return candidate
 
 
 def _evaluate_case(
@@ -2313,6 +2442,55 @@ def pick_best_track_match(
         )
         return _apply_ocr_matching_policy(cached) if source_mode == "ocr" else cached
 
+    # ACR direct path: ACR이 제공한 Spotify track ID가 있으면 검색 없이 직접 조회
+    acr_spotify_track_id = str(song_meta.get("acr_spotify_track_id") or "").strip()
+    if acr_spotify_track_id:
+        direct = _try_acr_direct_match(
+            access_token,
+            input_title=input_title,
+            input_artist=input_artist,
+            acr_spotify_track_id=acr_spotify_track_id,
+            market=market,
+        )
+        if direct:
+            best = dict(direct)
+            if source_mode == "ocr":
+                best = _apply_ocr_matching_policy(best) or best
+            best["top_candidates"] = [direct]
+            best["chosen_case"] = "original"
+            best["selection_reason"] = "acr_direct_id_match"
+            best["search_queries"] = [f"acr_id:{acr_spotify_track_id}"]
+            best["actual_query_used"] = f"acr_id:{acr_spotify_track_id}"
+            best["parse_reason"] = str(song_meta.get("reason") or "")
+            _store_match_debug(
+                cache_key,
+                selected_case="original",
+                search_title=input_title,
+                search_artist=input_artist,
+                unmatched_reason="",
+                top_candidates=[direct],
+                case_results=[],
+            )
+            _log_match(
+                input_title=input_title,
+                input_artist=input_artist,
+                cache_status="miss",
+                chosen_case="original",
+                queries=[f"acr_id:{acr_spotify_track_id}"],
+                fallback_used=False,
+                candidate_count=1,
+                selected=f"{best.get('name', '')} / {', '.join(best.get('artists', []))}",
+                selected_score=float(best.get("score", 0.0)),
+                reason="acr_direct_id_match",
+                unmatched_reason="",
+                early_return=True,
+            )
+            if len(_MATCH_CACHE) >= MAX_CACHE_SIZE:
+                _MATCH_CACHE.clear()
+                _MATCH_DEBUG.clear()
+            _MATCH_CACHE[cache_key] = best
+            return best
+
     case_inputs = _extract_case_inputs(input_title, input_artist, song_meta)
     case_results = [
         _evaluate_case(
@@ -2400,7 +2578,14 @@ def pick_best_track_match(
     best["chosen_case"] = selected_case
     best["selection_reason"] = decision_reason
     best["search_queries"] = selected_queries
+    best["actual_query_used"] = best.get("actual_query_used") or (
+        selected_queries[0] if selected_queries else ""
+    )
     best["parse_reason"] = str(song_meta.get("reason") or "")
+    if song_meta.get("normalized_by") == "swap_detected":
+        best["normalized_by"] = "swap_detected"
+        best["original_input"] = song_meta.get("original_input", {})
+        best["corrected_input"] = song_meta.get("corrected_input", {"artist": input_artist, "title": input_title})
 
     unmatched_reason = ""
     early_return = float(best.get("score", 0.0)) >= EARLY_RETURN_SCORE

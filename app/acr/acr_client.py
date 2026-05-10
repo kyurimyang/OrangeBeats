@@ -71,10 +71,18 @@ def recognize_acr_segment(segment_path: Path) -> Dict | None:
     if not title or score <= 60:
         return None
 
+    spotify_meta = (best.get("external_metadata") or {}).get("spotify") or {}
+    acr_spotify_track_id = (spotify_meta.get("track") or {}).get("id") or ""
+    acr_spotify_artist_ids = [
+        a.get("id", "") for a in (spotify_meta.get("artists") or []) if a.get("id")
+    ]
+
     return {
         "artist": artist,
         "title": title,
         "score": score,
         "raw": json.dumps(best, ensure_ascii=False),
         "source": "acr",
+        "acr_spotify_track_id": acr_spotify_track_id,
+        "acr_spotify_artist_ids": acr_spotify_artist_ids,
     }
