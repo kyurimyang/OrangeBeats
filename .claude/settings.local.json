@@ -10,7 +10,9 @@
       "PowerShell(python -c \"import aiofiles; print\\('aiofiles ok'\\)\" 2>&1)",
       "PowerShell(python -c \"from fastapi.staticfiles import StaticFiles; print\\('StaticFiles ok'\\)\" 2>&1)",
       "Bash(Get-ChildItem -Recurse -Directory)",
-      "Bash(Select-Object -ExpandProperty FullName)"
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(xargs wc -l)",
+      "Bash(python -c ' *)"
     ]
   }
 }

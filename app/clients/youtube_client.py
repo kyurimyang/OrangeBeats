@@ -1,6 +1,7 @@
 # Youtube API 호출
 # Youtube에서 텍스트 긁어오기
 
+import time
 from urllib.parse import parse_qs, urlparse
 
 import requests
@@ -9,6 +10,8 @@ from fastapi import HTTPException
 from app.config import YOUTUBE_API_KEY
 
 YOUTUBE_API_BASE = "https://www.googleapis.com/youtube/v3"
+_TEXT_SOURCE_CACHE: dict[str, tuple[dict, float]] = {}
+_CACHE_TTL_SECONDS = 3600
 
 
 # 입력값이 video URL인지 playlist URL인지 판별하고 id 추출
@@ -69,25 +72,21 @@ def _youtube_get(path: str, params: dict) -> dict:
     return response.json()
 
 
+# video snippet 단일 호출 (title / description / channelId 동시 반환)
+def _get_video_snippet(video_id: str) -> dict:
+    payload = _youtube_get("videos", {"part": "snippet", "id": video_id})
+    items = payload.get("items", [])
+    return items[0].get("snippet", {}) if items else {}
+
+
 # video_id 기준 설명란 가져오기
 def get_video_description(video_id: str) -> str:
-    payload = _youtube_get(
-        "videos",
-        {
-            "part": "snippet",
-            "id": video_id,
-        },
-    )
-
-    items = payload.get("items", [])
-    if not items:
-        return ""
-
-    return items[0]["snippet"].get("description", "")
+    return _get_video_snippet(video_id).get("description", "")
 
 
 # video_id 기준 댓글 가져오기
-def get_video_comments(video_id: str, max_comments: int = 30) -> list[str]:
+# channel_id를 전달하면 is_author_comment 필드를 함께 반환
+def get_video_comment_items(video_id: str, max_comments: int = 30, channel_id: str = "") -> list[dict]:
     comments = []
     next_page_token = None
 
@@ -98,6 +97,7 @@ def get_video_comments(video_id: str, max_comments: int = 30) -> list[str]:
                 "videoId": video_id,
                 "maxResults": min(100, max_comments - len(comments)),
                 "textFormat": "plainText",
+                "order": "relevance",
             }
 
             if next_page_token:
@@ -109,8 +109,18 @@ def get_video_comments(video_id: str, max_comments: int = 30) -> list[str]:
             return comments
 
         for item in payload.get("items", []):
-            text = item["snippet"]["topLevelComment"]["snippet"]["textDisplay"]
-            comments.append(text)
+            snippet = item["snippet"]["topLevelComment"]["snippet"]
+            author_channel_id = (snippet.get("authorChannelId") or {}).get("value", "")
+            comments.append(
+                {
+                    "text": snippet.get("textDisplay", ""),
+                    "like_count": int(snippet.get("likeCount") or 0),
+                    "published_at": snippet.get("publishedAt", ""),
+                    "updated_at": snippet.get("updatedAt", ""),
+                    "author_channel_id": author_channel_id,
+                    "is_author_comment": bool(channel_id and author_channel_id == channel_id),
+                }
+            )
 
             if len(comments) >= max_comments:
                 break
@@ -120,6 +130,10 @@ def get_video_comments(video_id: str, max_comments: int = 30) -> list[str]:
             break
 
     return comments
+
+
+def get_video_comments(video_id: str, max_comments: int = 30) -> list[str]:
+    return [item.get("text", "") for item in get_video_comment_items(video_id, max_comments)]
 
 
 # playlist의 첫 번째 영상 id 가져오기
@@ -142,32 +156,54 @@ def get_first_video_id_from_playlist(playlist_id: str) -> str:
 
 # 최종적으로 설명란/댓글, 제목 텍스트 수집
 def collect_text_sources(url: str) -> dict:
+    cached = _TEXT_SOURCE_CACHE.get(url)
+    if cached:
+        data, cached_at = cached
+        if time.time() - cached_at < _CACHE_TTL_SECONDS:
+            print(f"[youtube_client] cache hit for {url}")
+            return data
+
     target = parse_youtube_target(url)
-    
+
+    channel_id = ""
     youtube_title = ""
-    
+
     if target["type"] == "playlist":
         playlist_id = target["id"]
         youtube_title = get_playlist_title(playlist_id)
         video_id = get_first_video_id_from_playlist(target["id"])
-        
-        # 플레이리스트 제목을 못 가져오면 첫 영상 제목 fallback
+        # 영상 snippet 단일 호출로 제목 fallback + description + channelId 동시 수집
+        snippet = _get_video_snippet(video_id)
         if not youtube_title:
-            youtube_title = get_video_title(video_id)
+            youtube_title = snippet.get("title", "").strip()
+        description = snippet.get("description", "")
+        channel_id = snippet.get("channelId", "")
     else:
         video_id = target["id"]
-        youtube_title = get_video_title(video_id)
+        # 단일 호출로 title / description / channelId 수집 (기존 2회 → 1회)
+        snippet = _get_video_snippet(video_id)
+        youtube_title = snippet.get("title", "").strip()
+        description = snippet.get("description", "")
+        channel_id = snippet.get("channelId", "")
 
-    description = get_video_description(video_id)
-    comments = get_video_comments(video_id)
+    comment_items = get_video_comment_items(video_id, max_comments=50, channel_id=channel_id)
+    author_comment_items = [item for item in comment_items if item.get("is_author_comment")]
+    author_comments = [item.get("text", "") for item in author_comment_items]
+    comments = [item.get("text", "") for item in comment_items]
 
-    return {
+    result = {
         "input_url": url,
         "video_id": video_id,
+        "channel_id": channel_id,
         "youtube_title": youtube_title,
         "description": description,
         "comments": comments,
+        "comment_items": comment_items,
+        "author_comment_items": author_comment_items,
+        "author_comments": author_comments,
     }
+    _TEXT_SOURCE_CACHE[url] = (result, time.time())
+    return result
     
 # youtube 영상 title 가져오기
 def get_youtube_video_title(video_id: str) -> str:

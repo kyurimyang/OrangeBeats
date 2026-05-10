@@ -7,13 +7,13 @@ from fastapi.staticfiles import StaticFiles
 from app.config import get_allowed_frontend_origins
 from app.routers import playlist, qa, spotify, youtube
 from app.services.spotify_session_service import SpotifySessionService
-from app.sessions.memory import InMemoryOAuthStateStore, InMemorySpotifyTokenStore
+from app.sessions.file_store import FileOAuthStateStore, FileSpotifyTokenStore
 
 app = FastAPI(title="Orange Beats")
 
 app.state.spotify_session_service = SpotifySessionService(
-    token_store=InMemorySpotifyTokenStore(),
-    state_store=InMemoryOAuthStateStore(),
+    token_store=FileSpotifyTokenStore(),
+    state_store=FileOAuthStateStore(),
 )
 
 app.add_middleware(

@@ -26,7 +26,7 @@ TRACK_NUMBER_ONLY_REGEX = re.compile(r"^\s*(?:\d{1,3}|[A-Za-z])[\.)]?\s*$")
 MULTISPACE_REGEX = re.compile(r"\s+")
 BRACKET_REGEX = re.compile(r"[\[\(\{].*?[\]\)\}]")
 PARENTHETICAL_REGEX = re.compile(r"[\(\[\{]([^\)\]\}]{1,12})[\)\]\}]")
-PAIR_REGEX = re.compile(r".+\s[-|/:~]\s.+")
+PAIR_REGEX = re.compile(r".+\s[-–—|/:~]\s.+")
 PURE_PUNCT_REGEX = re.compile(r"^[^\w\uAC00-\uD7A3]+$")
 LEADING_DECORATION_REGEX = re.compile(r"^[~*#>+\-\s]+")
 TRAILING_DECORATION_REGEX = re.compile(r"[~*#<>\-\s]+$")
@@ -39,7 +39,7 @@ ARTIST_NAME_WORD_REGEX = re.compile(r"^[A-Z][A-Za-z0-9\'.́éèêëáàäâíì�
 UPPER_ARTIST_TOKEN_REGEX = re.compile(r"^[A-Z0-9]{2,8}$")
 REPEATED_HANGUL_TITLE_REGEX = re.compile(r"^([\uAC00-\uD7A3]{1,2})\1{1,}$")
 
-SWAP_GUARD_PENALTY = 1.25
+SWAP_GUARD_PENALTY = 0.0
 DOMINANT_DIRECTION_RATIO = 0.7
 SWAP_SCORE_MARGIN = 0.8
 GLOBAL_ARTIST_TITLE_SWAP_MARGIN = 1.2
@@ -901,7 +901,7 @@ def _select_best_case(left: str, right: str, global_direction: str = "per_line")
     )
 
     chosen = original_case
-    if not guard_reason and swap_allowed:
+    if swap_allowed:
         chosen = swapped_case
         swapped_case["reason"] = evidence_reason
     elif guard_reason:
@@ -1161,6 +1161,17 @@ def _append_song(results: list[dict], artist: str, title: str, meta: dict | None
         "completeness_score": completeness_score,
     }
 
+    if bool(meta.get("swap_applied")):
+        song["original_input"] = {
+            "artist": _clean_text(meta.get("left", "")),
+            "title": _clean_text(meta.get("right", "")),
+        }
+        song["corrected_input"] = {
+            "artist": artist if artist_ok else "",
+            "title": title,
+        }
+        song["normalized_by"] = "swap_detected"
+
     for key in [
         "raw",
         "left",
@@ -1196,6 +1207,9 @@ def _append_song(results: list[dict], artist: str, title: str, meta: dict | None
         "timestamp",
         "source",
         "source_mode",
+        "original_input",
+        "corrected_input",
+        "normalized_by",
     ]:
         if key in meta:
             song[key] = meta.get(key)
@@ -1385,6 +1399,9 @@ def deduplicate_songs(songs: list[dict]) -> list[dict]:
             "timestamp",
             "source",
             "source_mode",
+            "original_input",
+            "corrected_input",
+            "normalized_by",
         ]:
             if meta_key in song:
                 entry[meta_key] = song.get(meta_key)
@@ -1396,16 +1413,41 @@ def deduplicate_songs(songs: list[dict]) -> list[dict]:
 
 def count_text_signals(text: str) -> dict:
     if not text:
-        return {"timestamp_count": 0, "pattern_count": 0}
+        return {
+            "timestamp_count": 0,
+            "pattern_count": 0,
+            "candidate_line_count": 0,
+            "line_count": 0,
+            "candidate_line_ratio": 0.0,
+            "has_tracklist_structure": False,
+        }
 
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     timestamp_count = sum(1 for line in lines if TIMESTAMP_PREFIX_ONLY_REGEX.search(line))
     pattern_count = sum(1 for line in lines if PAIR_REGEX.search(line))
-    return {"timestamp_count": timestamp_count, "pattern_count": pattern_count}
+    candidate_line_count = sum(1 for line in lines if _is_valid_music_line(line) and (TIMESTAMP_PREFIX_ONLY_REGEX.search(line) or PAIR_REGEX.search(line)))
+    candidate_line_ratio = candidate_line_count / max(len(lines), 1)
+    has_tracklist_structure = (
+        timestamp_count >= 2
+        or pattern_count >= 2
+        or candidate_line_ratio >= 0.35
+        or any(_contains_section_keyword(line) for line in lines)
+    )
+    return {
+        "timestamp_count": timestamp_count,
+        "pattern_count": pattern_count,
+        "candidate_line_count": candidate_line_count,
+        "line_count": len(lines),
+        "candidate_line_ratio": round(candidate_line_ratio, 3),
+        "has_tracklist_structure": has_tracklist_structure,
+    }
 
 
 def is_text_stage_success(source_text: str, confirmed_tracks: list[dict]) -> bool:
-    del source_text
+    return assess_text_stage_validity(source_text, confirmed_tracks)["success"]
+
+
+def assess_text_stage_validity(source_text: str, confirmed_tracks: list[dict]) -> dict:
     total = len(confirmed_tracks)
     complete = sum(1 for song in confirmed_tracks if song.get("is_complete"))
     average = (
@@ -1413,9 +1455,56 @@ def is_text_stage_success(source_text: str, confirmed_tracks: list[dict]) -> boo
         if total
         else 0.0
     )
-
-    return (
+    signals = count_text_signals(source_text or "")
+    strong_pattern = (
+        signals.get("timestamp_count", 0) >= 2
+        or signals.get("pattern_count", 0) >= 2
+        or signals.get("candidate_line_ratio", 0.0) >= 0.35
+        or bool(signals.get("has_tracklist_structure"))
+    )
+    enough_by_absolute = (
         total >= MIN_SONG_COUNT
         and complete >= MIN_COMPLETE_SONG_COUNT
         and average >= MIN_COMPLETENESS_RATIO
     )
+    pattern_valid = total >= 2 and complete >= 1 and strong_pattern
+    success = bool(enough_by_absolute or pattern_valid)
+    is_partial_but_valid = bool(pattern_valid and not enough_by_absolute)
+
+    failure_reason = ""
+    validity_reason = "absolute_threshold_met" if enough_by_absolute else ""
+    if is_partial_but_valid:
+        if signals.get("timestamp_count", 0) >= 2:
+            validity_reason = "timestamp_pattern_detected"
+        elif signals.get("pattern_count", 0) >= 2:
+            validity_reason = "artist_title_delimiter_pattern_detected"
+        elif signals.get("candidate_line_ratio", 0.0) >= 0.35:
+            validity_reason = "candidate_line_ratio_detected"
+        else:
+            validity_reason = "tracklist_structure_detected"
+
+    if not success:
+        if len((source_text or "").strip()) < 20:
+            failure_reason = "too_short"
+        elif signals.get("timestamp_count", 0) == 0 and total == 0:
+            failure_reason = "no_timestamps"
+        elif total > 0 and total < MIN_SONG_COUNT and not strong_pattern:
+            failure_reason = "too_few_songs_without_pattern"
+        elif total > 0 and average < MIN_COMPLETENESS_RATIO:
+            failure_reason = "low_completeness"
+        elif signals.get("pattern_count", 0) == 0 and not strong_pattern:
+            failure_reason = "no_pattern"
+        elif total < MIN_SONG_COUNT:
+            failure_reason = "too_few_songs"
+        else:
+            failure_reason = "no_pattern"
+
+    return {
+        "success": success,
+        "is_partial_but_valid": is_partial_but_valid,
+        "validity_reason": validity_reason,
+        "failure_reason": failure_reason,
+        "song_count": total,
+        "complete_song_count": complete,
+        "avg_completeness": round(average, 3),
+    }

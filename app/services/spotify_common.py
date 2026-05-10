@@ -463,8 +463,12 @@ def build_artist_search_variants(artist: Optional[str]) -> List[str]:
         if value and value not in variants:
             variants.append(value)
 
-    add_variant(cleaned)
-    add_variant(resolved)
+    if _has_korean(cleaned) and resolved and _normalize_artist_key(resolved) != _normalize_artist_key(cleaned):
+        add_variant(resolved)
+        add_variant(cleaned)
+    else:
+        add_variant(cleaned)
+        add_variant(resolved)
 
     for variant in _expand_alias_variants(cleaned, ARTIST_ALIAS_MAP):
         add_variant(variant)

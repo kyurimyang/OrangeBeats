@@ -29,7 +29,7 @@ NATURAL_SENTENCE_HINTS = [
     "please", "hope", "thanks", "enjoy", "subscribe", "comment", "watch"
 ]
 
-TITLE_DELIMITERS = [" - ", " – ", " — ", " | ", " : ", " ~ "]
+TITLE_DELIMITERS = [" - ", " – ", " — ", " | ", " : ", " ~ ", " / "]
 
 NON_MUSIC_LINE_PATTERNS = [
     r"https?://\S+",

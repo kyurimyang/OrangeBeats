@@ -153,12 +153,14 @@ def score_ocr_block(item: Dict[str, Any]) -> Dict[str, Any]:
     delimiter_count = sum(1 for line in selected_lines if SONG_DELIMITER_REGEX.search(_strip_leading_timestamp(line)[1]))
     density = len(song_lines) / max(len(lines), 1)
     consistency = _consistency_score(selected_lines)
+    overlay_penalty = 1.0 if any(keyword in " ".join(lines).casefold() for keyword in OCR_NOISE_KEYWORDS) else 0.0
     score = (
         timestamp_count * 5.0
         + delimiter_count * 3.0
         + len(selected_lines) * 4.0
         + density * 3.0
         + consistency * 4.0
+        - overlay_penalty
     )
     return {
         "frame_index": item.get("frame_index"),
@@ -171,6 +173,13 @@ def score_ocr_block(item: Dict[str, Any]) -> Dict[str, Any]:
         "timestamp_count": timestamp_count,
         "delimiter_count": delimiter_count,
         "text_density": round(density, 4),
+        "overlay_penalty": overlay_penalty,
+        "selected_frame_score_detail": {
+            "timestamp": timestamp_count,
+            "delimiter": delimiter_count,
+            "text_density": round(density, 4),
+            "overlay_penalty": overlay_penalty,
+        },
         "format_consistency": consistency,
         "lines": lines,
         "selected_lines": selected_lines,
@@ -319,10 +328,14 @@ def run_ocr_pipeline(
             "status": "success",
             "video_path": str(resolved_video_path),
             "frame_count": len(frames),
+            "frames_sampled": len(frames),
+            "frames_with_text": len(raw_texts),
             "raw_text_count": len(raw_texts),
             "raw_texts": raw_texts,
             "ocr_blocks": block_selection.get("blocks", []),
             "selected_ocr_block": block_selection.get("selected_block", {}),
+            "selected_frame_score_detail": (block_selection.get("selected_block", {}) or {}).get("selected_frame_score_detail", {}),
+            "failure_reason": "" if raw_texts else "no_text_frame",
             "errors": errors,
             "combined_text": combined_text,
             "selected_text": selected_text,

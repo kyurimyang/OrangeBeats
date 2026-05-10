@@ -407,6 +407,11 @@ button {
   border-color: var(--mint-border);
 }
 
+.status-box.warn {
+  background: #fff7df;
+  border-color: rgba(243, 156, 18, 0.42);
+}
+
 .status-box.error {
   background: var(--danger-soft);
   border-color: var(--danger-border);

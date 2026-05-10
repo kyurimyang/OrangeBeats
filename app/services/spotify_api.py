@@ -76,6 +76,23 @@ def search_track(
     return search_tracks_query(access_token=access_token, query=query, market=market, limit=limit)
 
 
+def get_track(
+    access_token: str,
+    track_id: str,
+    market: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    url = f'{SPOTIFY_API_BASE}/tracks/{track_id}'
+    params = {'market': market or 'KR'}
+    resp = spotify_request('GET', url, access_token=access_token, params=params)
+    if resp is None:
+        return None
+    if resp.status_code == 404:
+        return None
+    if resp.status_code != 200:
+        _handle_response_error(resp, '트랙 조회 실패')
+    return resp.json()
+
+
 def add_tracks_to_playlist(
     access_token: str,
     playlist_id: str,
