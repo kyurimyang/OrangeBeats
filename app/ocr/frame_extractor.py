@@ -4,12 +4,15 @@ import subprocess
 from pathlib import Path
 from typing import List, Optional
 
+from app.utils.ffmpeg import resolve_ffmpeg_binary
+
 
 def _get_video_duration(video_path: str) -> float:
     try:
+        ffprobe_binary = resolve_ffmpeg_binary("ffprobe")
         result = subprocess.run(
             [
-                "ffprobe", "-v", "error",
+                ffprobe_binary, "-v", "error",
                 "-show_entries", "format=duration",
                 "-of", "default=noprint_wrappers=1:nokey=1",
                 video_path,
@@ -48,8 +51,9 @@ def _build_sample_timestamps(duration: float, interval_sec: int, max_frames: Opt
 
 
 def _extract_single_frame(video_path: str, output_path: str, timestamp: float) -> None:
+    ffmpeg_binary = resolve_ffmpeg_binary("ffmpeg")
     cmd = [
-        "ffmpeg",
+        ffmpeg_binary,
         "-ss", str(timestamp),
         "-i", video_path,
         "-frames:v", "1",
@@ -68,8 +72,9 @@ def _extract_interval_frames(
     max_frames: Optional[int],
 ) -> None:
     output_pattern = os.path.join(output_dir, "frame_%04d.jpg")
+    ffmpeg_binary = resolve_ffmpeg_binary("ffmpeg")
     cmd = [
-        "ffmpeg",
+        ffmpeg_binary,
         "-i", video_path,
         "-vf", f"fps=1/{interval_sec}",
         "-q:v", "2",
@@ -112,8 +117,9 @@ def extract_frames(
                 _extract_single_frame(video_path, output_path, timestamp)
         else:
             _extract_interval_frames(video_path, output_dir, interval_sec, max_frames)
-    except subprocess.CalledProcessError as exc:
-        error_message = exc.stderr.decode("utf-8", errors="ignore") if exc.stderr else str(exc)
+    except (subprocess.CalledProcessError, RuntimeError) as exc:
+        stderr = getattr(exc, "stderr", None)
+        error_message = stderr.decode("utf-8", errors="ignore") if stderr else str(exc)
         raise RuntimeError(f"frame extraction failed: {error_message}") from exc
 
     frames = sorted(

@@ -43,10 +43,7 @@ def _is_successful_match(match: Dict[str, Any]) -> bool:
     if not match.get("uri"):
         return False
     match_status = str(match.get("match_status") or "")
-    score = float(match.get("score") or 0.0)
-    if match_status in {"matched", "probable_match"}:
-        return True
-    return match_status in {"review_needed", "low_confidence"} and score >= LOW_CONF_MIN_SCORE
+    return match_status == "matched"
 
 
 def _sum_values(value: Any) -> float:
@@ -66,9 +63,15 @@ def _confidence_detail(match: Dict[str, Any] | None, confidence_label: str = "fa
     detail = match.get("score_detail", {}) or {}
     evidence_detail = detail.get("evidence_confidence")
     if isinstance(evidence_detail, dict):
+        nested_evidence = evidence_detail.get("evidence_detail", {}) if isinstance(evidence_detail.get("evidence_detail"), dict) else {}
         return {
             **evidence_detail,
             "match_status": str(match.get("match_status") or ""),
+            "final_score": float(detail.get("final_score", match.get("score", 0.0)) or 0.0),
+            "title_score": float(detail.get("title_variant_score", detail.get("title_score", nested_evidence.get("title_similarity", 0.0))) or 0.0),
+            "artist_score": float(detail.get("artist_variant_score", detail.get("artist_score", nested_evidence.get("artist_similarity", 0.0))) or 0.0),
+            "artist_alias_matched": bool(detail.get("artist_alias_matched") or nested_evidence.get("artist_alias_matched")),
+            "version_penalty_applied": bool(detail.get("version_penalty_applied") or evidence_detail.get("version_penalty_applied")),
             "api_rank": detail.get("api_rank"),
             "query_used": detail.get("query_used", ""),
             "query_type": detail.get("query_type", ""),
@@ -164,7 +167,7 @@ def _result_from_match(
     spotify_uri = match.get("uri")
     confidence_label = _confidence_label(match_status, score, bool(spotify_uri))
     is_ocr_mode = source_mode == "ocr" or str(song.get("source_mode") or "") == "ocr"
-    ocr_auto_selectable = not is_ocr_mode or confidence_label == "high"
+    auto_selectable = match_status == "matched" and (not is_ocr_mode or confidence_label == "high")
     reason_key = match.get("low_confidence_reason")
     if not reason_key and not isinstance(match.get("reason"), list):
         reason_key = match.get("reason")
@@ -182,7 +185,7 @@ def _result_from_match(
     return {
         "input_artist": input_artist,
         "input_title": input_title,
-        "matched": bool(spotify_uri) and confidence_label != "failed" and ocr_auto_selectable,
+        "matched": bool(spotify_uri) and match_status == "matched",
         "spotify_track_id": match.get("id"),
         "spotify_uri": spotify_uri,
         "spotify_title": match.get("name"),
@@ -201,7 +204,7 @@ def _result_from_match(
         "reason": reason_array,
         "reason_text": str(reason),
         "confidence_detail": _confidence_detail(match, confidence_label),
-        "selected": bool(spotify_uri) and _selection_recommended(confidence_label, source_mode="ocr" if is_ocr_mode else ""),
+        "selected": bool(spotify_uri) and auto_selectable and _selection_recommended(confidence_label, source_mode="ocr" if is_ocr_mode else ""),
         "match_status": match_status,
         "top_candidates": match.get("top_candidates", []),
         "match_debug": debug,

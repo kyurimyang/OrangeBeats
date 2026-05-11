@@ -78,10 +78,11 @@ def extract_songs_with_acr(youtube_url: str) -> Dict:
                 "stage": "acr",
                 "selected_stage": "acr",
                 "success": False,
+                "failure_reason": "acr_credentials_missing",
                 "error": "ACRCloud 자격증명이 설정되지 않았습니다. ACRCLOUD_HOST, ACRCLOUD_ACCESS_KEY, ACRCLOUD_ACCESS_SECRET 환경변수를 확인하세요.",
                 "songs": [],
                 "ocr_used": False,
-                "acr_used": False,
+                "acr_used": True,
                 "youtube_title": info.get("title", ""),
                 "signals": {
                     "sampled_segments": 0,

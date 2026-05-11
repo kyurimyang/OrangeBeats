@@ -194,6 +194,22 @@ def _contains_section_keyword(line: str) -> bool:
     return any(keyword.lower() in lower for keyword in SECTION_KEYWORDS)
 
 
+def _left_part_is_metadata(normalized: str) -> bool:
+    """True when the LEFT side of a delimiter contains a section keyword.
+
+    Handles cases like "Playlist 혼자 듣고 싶은 노래 - 중국노래 플레이리스트"
+    or "사진 출처 - Weibo @handle" where the left part is a label, not an artist.
+    Called only when a delimiter is present (avoids false positives on titled songs).
+    """
+    for delimiter in TITLE_DELIMITERS:
+        if delimiter in normalized:
+            left = normalized.split(delimiter, 1)[0].strip()
+            if _contains_section_keyword(left):
+                return True
+            break
+    return False
+
+
 def _looks_like_natural_sentence(line: str) -> bool:
     lower = line.lower()
     has_delimiter = any(delimiter in line for delimiter in TITLE_DELIMITERS)
@@ -221,7 +237,13 @@ def _is_valid_music_line(line: str) -> bool:
     if _contains_non_music_pattern(line) or _contains_non_music_pattern(normalized):
         return False
 
-    if _contains_section_keyword(normalized) and not any(delimiter in normalized for delimiter in TITLE_DELIMITERS):
+    has_delimiter = any(delimiter in normalized for delimiter in TITLE_DELIMITERS)
+    if _contains_section_keyword(normalized) and not has_delimiter:
+        return False
+
+    # Even with a delimiter: if the left part is a metadata label, reject.
+    # e.g. "사진 출처 - Weibo @handle" or "Playlist name - subtitle"
+    if has_delimiter and _left_part_is_metadata(normalized):
         return False
 
     if _looks_like_natural_sentence(normalized):
@@ -615,12 +637,21 @@ def _probable_title_artist_pair(left: str, right: str, global_direction: str = "
     if global_direction == "artist_title":
         return False
 
-    right_artist_like = (
-        _looks_like_artist_list(right)
-        or _looks_like_artist_name_phrase(right)
-        or _known_group_artist_hit(right)
+    # 단일 단어 right는 "Woman", "Obsessed" 같은 제목 단어도 _looks_like_artist_name_phrase를 통과하므로
+    # alias/known group 같은 추가 근거 없이는 아티스트로 판정하지 않음
+    _right_has_extra_artist_signal = (
+        _known_group_artist_hit(right)
         or _artist_alias_hit(right)
         or _shared_artist_alias_hit(right)
+        or _contains_artist_hint(right)
+    )
+    right_artist_like = (
+        _looks_like_artist_list(right)
+        or _right_has_extra_artist_signal
+        or (
+            _looks_like_artist_name_phrase(right)
+            and (_count_words(right) >= 2 or _right_has_extra_artist_signal)
+        )
     )
 
     left_title_like = (

@@ -3,6 +3,8 @@ import subprocess
 from pathlib import Path
 from typing import List
 
+from app.utils.ffmpeg import resolve_ffmpeg_binary
+
 ACR_MAX_SEGMENTS = 20
 ACR_SEGMENT_SECONDS = 10
 MIN_SAMPLE_INTERVAL_SECONDS = 30
@@ -21,6 +23,7 @@ def create_audio_segments(audio_path: Path, output_dir: Path, duration_seconds: 
     output_dir.mkdir(parents=True, exist_ok=True)
     interval_sec = sample_interval(duration_seconds, ACR_MAX_SEGMENTS)
     segments: List[Path] = []
+    ffmpeg_binary = resolve_ffmpeg_binary("ffmpeg")
 
     for index in range(ACR_MAX_SEGMENTS):
         start_sec = index * interval_sec
@@ -29,7 +32,7 @@ def create_audio_segments(audio_path: Path, output_dir: Path, duration_seconds: 
 
         segment_path = output_dir / f"segment_{index:02d}.wav"
         cmd = [
-            "ffmpeg",
+            ffmpeg_binary,
             "-y",
             "-ss",
             str(start_sec),

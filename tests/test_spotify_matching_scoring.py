@@ -322,7 +322,7 @@ class SpotifyMatchingScoringTests(unittest.TestCase):
             "matched",
         )
         self.assertFalse(detail["title_alias_matched"])
-        self.assertEqual(detail["applied_pattern"], "ARTIST_STRONG_TITLE_WEAK")
+        self.assertEqual(detail["applied_pattern"], "TRANSLATED_TITLE_ARTIST_STRONG")
         self.assertEqual(detail["evidence_confidence"]["decision"], "auto_select_recommended")
 
     def test_pattern_b_keeps_korean_title_english_spotify_title_for_review(self):
@@ -350,7 +350,7 @@ class SpotifyMatchingScoringTests(unittest.TestCase):
 
                 detail = scored[0]["score_detail"]
                 self.assertEqual(scored[0]["match_status"], "matched")
-                self.assertEqual(detail["applied_pattern"], "ARTIST_STRONG_TITLE_WEAK")
+                self.assertEqual(detail["applied_pattern"], "TRANSLATED_TITLE_ARTIST_STRONG")
                 self.assertTrue(detail["translated_title_candidate"])
                 self.assertTrue(detail["official_metadata_candidate"])
                 self.assertGreaterEqual(scored[0]["score"], 0.85)
@@ -453,6 +453,81 @@ class SpotifyMatchingScoringTests(unittest.TestCase):
         }:
             self.assertIn(key, detail)
         self.assertEqual(detail["query_reliability"], "medium")
+
+    def test_black_skirts_alias_exact_title_auto_matches(self):
+        candidate = track("EVERYTHING", ["The Black Skirts"])
+        scored = _score_tracks(
+            [candidate],
+            primary_source(candidate, "everything", "\uac80\uc815\uce58\ub9c8"),
+            input_title="everything",
+            input_artist="\uac80\uc815\uce58\ub9c8",
+            chosen_case="original",
+        )
+
+        detail = scored[0]["score_detail"]
+        self.assertTrue(detail["artist_alias_matched"])
+        self.assertEqual(scored[0]["match_status"], "matched")
+
+    def test_redoor_translated_title_alias_rank1_auto_matches(self):
+        candidate = track(
+            "Forever Has Always Been",
+            ["Redoor"],
+            album_images=[{"url": "https://example.test/album.jpg"}],
+        )
+        scored = _score_tracks(
+            [candidate],
+            primary_source(candidate, "\uc601\uc6d0\uc740 \uadf8\ub807\ub4ef", "\ub9ac\ub3c4\uc5b4"),
+            input_title="\uc601\uc6d0\uc740 \uadf8\ub807\ub4ef",
+            input_artist="\ub9ac\ub3c4\uc5b4",
+            chosen_case="original",
+        )
+
+        detail = scored[0]["score_detail"]
+        self.assertTrue(detail["artist_alias_matched"])
+        self.assertTrue(detail["translated_title_candidate"])
+        self.assertEqual(detail["applied_pattern"], "TRANSLATED_TITLE_ARTIST_STRONG")
+        self.assertEqual(scored[0]["match_status"], "matched")
+
+    def test_title_exact_artist_mismatch_is_review_needed_not_matched(self):
+        candidate = track("\uc601\uc6d0\uc740 \uadf8\ub807\ub4ef", ["Pluggboi"])
+        scored = _score_tracks(
+            [candidate],
+            primary_source(candidate, "\uc601\uc6d0\uc740 \uadf8\ub807\ub4ef", "\ub9ac\ub3c4\uc5b4"),
+            input_title="\uc601\uc6d0\uc740 \uadf8\ub807\ub4ef",
+            input_artist="\ub9ac\ub3c4\uc5b4",
+            chosen_case="original",
+        )
+
+        self.assertEqual(scored[0]["match_status"], "review_needed")
+        self.assertFalse(scored[0]["matched"])
+        self.assertEqual(scored[0]["score_detail"]["applied_pattern"], "TITLE_ONLY_MATCH")
+
+    def test_cover_version_blocks_auto_match_even_with_title_exact(self):
+        candidate = track("\uc5b4\ub5bb\uac8c \uc774\ubcc4\uae4c\uc9c0 \uc0ac\ub791\ud558\uaca0\uc5b4 Cover Ver.", ["Sogumm"])
+        scored = _score_tracks(
+            [candidate],
+            primary_source(candidate, "\uc5b4\ub5bb\uac8c \uc774\ubcc4\uae4c\uc9c0 \uc0ac\ub791\ud558\uaca0\uc5b4", "\uc545\ub3d9\ubba4\uc9c0\uc158"),
+            input_title="\uc5b4\ub5bb\uac8c \uc774\ubcc4\uae4c\uc9c0 \uc0ac\ub791\ud558\uaca0\uc5b4",
+            input_artist="\uc545\ub3d9\ubba4\uc9c0\uc158",
+            chosen_case="original",
+        )
+
+        self.assertEqual(scored[0]["match_status"], "review_needed")
+        self.assertTrue(scored[0]["score_detail"]["version_penalty_applied"])
+        self.assertEqual(scored[0]["score_detail"]["applied_pattern"], "VERSION_REVIEW")
+
+    def test_woodz_drowning_exact_artist_title_auto_matches(self):
+        candidate = track("Drowning", ["WOODZ"])
+        scored = _score_tracks(
+            [candidate],
+            primary_source(candidate, "drowning", "woodz"),
+            input_title="drowning",
+            input_artist="woodz",
+            chosen_case="original",
+        )
+
+        self.assertEqual(scored[0]["match_status"], "matched")
+        self.assertGreaterEqual(scored[0]["score"], 0.85)
 
 
 if __name__ == "__main__":
