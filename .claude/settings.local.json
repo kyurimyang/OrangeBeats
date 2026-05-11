@@ -12,7 +12,8 @@
       "Bash(Get-ChildItem -Recurse -Directory)",
       "Bash(Select-Object -ExpandProperty FullName)",
       "Bash(xargs wc -l)",
-      "Bash(python -c ' *)"
+      "Bash(python -c ' *)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\firef\\\\OneDrive\\\\바탕 화면\\\\26-1 파란학기\\\\2026-paran-playlist-ai\" -Recurse -File)"
     ]
   }
 }

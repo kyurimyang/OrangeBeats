@@ -866,6 +866,8 @@ analyzeBtn.addEventListener("click", async () => {
       const hint = fallbackRec?.recommended_stage ? ` 추천: ${fallbackRec.message}` : "";
       const noSongsMsg = data?.message || (mode === "ocr"
         ? "OCR에서 곡을 추출하지 못했습니다."
+        : mode === "acr"
+        ? "ACR 오디오 인식에서 곡을 찾지 못했습니다."
         : "곡 추출 결과가 없습니다. Raw Debug 탭에서 분석 결과를 확인해주세요.");
       setStatus("warn", `곡을 찾지 못했습니다. ${noSongsMsg}${hint}`);
     }

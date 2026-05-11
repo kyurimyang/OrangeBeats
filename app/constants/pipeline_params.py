@@ -21,7 +21,8 @@ SPOTIFY_MID_CONF = 0.65
 
 SECTION_KEYWORDS = [
     "축가", "행진", "입장", "퇴장", "bgm", "브금", "playlist", "setlist",
-    "tracklist", "music", "song list", "추천곡", "문의", "contact", "timeline", "time line"
+    "tracklist", "music", "song list", "추천곡", "문의", "contact", "timeline", "time line",
+    "플레이리스트", "출처", "weibo", "사진 출처", "이미지 출처",
 ]
 
 NATURAL_SENTENCE_HINTS = [
@@ -49,6 +50,15 @@ NON_MUSIC_LINE_PATTERNS = [
     r"^\s*수익은 발생하지 않습니다.*",
     r"^\s*all rights reserved.*",
     r"^\s*provided to youtube by.*",
+    # Photo/image credit lines
+    r"사진\s*출처",
+    r"이미지\s*출처",
+    r"photo\s*(?:credit|source|by)\b",
+    r"image\s*(?:credit|source|by)\b",
+    # Social media handles without email domain (e.g. "Weibo @鞠婧祎")
+    r"@[\w가-힣一-鿿぀-ヿ]+\s*$",
+    # Lines made of mathematical/decorative Unicode (styled YouTube headers like 𝑷𝒍𝒂𝒚𝒍𝒊𝒔𝒕)
+    r"[\U0001D400-\U0001D7FF]",
 ]
 
 PAIR_SEPARATORS = [

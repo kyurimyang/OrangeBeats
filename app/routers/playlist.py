@@ -291,6 +291,19 @@ def _make_no_songs_message(mode: str, youtube_result: Dict) -> str:
     if youtube_result.get("is_ai_playlist"):
         return "AI 생성 음악 플레이리스트입니다. Suno, Udio 등 AI가 만든 음악은 Spotify에 등록되어 있지 않아 곡을 찾을 수 없습니다."
 
+    if mode == "acr":
+        error = youtube_result.get("error", "")
+        if error:
+            return f"ACR 오디오 인식 실패: {error}"
+        unrecognized = youtube_result.get("unrecognized_reason", "") or (youtube_result.get("signals") or {}).get("unrecognized_reason", "")
+        acr_reason_map = {
+            "not_in_db": "음원 인식에 실패했습니다. ACR DB에 등록되지 않은 음원이거나 저작권 보호 음원일 수 있습니다.",
+            "short_segment": "오디오 세그먼트가 너무 짧아 인식하지 못했습니다.",
+            "transition": "전환 구간이 많아 인식률이 낮습니다. 오디오가 명확한 영상에서 시도해보세요.",
+            "low_confidence_audio": "오디오 품질이 낮아 인식하지 못했습니다.",
+        }
+        return acr_reason_map.get(unrecognized, "ACR 오디오 인식에서 곡을 찾지 못했습니다.")
+
     if mode != "ocr":
         fallback = youtube_result.get("fallback_recommendation", {})
         rec = (fallback or {}).get("recommended_stage", "")

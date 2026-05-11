@@ -91,6 +91,19 @@ ARTIST_ALIAS_MAP: Dict[str, List[str]] = {
 }
 
 ARTIST_ALIAS_MAP.update(CORE_ARTIST_ALIAS_MAP)
+ARTIST_ALIAS_MAP.update({
+    "\uac80\uc815\uce58\ub9c8": ["The Black Skirts"],
+    "The Black Skirts": ["\uac80\uc815\uce58\ub9c8"],
+    "\ub9ac\ub3c4\uc5b4": ["Redoor"],
+    "Redoor": ["\ub9ac\ub3c4\uc5b4"],
+    "\uc545\ub3d9\ubba4\uc9c0\uc158": ["AKMU", "Akdong Musician"],
+    "AKMU": ["\uc545\ub3d9\ubba4\uc9c0\uc158", "Akdong Musician"],
+    "Akdong Musician": ["\uc545\ub3d9\ubba4\uc9c0\uc158", "AKMU"],
+    "\ud55c\ub85c\ub85c": ["HANRORO", "Hanroro"],
+    "HANRORO": ["\ud55c\ub85c\ub85c", "Hanroro"],
+    "\uc6b0\uc988": ["WOODZ", "Woodz"],
+    "WOODZ": ["\uc6b0\uc988", "Woodz"],
+})
 
 TITLE_ALIAS_MAP = dict(CORE_TITLE_ALIAS_MAP)
 TITLE_ALIAS_MAP.update({
