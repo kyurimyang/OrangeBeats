@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from app.services.spotify_playlist import create_playlist_from_songs
+from app.services.spotify_playlist import analyze_spotify_candidates, create_playlist_from_songs
 
 
 class SpotifyPlaylistOrderTests(unittest.TestCase):
@@ -59,6 +59,35 @@ class SpotifyPlaylistOrderTests(unittest.TestCase):
         self.assertFalse(result["playlist_created"])
         self.assertIsNone(result["playlist_id"])
         self.assertEqual(result["unmatched_count"], 1)
+
+    @patch("app.services.spotify_playlist.pick_best_track_match")
+    @patch(
+        "app.services.spotify_playlist.resolve_spotify_artist_id",
+        return_value={"id": "3HqSLMAZ3g3d5poNaI7GOU", "name": "IU", "score": 1.0},
+    )
+    def test_single_artist_context_passes_spotify_artist_id_to_matching(self, resolve_mock, match_mock):
+        match_mock.return_value = {
+            "uri": "spotify:track:1",
+            "name": "Celebrity",
+            "artists": ["IU"],
+            "score": 0.95,
+            "match_status": "matched",
+            "top_candidates": [],
+        }
+
+        results = analyze_spotify_candidates(
+            access_token="token",
+            songs=[
+                {"artist": "IU", "title": "Celebrity", "artist_inferred": True},
+                {"artist": "IU", "title": "Good Day", "artist_inferred": True},
+            ],
+        )
+
+        resolve_mock.assert_called_once_with("token", "IU", market="KR")
+        first_meta = match_mock.call_args_list[0].kwargs["song_meta"]
+        self.assertEqual(first_meta["spotify_artist_id"], "3HqSLMAZ3g3d5poNaI7GOU")
+        self.assertTrue(results[0]["single_artist_mode"])
+        self.assertEqual(results[0]["spotify_artist_id_filter"], "3HqSLMAZ3g3d5poNaI7GOU")
 
 
 if __name__ == "__main__":

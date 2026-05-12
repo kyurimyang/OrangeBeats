@@ -3,7 +3,12 @@
 from app.services.spotify_api import add_tracks_to_playlist, create_playlist
 from app.services.spotify_common import _is_suspicious_song, build_match_cache_key
 from app.services.spotify_exceptions import SpotifyServiceError
-from app.services.spotify_matching import explain_match_reason, get_match_debug, pick_best_track_match
+from app.services.spotify_matching import (
+    explain_match_reason,
+    get_match_debug,
+    pick_best_track_match,
+    resolve_spotify_artist_id,
+)
 
 LOW_CONF_MIN_SCORE = 0.60
 ALLOWED_LOW_CONF_REASONS = {
@@ -17,6 +22,54 @@ ALLOWED_LOW_CONF_REASONS = {
     "version_candidate",
     "partial_match_needs_review",
 }
+
+
+def _single_artist_name_from_songs(songs: List[Dict[str, Any]]) -> str:
+    names = {
+        str(song.get("artist") or "").strip()
+        for song in songs
+        if isinstance(song, dict) and song.get("artist_inferred") and str(song.get("artist") or "").strip()
+    }
+    if len(names) == 1:
+        return next(iter(names))
+
+    artist_names = [
+        str(song.get("artist") or "").strip()
+        for song in songs
+        if isinstance(song, dict) and str(song.get("artist") or "").strip()
+    ]
+    if len(artist_names) < 2:
+        return ""
+
+    counts: Dict[str, int] = {}
+    display_names: Dict[str, str] = {}
+    for name in artist_names:
+        key = name.lower()
+        counts[key] = counts.get(key, 0) + 1
+        display_names.setdefault(key, name)
+
+    key, count = max(counts.items(), key=lambda item: item[1])
+    if count / max(len(artist_names), 1) < 0.7:
+        return ""
+    return display_names[key]
+
+
+def _resolve_single_artist_context(
+    access_token: str,
+    songs: List[Dict[str, Any]],
+    market: str = "KR",
+) -> Dict[str, Any]:
+    artist_name = _single_artist_name_from_songs(songs)
+    if not artist_name:
+        return {}
+    resolved = resolve_spotify_artist_id(access_token, artist_name, market=market)
+    if not resolved.get("id"):
+        return {}
+    return {
+        "spotify_artist_id": resolved.get("id", ""),
+        "spotify_artist_name": resolved.get("name", artist_name),
+        "spotify_artist_resolve_score": resolved.get("score", 0.0),
+    }
 
 
 def _confidence_label(match_status: str, score: float, has_uri: bool) -> str:
@@ -219,6 +272,7 @@ def analyze_spotify_candidates(
 ) -> List[Dict[str, Any]]:
     results: List[Dict[str, Any]] = []
     request_match_cache: Dict[tuple[str, str], Any] = {}
+    single_artist_context = _resolve_single_artist_context(access_token, songs, market=market)
 
     for song in songs:
         title = (song.get("title") or "").strip()
@@ -261,8 +315,15 @@ def analyze_spotify_candidates(
             "swap_guard_reason": song.get("swap_guard_reason", ""),
             "source_mode": source_mode or song.get("source_mode", ""),
             "acr_spotify_track_id": song.get("acr_spotify_track_id", ""),
+            "title_metadata_hints": song.get("title_metadata_hints", []),
+            "title_feature_artists": song.get("title_feature_artists", []),
+            "title_producer_artists": song.get("title_producer_artists", []),
+            **single_artist_context,
         }
-        cache_key = build_match_cache_key(title, artist)
+        cache_key = build_match_cache_key(
+            title,
+            f"{artist}|artist_id:{single_artist_context.get('spotify_artist_id', '')}",
+        )
         if cache_key in request_match_cache:
             match = request_match_cache[cache_key]
         else:
@@ -275,7 +336,12 @@ def analyze_spotify_candidates(
             )
             request_match_cache[cache_key] = match
 
-        results.append(_result_from_match(song, match, source_mode=source_mode or str(song.get("source_mode") or "")))
+        result = _result_from_match(song, match, source_mode=source_mode or str(song.get("source_mode") or ""))
+        if single_artist_context:
+            result["single_artist_mode"] = True
+            result["spotify_artist_id_filter"] = single_artist_context.get("spotify_artist_id", "")
+            result["spotify_artist_name_filter"] = single_artist_context.get("spotify_artist_name", "")
+        results.append(result)
 
     return results
 
@@ -380,6 +446,7 @@ def create_playlist_from_songs(
     unmatched: List[Dict[str, Any]] = []
     seen_uris = set()
     request_match_cache: Dict[tuple[str, str], Any] = {}
+    single_artist_context = _resolve_single_artist_context(access_token, songs, market='KR')
 
     for song in songs:
         title = (song.get('title') or '').strip()
@@ -396,6 +463,10 @@ def create_playlist_from_songs(
             'swap_guard_applied': song.get('swap_guard_applied', False),
             'swap_guard_reason': song.get('swap_guard_reason', ''),
             'acr_spotify_track_id': song.get('acr_spotify_track_id', ''),
+            'title_metadata_hints': song.get('title_metadata_hints', []),
+            'title_feature_artists': song.get('title_feature_artists', []),
+            'title_producer_artists': song.get('title_producer_artists', []),
+            **single_artist_context,
         }
 
         if not title:
@@ -406,7 +477,10 @@ def create_playlist_from_songs(
             unmatched.append({'song': song, 'reason': 'artist/title 동일 또는 정보 부족'})
             continue
 
-        cache_key = build_match_cache_key(title, artist or '')
+        cache_key = build_match_cache_key(
+            title,
+            f"{artist or ''}|artist_id:{single_artist_context.get('spotify_artist_id', '')}",
+        )
         if cache_key in request_match_cache:
             match = request_match_cache[cache_key]
         else:
@@ -563,6 +637,8 @@ def create_playlist_from_songs(
             'added_count': 0,
             'playlist_added_tracks': 0,
             'playlist_uri_count': 0,
+            'single_artist_mode': bool(single_artist_context),
+            'spotify_artist_context': single_artist_context,
             'matched': matched_debug,
             'low_confidence': low_confidence,
             'unmatched': unmatched,
@@ -597,6 +673,8 @@ def create_playlist_from_songs(
         'added_count': len(playlist_uris),
         'playlist_added_tracks': len(playlist_uris),
         'playlist_uri_count': len(playlist_uris),
+        'single_artist_mode': bool(single_artist_context),
+        'spotify_artist_context': single_artist_context,
         'matched': matched_debug,
         'low_confidence': low_confidence,
         'unmatched': unmatched,

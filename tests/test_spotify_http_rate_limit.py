@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from app.services.spotify_api import search_tracks_query
+from app.services.spotify_api import search_artists_query, search_tracks_query
 from app.services import spotify_http
 from app.services.spotify_exceptions import SpotifyServiceError
 
@@ -63,6 +63,22 @@ class SpotifyHttpRateLimitTests(unittest.TestCase):
         params = request_mock.call_args.kwargs["params"]
         self.assertEqual(params["q"], "Ditto NewJeans")
         self.assertEqual(params["type"], "track")
+        self.assertEqual(params["market"], "KR")
+        self.assertEqual(params["limit"], 5)
+
+    @patch("app.services.spotify_api.spotify_request")
+    def test_search_artists_query_uses_artist_type_kr_market_and_limit_five_max(self, request_mock):
+        response = Mock()
+        response.status_code = 200
+        response.json.return_value = {"artists": {"items": []}}
+        request_mock.return_value = response
+
+        search_artists_query("token", "IU", limit=10)
+
+        request_mock.assert_called_once()
+        params = request_mock.call_args.kwargs["params"]
+        self.assertEqual(params["q"], "IU")
+        self.assertEqual(params["type"], "artist")
         self.assertEqual(params["market"], "KR")
         self.assertEqual(params["limit"], 5)
 
