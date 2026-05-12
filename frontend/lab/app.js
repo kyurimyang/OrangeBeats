@@ -91,7 +91,7 @@ function getFrontendRedirectUrl() {
   if (currentUrl.protocol !== "file:") return currentUrl.toString();
 
   const backendUrl = new URL(getBackendBaseUrl() || "http://127.0.0.1:8000");
-  return `${backendUrl.protocol}//${backendUrl.hostname}:5500/frontend/index.html`;
+  return `${backendUrl.origin}/lab/index.html`;
 }
 
 function safeArray(value) {
