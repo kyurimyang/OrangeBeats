@@ -1,3 +1,6 @@
+import re
+from collections import Counter
+
 from app.clients.youtube_client import collect_text_sources
 from app.acr.acr_pipeline import extract_songs_with_acr
 from app.services.fallback_extraction import extract_songs_with_ocr
@@ -13,6 +16,164 @@ _AI_PLAYLIST_KEYWORDS = [
     "ai generated", "ai-generated", "ai music", "ai cover", "ai song",
     "suno", "udio", "artificial intelligence music",
 ]
+
+_SINGLE_ARTIST_PATTERNS = [
+    re.compile(
+        r"(?P<artist>[A-Za-z0-9&.'’ _\-\uAC00-\uD7A3]{2,40})\s*"
+        r"(?:\uB178\uB798\s*\uBAA8\uC74C|\uD50C\uB808\uC774\uB9AC\uC2A4\uD2B8|playlist|songs?|best|hits|\uC804\uACE1|\uBAA8\uC74C)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"(?:\uB178\uB798\s*\uBAA8\uC74C|\uD50C\uB808\uC774\uB9AC\uC2A4\uD2B8|playlist|songs?|best|hits|\uC804\uACE1|\uBAA8\uC74C)"
+        r"\s*(?:of|by|for|:|-)?\s*(?P<artist>[A-Za-z0-9&.'’ _\-\uAC00-\uD7A3]{2,40})",
+        re.IGNORECASE,
+    ),
+]
+
+_ARTIST_CONTEXT_STOPWORDS = {
+    "playlist",
+    "songs",
+    "song",
+    "best",
+    "hits",
+    "music",
+    "kpop",
+    "k-pop",
+    "ost",
+    "live",
+    "mix",
+    "favorite",
+    "favorites",
+    "my",
+    "new",
+    "top",
+    "study",
+    "chill",
+    "\uB178\uB798",
+    "\uBAA8\uC74C",
+    "\uD50C\uB808\uC774\uB9AC\uC2A4\uD2B8",
+    "\uC804\uACE1",
+}
+
+
+def _clean_artist_context(value: str) -> str:
+    value = re.sub(r"[\[\](){}]", " ", value or "")
+    value = re.sub(r"(?i)\b(?:official|lyrics?|mv|music video|audio)\b", " ", value)
+    value = re.sub(r"[#|/:~]+", " ", value)
+    value = re.sub(r"\s+", " ", value).strip(" -_")
+    return value.strip()
+
+
+def _is_plausible_artist_context(value: str) -> bool:
+    normalized = _clean_artist_context(value)
+    if len(normalized) < 2 or len(normalized) > 40:
+        return False
+    lowered = normalized.lower()
+    if lowered in _ARTIST_CONTEXT_STOPWORDS:
+        return False
+    tokens = [token for token in re.split(r"\s+", lowered) if token]
+    if tokens and all(token in _ARTIST_CONTEXT_STOPWORDS for token in tokens):
+        return False
+    return bool(re.search(r"[A-Za-z0-9\uAC00-\uD7A3]", normalized))
+
+
+def _detect_single_artist_from_text(title: str, description: str) -> dict:
+    candidates = []
+    for text in [title or "", description or ""]:
+        for pattern in _SINGLE_ARTIST_PATTERNS:
+            for match in pattern.finditer(text):
+                artist = _clean_artist_context(match.group("artist"))
+                if _is_plausible_artist_context(artist):
+                    candidates.append(artist)
+
+    if not candidates:
+        return {"is_single_artist": False, "inferred_artist": "", "source": ""}
+
+    counter = Counter(candidate.lower() for candidate in candidates)
+    winner_key, _ = counter.most_common(1)[0]
+    inferred_artist = next(candidate for candidate in candidates if candidate.lower() == winner_key)
+    return {"is_single_artist": True, "inferred_artist": inferred_artist, "source": "title_description"}
+
+
+def _detect_single_artist_from_songs(songs: list[dict]) -> dict:
+    artists = [
+        _clean_artist_context(str(song.get("artist") or ""))
+        for song in songs
+        if isinstance(song, dict) and _is_plausible_artist_context(str(song.get("artist") or ""))
+    ]
+    if len(artists) < 2:
+        return {"is_single_artist": False, "inferred_artist": "", "source": ""}
+
+    counter = Counter(artist.lower() for artist in artists)
+    winner_key, winner_count = counter.most_common(1)[0]
+    ratio = winner_count / max(len(artists), 1)
+    if ratio < 0.7:
+        return {"is_single_artist": False, "inferred_artist": "", "source": ""}
+
+    inferred_artist = next(artist for artist in artists if artist.lower() == winner_key)
+    return {
+        "is_single_artist": True,
+        "inferred_artist": inferred_artist,
+        "source": "extracted_songs",
+        "artist_ratio": round(ratio, 3),
+        "artist_sample_count": len(artists),
+    }
+
+
+def _apply_single_artist_context(result: dict, detection: dict) -> dict:
+    inferred_artist = (detection or {}).get("inferred_artist", "")
+    if not inferred_artist:
+        return result
+
+    updated_songs = []
+    changed = False
+    for song in result.get("songs", []):
+        if not isinstance(song, dict):
+            continue
+        item = dict(song)
+        if not (item.get("artist") or "").strip() and (item.get("title") or "").strip():
+            item["artist"] = inferred_artist
+            item["artist_exists"] = True
+            item["is_complete"] = True
+            item["completeness_score"] = max(float(item.get("completeness_score") or 0.0), 1.0)
+            item["artist_inferred"] = True
+            item["inferred_artist_source"] = (detection or {}).get("source") or "single_artist_context"
+            changed = True
+        updated_songs.append(item)
+
+    if changed:
+        result = {**result, "songs": updated_songs}
+        metrics = dict(result.get("metrics") or {})
+        total_count = len(updated_songs)
+        complete_count = sum(1 for song in updated_songs if song.get("is_complete"))
+        avg_completeness = (
+            sum(song.get("completeness_score", 0.0) for song in updated_songs) / total_count
+            if total_count else 0.0
+        )
+        result["metrics"] = {
+            **metrics,
+            "song_count": total_count,
+            "complete_song_count": complete_count,
+            "avg_completeness": round(avg_completeness, 3),
+        }
+
+    return result
+
+
+def _merge_single_artist_detection(primary: dict, songs_result: dict) -> dict:
+    if primary.get("is_single_artist"):
+        return primary
+    if songs_result.get("is_single_artist"):
+        return songs_result
+    return {"is_single_artist": False, "inferred_artist": "", "source": ""}
+
+
+def _single_artist_payload(detection: dict) -> dict:
+    return {
+        "is_single_artist": bool((detection or {}).get("is_single_artist")),
+        "inferred_artist": (detection or {}).get("inferred_artist", ""),
+        "single_artist_detection": detection or {"is_single_artist": False, "inferred_artist": "", "source": ""},
+    }
 
 
 def _detect_ai_playlist(title: str, description: str, comments: list) -> bool:
@@ -78,6 +239,8 @@ def run_youtube_text_pipeline(url: str) -> dict:
     description_text = source_data.get("description", "")
     comments = source_data.get("comment_items") or source_data.get("comments", [])
     youtube_title = source_data.get("youtube_title", "")
+    title_artist_detection = _detect_single_artist_from_text(youtube_title, description_text)
+    title_inferred_artist = title_artist_detection.get("inferred_artist", "")
 
     if _detect_ai_playlist(youtube_title, description_text, comments):
         return {
@@ -96,10 +259,16 @@ def run_youtube_text_pipeline(url: str) -> dict:
             "signals": {},
             "metrics": {},
             "debug": {},
+            **_single_artist_payload(title_artist_detection),
         }
 
-    description_result = analyze_description(description_text)
+    description_result = analyze_description(description_text, inferred_artist=title_inferred_artist)
     if description_result["success"]:
+        artist_detection = _merge_single_artist_detection(
+            title_artist_detection,
+            _detect_single_artist_from_songs(description_result.get("songs", [])),
+        )
+        description_result = _apply_single_artist_context(description_result, artist_detection)
         return {
             "input_url": source_data["input_url"],
             "video_id": source_data["video_id"],
@@ -118,10 +287,16 @@ def run_youtube_text_pipeline(url: str) -> dict:
             "debug": {
                 "description": description_result,
             },
+            **_single_artist_payload(artist_detection),
         }
 
-    comments_result = analyze_comments_prioritized(comments)
+    comments_result = analyze_comments_prioritized(comments, inferred_artist=title_inferred_artist)
     if comments_result["success"]:
+        artist_detection = _merge_single_artist_detection(
+            title_artist_detection,
+            _detect_single_artist_from_songs(comments_result.get("songs", [])),
+        )
+        comments_result = _apply_single_artist_context(comments_result, artist_detection)
         return {
             "input_url": source_data["input_url"],
             "video_id": source_data["video_id"],
@@ -142,6 +317,7 @@ def run_youtube_text_pipeline(url: str) -> dict:
                 "description": description_result,
                 "comments": comments_result,
             },
+            **_single_artist_payload(artist_detection),
         }
 
     fallback_recommendation = _fallback_recommendation(description_result, comments_result)
@@ -170,6 +346,7 @@ def run_youtube_text_pipeline(url: str) -> dict:
             "description": description_result,
             "comments": comments_result,
         },
+        **_single_artist_payload(title_artist_detection),
     }
 
 
@@ -178,12 +355,22 @@ def run_youtube_pipeline(url: str, mode: str = "text") -> dict:
 
     if mode == "ocr":
         result = extract_songs_with_ocr(url)
+        title_artist_detection = _detect_single_artist_from_text(result.get("youtube_title", ""), "")
+        artist_detection = _merge_single_artist_detection(
+            title_artist_detection,
+            _detect_single_artist_from_songs(result.get("songs", [])),
+        )
+        result = _apply_single_artist_context(result, artist_detection)
+        result.update(_single_artist_payload(artist_detection))
         result["input_url"] = url
         result["mode"] = "ocr"
         return result
 
     if mode == "acr":
         result = extract_songs_with_acr(url)
+        artist_detection = _detect_single_artist_from_songs(result.get("songs", []))
+        result = _apply_single_artist_context(result, artist_detection)
+        result.update(_single_artist_payload(artist_detection))
         result["input_url"] = url
         result["mode"] = "acr"
         return result

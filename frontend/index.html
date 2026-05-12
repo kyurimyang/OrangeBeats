@@ -30,7 +30,7 @@
             <div class="mini-stat"><span class="mini-label">최근 액션</span><strong id="recentActionText">대기 중</strong></div>
             <div class="mini-stat"><span class="mini-label">최근 제목</span><strong id="recentYoutubeTitle">-</strong></div>
             <div class="mini-stat"><span class="mini-label">최근 단계</span><strong id="recentStageText">-</strong></div>
-            <div class="mini-stat"><span class="mini-label">현재 mode</span><strong id="currentModeText">text</strong></div>
+            <div class="mini-stat"><span class="mini-label">분석 모드</span><strong id="currentModeText">auto</strong></div>
           </div>
         </section>
 
@@ -77,8 +77,9 @@
                 </select>
               </label>
               <label class="field-block" for="mode">
-                <span class="field-label">mode</span>
+                <span class="field-label">분석 모드</span>
                 <select id="mode">
+                  <option value="auto" selected>auto</option>
                   <option value="text">text</option>
                   <option value="ocr">ocr</option>
                   <option value="acr">acr</option>
@@ -91,7 +92,7 @@
             </div>
             <div class="action-row">
               <button id="spotifyLoginBtn" class="action-btn mint-btn" type="button">Spotify 로그인</button>
-              <button id="analyzeBtn" class="action-btn soft-btn" type="button">YouTube 분석 및 후보 찾기</button>
+              <button id="analyzeBtn" class="action-btn soft-btn" type="button">분석 시작</button>
               <button id="createPlaylistBtn" class="action-btn orange-btn" type="button">선택한 곡으로 플레이리스트 생성</button>
             </div>
           </section>
@@ -100,13 +101,23 @@
             <div class="panel-tab orange-tab">RUN STATUS</div>
             <div id="statusBox" class="status-box idle">준비 완료. Spotify 로그인 후 YouTube URL을 분석해주세요.</div>
           </section>
+
+          <section id="fallbackPanel" class="panel fallback-panel" hidden>
+            <div class="panel-tab mint-tab">FALLBACK 선택</div>
+            <p id="fallbackMessage" class="panel-copy">Spotify 후보를 확인한 뒤 결과가 부족하면 보강할 방식을 선택해주세요.</p>
+            <div class="action-row">
+              <button id="runOcrBtn" class="action-btn soft-btn" type="button">OCR 실행</button>
+              <button id="runAcrBtn" class="action-btn mint-btn" type="button">ACR 실행</button>
+              <button id="matchTextOnlyBtn" class="action-btn orange-btn" type="button">현재 Text 결과로 후보 검색</button>
+            </div>
+          </section>
         </section>
 
         <section id="summaryTab" class="tab-panel">
           <section class="panel">
             <div class="panel-tab mint-tab">SUMMARY</div>
             <div class="summary-grid">
-              <div class="summary-chip"><span class="chip-label">success</span><strong id="summarySuccess">-</strong></div>
+              <div class="summary-chip"><span class="chip-label">analysis_state</span><strong id="summarySuccess">-</strong></div>
               <div class="summary-chip"><span class="chip-label">message</span><strong id="summaryMessage">-</strong></div>
               <div class="summary-chip"><span class="chip-label">mode</span><strong id="summaryMode">-</strong></div>
               <div class="summary-chip"><span class="chip-label">youtube_title</span><strong id="summaryYoutubeTitle">-</strong></div>
@@ -220,6 +231,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=20260507-ocr-info-banner"></script>
+  <script src="app.js?v=20260512-fallback-always"></script>
 </body>
 </html>

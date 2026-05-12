@@ -15,6 +15,11 @@ const clearAllBtn = $("clearAllBtn");
 const selectRecommendedBtn = $("selectRecommendedBtn");
 const createSelectedInlineBtn = $("createSelectedInlineBtn");
 const inlineOpenSpotifyBtn = $("inlineOpenSpotifyBtn");
+const fallbackPanel = $("fallbackPanel");
+const fallbackMessage = $("fallbackMessage");
+const runOcrBtn = $("runOcrBtn");
+const runAcrBtn = $("runAcrBtn");
+const matchTextOnlyBtn = $("matchTextOnlyBtn");
 
 const statusBox = $("statusBox");
 const resultBox = $("resultBox");
@@ -39,6 +44,8 @@ const BACKEND_BASE_URL_STORAGE_KEY = "orangebeats.backendBaseUrl";
 
 let lastResultData = null;
 let candidateResults = [];
+let textAnalysisData = null;
+let mergedSongSource = [];
 let selectedQaId = null;
 let loginStatusRequestInFlight = null;
 let loginStatusLastFetchedAt = 0;
@@ -76,7 +83,7 @@ function buildApiUrl(path) {
 }
 
 function getMode() {
-  return modeSelect.value || "text";
+  return modeSelect.value || "auto";
 }
 
 function getPlaylistName() {
@@ -119,7 +126,8 @@ function setStatus(type, message) {
 }
 
 function setButtonsDisabled(disabled) {
-  [spotifyLoginBtn, analyzeBtn, createPlaylistBtn, createSelectedInlineBtn].forEach((button) => {
+  [spotifyLoginBtn, analyzeBtn, createPlaylistBtn, createSelectedInlineBtn, runOcrBtn, runAcrBtn, matchTextOnlyBtn].forEach((button) => {
+    if (!button) return;
     button.disabled = disabled;
   });
 }
@@ -322,7 +330,7 @@ function failedCount() {
 }
 
 function updateSummary(data = lastResultData || {}) {
-  setText("summarySuccess", data?.success, "-");
+  setText("summarySuccess", data?.analysis_state || data?.success, "-");
   setText("summaryMessage", data?.message, "-");
   setText("summaryMode", data?.mode || getMode(), "-");
   setText("summaryYoutubeTitle", data?.youtube_title, "-");
@@ -344,7 +352,33 @@ function updateRecentSummary(actionLabel, data = lastResultData || {}) {
   setText("recentActionText", actionLabel, "대기 중");
   setText("recentYoutubeTitle", data?.youtube_title, "-");
   setText("recentStageText", data?.selected_stage, "-");
-  setText("currentModeText", getMode(), "text");
+  setText("currentModeText", getMode(), "auto");
+}
+
+function setFallbackPanelVisible(visible, message = "", showTextFallback = false) {
+  if (!fallbackPanel) return;
+  fallbackPanel.hidden = !visible;
+  if (fallbackMessage) {
+    fallbackMessage.textContent = message || "OCR 또는 ACR을 선택해 분석을 보강하거나, 현재 텍스트 결과로 진행해주세요.";
+  }
+  if (matchTextOnlyBtn) {
+    matchTextOnlyBtn.hidden = !showTextFallback;
+  }
+}
+
+function shouldOfferFallbackAfterMatching(data) {
+  const textState = data?.text_analysis_state || data?.analysis_state;
+  const failed = Number(data?.failed_count || 0);
+  const review = Number(data?.needs_review_count || 0);
+  const candidates = Number(data?.candidate_count || data?.spotify_candidate_count || 0);
+  const extracted = Number(data?.extracted_count || safeArray(data?.songs).length || 0);
+  return (
+    textState === "partial_success" ||
+    textState === "text_failed" ||
+    failed > 0 ||
+    review > 0 ||
+    (extracted > 0 && candidates === 0)
+  );
 }
 
 function renderCandidateSummary() {
@@ -628,18 +662,32 @@ function prepareRunUi(message) {
 }
 
 function _buildAnalyzeProgressMessages(mode) {
+  if (mode === "auto" || mode === "text") {
+    return [
+      "설명란 분석 중",
+      "댓글 분석 중",
+      "곡 정보 정리 중",
+    ];
+  }
+  if (mode === "spotify") {
+    return [
+      "Spotify 후보 검색 중",
+      "신뢰도와 근거를 계산하는 중",
+      "후보 목록 정리 중",
+    ];
+  }
   if (mode === "ocr") {
     return [
-      "영상을 다운로드하고 프레임을 추출하는 중입니다...",
-      "GPT Vision으로 플레이리스트 텍스트를 읽는 중입니다. 잠시 기다려주세요.",
-      "Spotify 후보를 검색하고 신뢰도를 계산하는 중입니다.",
+      "영상 프레임 추출 중",
+      "화면 텍스트 OCR 분석 중",
+      "후보 목록 정리 중",
     ];
   }
   if (mode === "acr") {
     return [
-      "오디오 구간을 추출하는 중입니다.",
-      "인식 결과를 곡 후보로 정리하는 중입니다.",
-      "Spotify 후보를 검색하고 신뢰도 근거를 계산하는 중입니다.",
+      "오디오 구간 추출 중",
+      "ACR 인식 결과 정리 중",
+      "후보 목록 정리 중",
     ];
   }
   return [
@@ -727,6 +775,142 @@ function normalizeCandidateResults(data) {
   });
 }
 
+function applyAnalysisData(data, actionLabel) {
+  lastResultData = data;
+  mergedSongSource = safeArray(data?.songs).length ? safeArray(data.songs) : safeArray(data?.extracted_songs);
+  candidateResults = normalizeCandidateResults(data);
+  renderJson(data);
+  renderOcrInfoBanner(data);
+  renderCandidates();
+  renderDebug(data);
+  updateSummary(data);
+  updateRecentSummary(actionLabel, data);
+}
+
+async function matchCandidatesFromCurrentSongs(sourceMode = "text", { offerFallback = false } = {}) {
+  const songs = safeArray(mergedSongSource).length
+    ? mergedSongSource
+    : safeArray(lastResultData?.songs).length
+    ? safeArray(lastResultData.songs)
+    : safeArray(lastResultData?.extracted_songs);
+  if (!songs.length) {
+    setStatus("warn", "Spotify 후보를 검색할 곡이 없습니다. OCR 또는 ACR을 먼저 선택해주세요.");
+    setFallbackPanelVisible(true);
+    return null;
+  }
+
+  const stopProgress = startAnalyzeProgress("spotify");
+  try {
+    prepareRunUi("Spotify 후보 검색 중입니다.");
+    const response = await fetch(buildApiUrl("/spotify/match-candidates"), {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        songs,
+        mode: sourceMode,
+        source_mode: sourceMode,
+      }),
+    });
+    const matchData = await handleApiResponse(response);
+    const combined = {
+      ...(lastResultData || {}),
+      ...matchData,
+      songs,
+      extracted_songs: songs,
+      youtube_title: lastResultData?.youtube_title || matchData?.youtube_title || textAnalysisData?.youtube_title || "",
+      youtube_url: lastResultData?.youtube_url || youtubeUrlInput.value.trim(),
+      thumbnail_url: lastResultData?.thumbnail_url || textAnalysisData?.thumbnail_url || "",
+      playlist_name: getPlaylistName() || lastResultData?.playlist_name || textAnalysisData?.playlist_name || "",
+      text_analysis_state: lastResultData?.analysis_state || lastResultData?.text_analysis_state || "",
+      text_analysis_reasons: lastResultData?.analysis_reasons || lastResultData?.text_analysis_reasons || [],
+      analysis_state: matchData?.analysis_state || "candidates_ready",
+      next_action: matchData?.next_action || "select_tracks",
+      needs_fallback: false,
+      spotify_matching_skipped: false,
+      analysis_elapsed_ms: lastResultData?.analysis_elapsed_ms || 0,
+      total_elapsed_ms: (lastResultData?.analysis_elapsed_ms || 0) + (matchData?.spotify_elapsed_ms || 0),
+      timings: {
+        ...(lastResultData?.timings || {}),
+        ...(matchData?.timings || {}),
+        total_elapsed_ms: (lastResultData?.analysis_elapsed_ms || 0) + (matchData?.spotify_elapsed_ms || 0),
+      },
+    };
+    const poorResults = (combined.failed_count > 0 || combined.needs_review_count > 0 || combined.candidate_count === 0);
+    combined.needs_fallback = offerFallback;
+    combined.next_action = poorResults ? "choose_fallback" : "select_tracks";
+    applyAnalysisData(combined, "Spotify 후보 검색");
+    if (offerFallback) {
+      const fallbackMsg = poorResults
+        ? "Spotify 매칭 결과가 부족합니다. OCR 또는 ACR로 보강할 수 있습니다."
+        : "필요하다면 OCR 또는 ACR로 추가 보강할 수 있습니다.";
+      const statusMsg = poorResults
+        ? "Spotify 후보를 찾았지만 결과가 부족합니다. OCR/ACR로 보강하거나 현재 후보에서 선택해주세요."
+        : "Spotify 매칭 후보를 찾았습니다. 후보 선택 탭에서 확인하거나 OCR/ACR로 추가 보강할 수 있습니다.";
+      setFallbackPanelVisible(true, fallbackMsg, false);
+      setStatus(poorResults ? "warn" : "success", statusMsg);
+      activateTab("runTab");
+    } else {
+      setFallbackPanelVisible(false);
+      if (candidateResults.some(canSelectCandidate)) {
+        setStatus("success", "Spotify 매칭 후보를 찾았습니다. 후보 선택 탭에서 확인해주세요.");
+      } else {
+        setStatus("warn", "선택 가능한 Spotify 후보가 없습니다. 결과 탭에서 확인해주세요.");
+      }
+      activateTab("candidatesTab");
+    }
+    return combined;
+  } finally {
+    stopProgress();
+    setButtonsDisabled(false);
+  }
+}
+
+async function runFallbackAnalysis(mode, { direct = false } = {}) {
+  const stopProgress = startAnalyzeProgress(mode);
+  const timeoutMs = mode === "ocr" ? 1800000 : 600000;
+  const abortController = new AbortController();
+  const timeoutId = window.setTimeout(() => abortController.abort(), timeoutMs);
+  const actionLabel = `${mode.toUpperCase()} 분석`;
+  try {
+    prepareRunUi(`${mode.toUpperCase()} 분석 중입니다.`);
+    const response = await fetch(buildApiUrl("/youtube/analyze-fallback"), {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        youtube_url: youtubeUrlInput.value.trim(),
+        mode,
+        text_songs: [],
+      }),
+      signal: abortController.signal,
+    });
+    const data = await handleApiResponse(response);
+    const priorTitle = lastResultData?.youtube_title || textAnalysisData?.youtube_title || "";
+    const priorThumbnail = lastResultData?.thumbnail_url || textAnalysisData?.thumbnail_url || "";
+    const priorPlaylistName = getPlaylistName() || lastResultData?.playlist_name || textAnalysisData?.playlist_name || "";
+    applyAnalysisData({
+      ...data,
+      youtube_title: data?.youtube_title || priorTitle,
+      thumbnail_url: data?.thumbnail_url || priorThumbnail,
+      playlist_name: priorPlaylistName,
+      title_mode: titleModeSelect.value,
+    }, actionLabel);
+    setFallbackPanelVisible(false);
+    setStatus("success", `${mode.toUpperCase()} 분석을 완료했습니다. Spotify 후보 검색을 진행합니다.`);
+    stopProgress();
+    await matchCandidatesFromCurrentSongs(mode);
+  } catch (error) {
+    const message = error.name === "AbortError" ? `${mode.toUpperCase()} 분석 시간 초과` : error.message;
+    setStatus("error", `${actionLabel} 실패: ${message}`);
+    renderErrorBox(`${actionLabel} 실패\n${message}`);
+  } finally {
+    window.clearTimeout(timeoutId);
+    stopProgress();
+    setButtonsDisabled(false);
+  }
+}
+
 function updateNoticeFromQuery() {
   const params = new URLSearchParams(window.location.search);
   const loginStatus = params.get("spotify_login");
@@ -776,112 +960,90 @@ analyzeBtn.addEventListener("click", async () => {
     return;
   }
 
-  const mode = getMode();
+  const mode = getMode(); // "auto" | "text" | "ocr" | "acr"
+
+  // ocr/acr 단독 모드: text 분석 없이 바로 실행
+  if (mode === "ocr" || mode === "acr") {
+    isAnalyzing = true;
+    try {
+      await runFallbackAnalysis(mode, { direct: true });
+    } finally {
+      isAnalyzing = false;
+    }
+    return;
+  }
+
+  // auto / text 모드: text 분석 먼저 실행
   isAnalyzing = true;
   const stopAnalyzeProgress = startAnalyzeProgress(mode);
-  const timeoutMs = mode === "ocr" ? 1800000 : 300000;
-  const timeoutMessage = mode === "ocr"
-    ? "OCR 분석 시간 초과 (30분). 서버 응답이 없습니다."
-    : "분석 시간 초과 (5분). 서버 응답이 없습니다.";
+  const timeoutMs = 300000;
+  const timeoutMessage = "Text 분석 시간 초과 (5분). 서버 응답이 없습니다.";
   const abortController = new AbortController();
   const timeoutId = window.setTimeout(() => abortController.abort(), timeoutMs);
   try {
-    prepareRunUi(
-      mode === "ocr"
-        ? "OCR 분석 중입니다. 영상 길이에 따라 3~10분 소요됩니다. 화면을 닫지 마세요."
-        : "YouTube 분석과 Spotify 후보 검색을 진행하는 중입니다.",
-    );
-    const payload = {
-      youtube_url: youtubeUrl,
-      mode,
-      extraction_mode: mode,
-      title_mode: titleModeSelect.value,
-      playlist_name: getPlaylistName(),
-      skip_spotify_matching: false,
-    };
-    console.log("[analyze-youtube] request payload =", payload);
-    const startedAt = Date.now();
-    console.log("[analyze-youtube] fetch start", { startedAt, mode });
-    const response = await fetch(buildApiUrl("/playlist/analyze-youtube"), {
+    prepareRunUi("description/comments 기반 Text 분석 중입니다.");
+    setFallbackPanelVisible(false);
+    const response = await fetch(buildApiUrl("/youtube/analyze-text"), {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        youtube_url: youtubeUrl,
+        title_mode: titleModeSelect.value,
+        playlist_name: getPlaylistName(),
+      }),
       signal: abortController.signal,
     });
-    console.log("[analyze-youtube] fetch end", { elapsedMs: Date.now() - startedAt, status: response.status });
     const data = await handleApiResponse(response);
-    console.log("[analyze-youtube] response =", data);
-    lastResultData = data;
-    candidateResults = normalizeCandidateResults(data);
-    console.log("[debug] normalizeCandidateResults", {
-      count: candidateResults.length,
-      firstItem: candidateResults[0] ?? null,
-      dataResultsLength: (data?.results ?? []).length,
-      dataMatchedTracksLength: (data?.matched_tracks ?? []).length,
-      dataUnmatchedTracksLength: (data?.unmatched_tracks ?? []).length,
-      selectedStage: data?.selected_stage,
-      mode: data?.mode,
-    });
-    const hasCandidateResults =
-      (data?.results ?? []).length > 0 ||
-      (data?.matched_tracks ?? []).length > 0 ||
-      (data?.unmatched_tracks ?? []).length > 0;
-    const hasExtractedSongs =
-      (data?.songs ?? []).length > 0 ||
-      (data?.extracted_songs ?? []).length > 0;
-    const hasSpotifyError = Boolean(data?.spotify_error);
-    const isSpotifyMatchingSkipped = Boolean(data?.spotify_matching_skipped);
-    const isPartialSuccess = Boolean(data?.partial_success);
-    const warningMessage = data?.warning || "";
-    const hasSelectableCandidates = candidateResults.some(canSelectCandidate);
-    console.log("[debug] render path", { hasCandidateResults, hasExtractedSongs, isPartialSuccess, warningMessage });
-    try { renderJson(data); } catch (e) { console.error("[render] renderJson failed:", e); }
-    try { renderOcrInfoBanner(data); } catch (e) { console.error("[render] renderOcrInfoBanner failed:", e); }
-    try { renderCandidates(); } catch (e) { console.error("[render] renderCandidates failed:", e); }
-    try { renderDebug(data); } catch (e) { console.error("[render] renderDebug failed:", e); }
-    try { updateSummary(data); } catch (e) { console.error("[render] updateSummary failed:", e); }
-    try { updateRecentSummary("후보 분석", data); } catch (e) { console.error("[render] updateRecentSummary failed:", e); }
-    if (isSpotifyMatchingSkipped && hasExtractedSongs) {
-      if (isPartialSuccess && warningMessage) {
-        setStatus("success", `OCR 곡 추출 완료 (부분): ${warningMessage}`);
-      } else {
-        setStatus("success", "OCR 곡 추출을 완료했습니다.");
-      }
-    } else if (isSpotifyMatchingSkipped && !hasExtractedSongs) {
-      setStatus("error", warningMessage || "화면에서 읽힌 텍스트가 부족해 곡을 추출하지 못했습니다. Raw Debug 탭에서 OCR 텍스트를 확인해주세요.");
-    } else if (hasSpotifyError) {
-      setStatus("error", `곡 추출은 완료됐지만 Spotify 후보 검색에 실패했습니다: ${data.spotify_error}`);
-      renderErrorBox(`Spotify 후보 검색 실패\n${data.spotify_error}`);
-    } else if (hasSelectableCandidates) {
-      setStatus("success", "Spotify 매칭 후보를 찾았습니다. 후보 선택 탭에서 확인해주세요.");
-    } else if (hasExtractedSongs) {
-      setStatus("success", "OCR/텍스트에서 곡을 추출했습니다. Spotify 후보는 부족해 수동 확인이 필요합니다.");
-    } else if (data?.youtube_result?.is_ai_playlist) {
+    textAnalysisData = {
+      ...data,
+      playlist_name: data?.playlist_name || getPlaylistName(),
+      title_mode: titleModeSelect.value,
+    };
+    applyAnalysisData(textAnalysisData, "Text 분석");
+
+    if (data?.youtube_result?.is_ai_playlist) {
       const aiMsg = data?.message || "AI 생성 음악 플레이리스트입니다. Spotify에서 찾을 수 없습니다.";
       setStatus("warn", aiMsg);
       renderErrorBox(`AI 플레이리스트 감지\n${aiMsg}`);
+    } else if (mode === "text") {
+      // text 모드: analysis_state 무관하게 항상 Spotify 매칭 진행
+      setStatus("success", "Text 분석 완료. Spotify 후보 검색을 진행합니다.");
+      stopAnalyzeProgress();
+      await matchCandidatesFromCurrentSongs("text");
+    } else if (data?.analysis_state === "text_success" || data?.analysis_state === "partial_success") {
+      // auto 모드: 곡이 있으면 Spotify 매칭 진행, 매칭 결과가 나쁘면 그때 fallback 제안
+      const statusMsg = data?.analysis_state === "partial_success"
+        ? "텍스트에서 일부 곡을 찾았습니다. Spotify 후보 검색을 진행합니다."
+        : "텍스트 분석이 충분합니다. Spotify 후보 검색을 진행합니다.";
+      setStatus("success", statusMsg);
+      stopAnalyzeProgress();
+      await matchCandidatesFromCurrentSongs("text", { offerFallback: true });
     } else {
-      const fallbackRec = data?.youtube_result?.fallback_recommendation;
-      const hint = fallbackRec?.recommended_stage ? ` 추천: ${fallbackRec.message}` : "";
-      const noSongsMsg = data?.message || (mode === "ocr"
-        ? "OCR에서 곡을 추출하지 못했습니다."
-        : mode === "acr"
-        ? "ACR 오디오 인식에서 곡을 찾지 못했습니다."
-        : "곡 추출 결과가 없습니다. Raw Debug 탭에서 분석 결과를 확인해주세요.");
-      setStatus("warn", `곡을 찾지 못했습니다. ${noSongsMsg}${hint}`);
+      // auto 모드 + text_failed: 곡이 없으니 매칭 건너뛰고 fallback 선택
+      const reasonText = safeArray(data?.analysis_reasons).length
+        ? ` 사유: ${safeArray(data.analysis_reasons).join(", ")}`
+        : "";
+      setFallbackPanelVisible(
+        true,
+        `${data?.message || "Text 분석에서 곡을 찾지 못했습니다."}${reasonText}`,
+        false,
+      );
+      setStatus("warn", "Text 분석에서 곡을 찾지 못했습니다. OCR 또는 ACR을 선택해주세요.");
+      activateTab("runTab");
     }
-    activateTab("candidatesTab");
   } catch (error) {
-    console.error("[analyze-youtube] 분석 실패:", error);
     const message = error.name === "AbortError" ? timeoutMessage : error.message;
-    setStatus("error", `후보 분석 실패: ${message}`);
-    renderErrorBox(`후보 분석 실패\n${message}`);
+    setStatus("error", `Text 분석 실패: ${message}`);
+    renderErrorBox(`Text 분석 실패\n${message}`);
     try { renderJson({ error: message }); } catch (_) {}
     candidateResults = [];
     try { renderCandidates(); } catch (_) {}
     try { updateRecentSummary("분석 실패", {}); } catch (_) {}
-    activateTab("candidatesTab");
+    if (mode === "auto") {
+      setFallbackPanelVisible(true, "Text 분석 요청에 실패했습니다. OCR 또는 ACR로 시도해주세요.", false);
+      activateTab("runTab");
+    }
   } finally {
     window.clearTimeout(timeoutId);
     stopAnalyzeProgress();
@@ -905,13 +1067,21 @@ async function createPlaylistFromSelected() {
 
   try {
     prepareRunUi("선택한 곡으로 Spotify 플레이리스트를 생성하는 중입니다.");
+    const titleMode = titleModeSelect.value || "youtube";
+    const youtubeTitle = lastResultData?.youtube_title || "";
+    const customName = getPlaylistName() || lastResultData?.playlist_name || "";
+    const derivedName = titleMode === "custom"
+      ? (customName || youtubeTitle || "YouTube 변환 플레이리스트")
+      : (youtubeTitle || customName || "YouTube 변환 플레이리스트");
     const payload = {
-      playlist_name: lastResultData?.playlist_name || getPlaylistName() || "YouTube 변환 플레이리스트",
-      description: `Created from YouTube: ${lastResultData?.youtube_title || youtubeUrlInput.value.trim()}`,
+      playlist_name: derivedName,
+      description: `Created from YouTube: ${youtubeTitle || youtubeUrlInput.value.trim()}`,
       track_uris: selectedUris,
       thumbnail_url: lastResultData?.thumbnail_url || "",
+      youtube_url: lastResultData?.youtube_url || youtubeUrlInput.value.trim(),
+      title_mode: titleMode,
     };
-    const response = await fetch(buildApiUrl("/playlist/create-selected"), {
+    const response = await fetch(buildApiUrl("/playlist/create"), {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
@@ -935,6 +1105,9 @@ async function createPlaylistFromSelected() {
 
 createPlaylistBtn.addEventListener("click", createPlaylistFromSelected);
 createSelectedInlineBtn.addEventListener("click", createPlaylistFromSelected);
+runOcrBtn?.addEventListener("click", () => runFallbackAnalysis("ocr"));
+runAcrBtn?.addEventListener("click", () => runFallbackAnalysis("acr"));
+matchTextOnlyBtn?.addEventListener("click", () => matchCandidatesFromCurrentSongs("text"));
 
 selectAllBtn.addEventListener("click", () => {
   candidateResults = candidateResults.map((item) => ({ ...item, selected: canSelectCandidate(item) }));
@@ -1064,7 +1237,10 @@ qaRefreshBtn.addEventListener("click", loadQaPosts);
 
 function clearResponseState() {
   lastResultData = {};
+  textAnalysisData = null;
+  mergedSongSource = [];
   candidateResults = [];
+  setFallbackPanelVisible(false);
   renderOcrInfoBanner({});
   renderJson({ message: "아직 결과가 없습니다." });
   renderCandidates();

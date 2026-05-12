@@ -24,10 +24,16 @@ def _build_song_metrics(songs: list[dict]) -> dict:
     }
 
 
-def analyze_text_block(text: str, *, stage: str, llm_blocks: list[str] | None = None) -> dict:
+def analyze_text_block(
+    text: str,
+    *,
+    stage: str,
+    llm_blocks: list[str] | None = None,
+    inferred_artist: str = "",
+) -> dict:
     text = text or ""
     rule_based = parse_unstructured_lines_to_json(text)
-    rule_based = normalize_song_candidates(rule_based)
+    rule_based = normalize_song_candidates(rule_based, inferred_artist=inferred_artist)
 
     rule_validity = assess_text_stage_validity(text, rule_based['songs'])
     rule_success = rule_validity["success"]
@@ -49,7 +55,7 @@ def analyze_text_block(text: str, *, stage: str, llm_blocks: list[str] | None = 
 
     llm_raw = extract_songs_with_llm(llm_blocks if llm_blocks is not None else [text])
     llm_json = parse_json_from_text(llm_raw)
-    llm_result = normalize_song_candidates(llm_json)
+    llm_result = normalize_song_candidates(llm_json, inferred_artist=inferred_artist)
 
     llm_validity = assess_text_stage_validity(text, llm_result['songs'])
     llm_success = llm_validity["success"]
@@ -68,13 +74,13 @@ def analyze_text_block(text: str, *, stage: str, llm_blocks: list[str] | None = 
     }
 
 
-def analyze_description(description: str) -> dict:
-    return analyze_text_block(description, stage='description')
+def analyze_description(description: str, inferred_artist: str = "") -> dict:
+    return analyze_text_block(description, stage='description', inferred_artist=inferred_artist)
 
 
-def analyze_comments(comments: list[str]) -> dict:
+def analyze_comments(comments: list[str], inferred_artist: str = "") -> dict:
     comment_text = '\n'.join(comments)
-    return analyze_text_block(comment_text, stage='comments', llm_blocks=comments[:20])
+    return analyze_text_block(comment_text, stage='comments', llm_blocks=comments[:20], inferred_artist=inferred_artist)
 
 
 def _comment_text(comment: str | dict) -> str:
@@ -149,17 +155,22 @@ def _ordered_comment_sources(comments: list[str | dict]) -> list[tuple[str, list
     return deduped
 
 
-def analyze_comments_prioritized(comments: list[str | dict]) -> dict:
+def analyze_comments_prioritized(comments: list[str | dict], inferred_artist: str = "") -> dict:
     attempts = []
     for source_priority, blocks in _ordered_comment_sources(comments):
-        result = analyze_text_block('\n'.join(blocks), stage='comments', llm_blocks=blocks[:20])
+        result = analyze_text_block(
+            '\n'.join(blocks),
+            stage='comments',
+            llm_blocks=blocks[:20],
+            inferred_artist=inferred_artist,
+        )
         result['source_priority_used'] = source_priority
         attempts.append(result)
         if result['success']:
             result['debug_attempts'] = attempts
             return result
 
-    fallback = attempts[-1] if attempts else analyze_text_block('', stage='comments', llm_blocks=[])
+    fallback = attempts[-1] if attempts else analyze_text_block('', stage='comments', llm_blocks=[], inferred_artist=inferred_artist)
     if not fallback.get('songs') and len(comments) >= 10:
         signals = fallback.get('signals') or {}
         if not signals.get('timestamp_count') and not signals.get('pattern_count'):

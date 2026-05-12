@@ -597,6 +597,14 @@ button {
   line-height: 1.6;
 }
 
+.fallback-panel {
+  border-color: rgba(233, 122, 61, 0.35);
+}
+
+.fallback-panel .action-row {
+  margin-top: 12px;
+}
+
 .inline-playlist-result {
   display: flex;
   flex-wrap: wrap;

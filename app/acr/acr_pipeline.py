@@ -24,10 +24,11 @@ def _get_youtube_info(youtube_url: str) -> Dict:
             return {
                 "duration": int(info.get("duration") or 0),
                 "title": info.get("title") or "",
+                "video_id": info.get("id") or "",
             }
     except Exception as exc:
         print("[acr] youtube_info_failed =", str(exc))
-        return {"duration": 0, "title": ""}
+        return {"duration": 0, "title": "", "video_id": ""}
 
 
 def _deduplicate_acr_songs(songs: List[Dict]) -> List[Dict]:
@@ -83,6 +84,7 @@ def extract_songs_with_acr(youtube_url: str) -> Dict:
                 "songs": [],
                 "ocr_used": False,
                 "acr_used": True,
+                "video_id": info.get("video_id", ""),
                 "youtube_title": info.get("title", ""),
                 "signals": {
                     "sampled_segments": 0,
@@ -121,6 +123,7 @@ def extract_songs_with_acr(youtube_url: str) -> Dict:
             "songs": _deduplicate_acr_songs(recognized),
             "ocr_used": False,
             "acr_used": True,
+            "video_id": info.get("video_id", ""),
             "segments_total": sampled_segments,
             "segments_recognized": recognized_segments,
             "recognition_rate": round(recognition_rate, 3),
@@ -149,6 +152,7 @@ def extract_songs_with_acr(youtube_url: str) -> Dict:
             "songs": [],
             "ocr_used": False,
             "acr_used": False,
+            "video_id": "",
             "youtube_title": "",
             "signals": {
                 "sampled_segments": sampled_segments,
