@@ -37,6 +37,42 @@ const qaDetail = $("qaDetail");
 
 const BACKEND_BASE_URL_STORAGE_KEY = "orangebeats.backendBaseUrl";
 
+const PREFILL_STORAGE_KEYS = {
+  youtubeUrl: "orangebeats.prefill.youtubeUrl",
+  titleMode: "orangebeats.prefill.titleMode",
+  playlistName: "orangebeats.prefill.playlistName",
+  autoAnalyze: "orangebeats.prefill.autoAnalyze",
+  mode: "orangebeats.prefill.mode",
+};
+
+const analyzeLoadingOverlay = $("analyzeLoadingOverlay");
+let shouldAutoAnalyze = false;
+
+function applyPlaylistUrlPrefill() {
+  try {
+    const url = sessionStorage.getItem(PREFILL_STORAGE_KEYS.youtubeUrl);
+    const mode = sessionStorage.getItem(PREFILL_STORAGE_KEYS.titleMode);
+    const name = sessionStorage.getItem(PREFILL_STORAGE_KEYS.playlistName);
+    const extractMode = sessionStorage.getItem(PREFILL_STORAGE_KEYS.mode);
+    const autoAnalyze = sessionStorage.getItem(PREFILL_STORAGE_KEYS.autoAnalyze);
+    const hadPrefill = url !== null || mode !== null || name !== null || extractMode !== null || autoAnalyze !== null;
+    if (url) youtubeUrlInput.value = url;
+    if (mode === "youtube" || mode === "custom") titleModeSelect.value = mode;
+    if (name !== null) playlistNameInput.value = name;
+    if (extractMode === "text" || extractMode === "ocr" || extractMode === "acr") modeSelect.value = extractMode;
+    shouldAutoAnalyze = autoAnalyze === "1" && Boolean(url);
+    if (hadPrefill) {
+      sessionStorage.removeItem(PREFILL_STORAGE_KEYS.youtubeUrl);
+      sessionStorage.removeItem(PREFILL_STORAGE_KEYS.titleMode);
+      sessionStorage.removeItem(PREFILL_STORAGE_KEYS.playlistName);
+      sessionStorage.removeItem(PREFILL_STORAGE_KEYS.mode);
+      sessionStorage.removeItem(PREFILL_STORAGE_KEYS.autoAnalyze);
+    }
+  } catch {
+    // ignore
+  }
+}
+
 let lastResultData = null;
 let candidateResults = [];
 let selectedQaId = null;
@@ -116,6 +152,11 @@ function setText(idOrElement, value, fallback = "-") {
 function setStatus(type, message) {
   statusBox.className = `status-box ${type}`;
   statusBox.textContent = message;
+}
+
+function setAnalyzeLoadingOverlay(visible) {
+  if (!analyzeLoadingOverlay) return;
+  analyzeLoadingOverlay.hidden = !visible;
 }
 
 function setButtonsDisabled(disabled) {
@@ -622,6 +663,7 @@ async function handleApiResponse(response) {
 
 function prepareRunUi(message) {
   setButtonsDisabled(true);
+  setAnalyzeLoadingOverlay(true);
   setStatus("loading", message);
   renderErrorBox(null);
   setPlaylistLink(null);
@@ -885,6 +927,7 @@ analyzeBtn.addEventListener("click", async () => {
   } finally {
     window.clearTimeout(timeoutId);
     stopAnalyzeProgress();
+    setAnalyzeLoadingOverlay(false);
     setButtonsDisabled(false);
     isAnalyzing = false;
   }
@@ -1074,8 +1117,16 @@ function clearResponseState() {
   resetErrorBox();
 }
 
+applyPlaylistUrlPrefill();
 initializeBackendBaseUrl();
 initializeTabs();
 clearResponseState();
 updateNoticeFromQuery();
 refreshLoginStatus();
+if (shouldAutoAnalyze) {
+  setAnalyzeLoadingOverlay(true);
+  setStatus("loading", "YouTube 분석과 Spotify 후보 검색을 자동으로 시작합니다.");
+  window.setTimeout(() => {
+    analyzeBtn.click();
+  }, 50);
+}

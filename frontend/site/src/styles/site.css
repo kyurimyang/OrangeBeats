@@ -1,5 +1,3 @@
-@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css");
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@700&display=swap");
 @import "../../../figma/components.css";
 
 :root {
@@ -15,6 +13,11 @@
   box-sizing: border-box;
 }
 
+html {
+  background-color: var(--home-bg);
+  overflow-x: clip;
+}
+
 html,
 body,
 #root {
@@ -23,13 +26,15 @@ body,
 
 body {
   margin: 0;
+  overflow-x: clip;
   overflow-y: auto;
   background: var(--home-bg);
   color: #ffffff;
   font-family: "Pretendard", "Gowun Dodum", sans-serif;
 }
 
-a {
+a,
+a:visited {
   color: inherit;
   text-decoration: none;
 }
@@ -43,8 +48,10 @@ button {
   flex-direction: column;
   align-items: center;
   gap: var(--home-section-gap);
+  width: 100%;
   min-height: 100vh;
   background: var(--home-bg);
+  color: #ffffff;
 }
 
 .site-page {
@@ -59,6 +66,7 @@ button {
   height: 68px;
   background: var(--home-header-bg);
   box-shadow: 0 1px 0 var(--home-header-border);
+  color: #ffffff;
 }
 
 .site-header__inner {
@@ -148,12 +156,14 @@ button {
 .home-hero__title {
   margin: 0;
   width: 100%;
+  max-width: 100%;
   font-size: 97px;
   font-weight: 500;
   line-height: 90px;
   letter-spacing: -3px;
   text-align: center;
   white-space: nowrap;
+  color: #ffffff;
 }
 
 .home-hero__title span {
@@ -180,6 +190,7 @@ button {
   line-height: 25px;
   text-align: center;
   white-space: nowrap;
+  color: #ffffff;
 }
 
 .home-hero__subtitle span {
@@ -230,15 +241,18 @@ a.figma-spotify-connect {
 
 .home-section-title {
   flex: 0 0 auto;
-  width: min-content;
-  min-width: 100%;
-  height: 58px;
+  width: 100%;
+  max-width: 100%;
+  min-height: 58px;
   margin: 0;
+  padding: 0 16px;
+  box-sizing: border-box;
   font-family: "Inter", sans-serif;
   font-size: 55px;
   font-weight: 700;
   line-height: 27.2px;
   text-align: center;
+  color: #ffffff;
 }
 
 .home-step-1-bundle {
@@ -519,6 +533,18 @@ a.figma-spotify-connect {
   text-decoration: underline;
 }
 
+@media (max-width: 1400px) {
+  .home-hero__title {
+    font-size: clamp(48px, 6.5vw, 97px);
+    line-height: 1.05;
+    white-space: normal;
+  }
+
+  .home-hero__subtitle {
+    white-space: normal;
+  }
+}
+
 @media (max-width: 1320px) {
   .home-hero {
     max-width: calc(100% - 80px);
@@ -616,5 +642,172 @@ a.figma-spotify-connect {
   .site-header__nav {
     gap: 20px;
     padding: 20px 0 20px 20px;
+  }
+}
+
+.playlist-url-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: #000000;
+}
+
+.playlist-url-page .site-header {
+  flex-shrink: 0;
+}
+
+.playlist-url-page__main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 1440px;
+  min-height: 0;
+  margin: 0 auto;
+  padding: 24px 24px 80px;
+}
+
+.playlist-url-page__heading {
+  margin: 0 0 40px;
+  max-width: 900px;
+  text-align: center;
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.5px;
+  color: #ffffff;
+}
+
+.playlist-url-page__form {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+.figma-url-input__native {
+  position: absolute;
+  left: 42px;
+  right: 200px;
+  top: 0;
+  bottom: 0;
+  width: auto;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-family: "Pretendard", "Gowun Dodum", sans-serif;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: normal;
+  color: #000000;
+}
+
+.figma-url-input__native::placeholder {
+  color: rgba(0, 0, 0, 0.4);
+}
+
+.playlist-url-page .figma-url-input {
+  width: 100%;
+  max-width: 792px;
+}
+
+.playlist-url-page .figma-url-input__shell {
+  max-width: 100%;
+}
+
+.playlist-url-page .figma-url-input__field {
+  width: 100%;
+  max-width: 780px;
+}
+
+.playlist-url-page__radios {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 24px 64px;
+  margin-top: 36px;
+}
+
+.playlist-url-page__title-field {
+  margin-top: 28px;
+  width: 100%;
+  max-width: 641px;
+}
+
+.playlist-url-page__title-label {
+  display: block;
+  width: 100%;
+}
+
+.playlist-url-page__title-input-wrap {
+  position: relative;
+  border-radius: 16px;
+  background: #f4f3f2;
+  box-shadow: inset 0 3px 7px 2px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+}
+
+.playlist-url-page__title-input {
+  display: block;
+  width: 100%;
+  min-height: 66px;
+  padding: 0 29px;
+  border: 0;
+  border-radius: 16px;
+  background: transparent;
+  font-family: "Pretendard", "Gowun Dodum", sans-serif;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: normal;
+  color: #000000;
+}
+
+.playlist-url-page__title-input::placeholder {
+  color: #afafaf;
+}
+
+.playlist-url-page__title-input:focus {
+  outline: none;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 840px) {
+  .playlist-url-page__main {
+    justify-content: flex-start;
+    padding-top: 40px;
+  }
+
+  .playlist-url-page__heading {
+    margin-bottom: 32px;
+    font-size: 22px;
+  }
+
+  .figma-url-input__native {
+    left: 28px;
+    right: 160px;
+    font-size: 16px;
+  }
+
+  .playlist-url-page .figma-playlist-create {
+    transform: scale(0.88);
+    transform-origin: right center;
   }
 }

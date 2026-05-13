@@ -68,7 +68,7 @@ async def spa_page(page: str) -> FileResponse:
     if static_file is not None:
         return FileResponse(static_file)
 
-    if page in {"help", "faq", "contact"}:
+    if page in {"help", "faq", "contact", "create"}:
         index_file = DIST_DIR / "index.html"
         if index_file.is_file():
             return FileResponse(index_file)

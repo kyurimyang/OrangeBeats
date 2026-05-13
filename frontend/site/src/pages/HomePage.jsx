@@ -1,16 +1,65 @@
-import { Link } from "react-router-dom";
+import { useState } from "react";
 import SiteHeader from "../components/SiteHeader.jsx";
 
 export default function HomePage() {
+  const [isConnecting, setIsConnecting] = useState(false);
+
+  const handleSpotifyConnect = async () => {
+    if (isConnecting) return;
+    setIsConnecting(true);
+
+    try {
+      const statusRes = await fetch("/spotify/login-status", {
+        method: "GET",
+        credentials: "include",
+      });
+      if (statusRes.ok) {
+        const statusData = await statusRes.json();
+        if (statusData?.logged_in) {
+          window.location.assign(`${window.location.origin}/create`);
+          return;
+        }
+      }
+
+      const frontendRedirect = `${window.location.origin}/create`;
+      const loginEndpoint = `/spotify/login?frontend_origin=${encodeURIComponent(frontendRedirect)}`;
+      const res = await fetch(loginEndpoint, {
+        method: "GET",
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        throw new Error("spotify_login_request_failed");
+      }
+
+      const data = await res.json();
+      if (!data?.login_url) {
+        throw new Error("spotify_login_url_missing");
+      }
+
+      window.location.assign(data.login_url);
+    } catch (err) {
+      console.error(err);
+      setIsConnecting(false);
+      window.alert("Spotify 로그인 연결에 실패했습니다. 잠시 후 다시 시도해주세요.");
+    }
+  };
+
   return (
     <div className="home-page" data-node-id="37:222">
       <SiteHeader />
 
       <main className="home-shell">
         <section className="home-hero" data-node-id="99:284">
-          <Link className="figma-piece figma-spotify-connect figma-spotify-connect--default home-hero__cta" to="/lab" data-node-id="99:281">
+          <button
+            className="figma-piece figma-spotify-connect figma-spotify-connect--default home-hero__cta"
+            type="button"
+            data-node-id="99:281"
+            onClick={handleSpotifyConnect}
+            disabled={isConnecting}
+          >
             <span className="figma-piece__label figma-spotify-connect__label">Spotify 연동하기</span>
-          </Link>
+          </button>
           <div className="home-hero__copy" data-node-id="37:9544">
             <div className="home-hero__title-wrap" data-node-id="67:2">
               <h1 className="home-hero__title" data-node-id="67:3">
