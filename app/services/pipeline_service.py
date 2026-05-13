@@ -1,4 +1,5 @@
 import re
+import unicodedata
 from collections import Counter
 
 from app.clients.youtube_client import collect_text_sources
@@ -77,9 +78,15 @@ def _is_plausible_artist_context(value: str) -> bool:
     return bool(re.search(r"[A-Za-z0-9\uAC00-\uD7A3]", normalized))
 
 
+def _normalize_unicode_text(text: str) -> str:
+    normalized = unicodedata.normalize("NFKC", text or "")
+    normalized = re.sub(r"[\[\](){}]", " ", normalized)
+    return re.sub(r"\s+", " ", normalized).strip()
+
+
 def _detect_single_artist_from_text(title: str, description: str) -> dict:
     candidates = []
-    for text in [title or "", description or ""]:
+    for text in [_normalize_unicode_text(title), _normalize_unicode_text(description)]:
         for pattern in _SINGLE_ARTIST_PATTERNS:
             for match in pattern.finditer(text):
                 artist = _clean_artist_context(match.group("artist"))
@@ -131,7 +138,11 @@ def _apply_single_artist_context(result: dict, detection: dict) -> dict:
         if not isinstance(song, dict):
             continue
         item = dict(song)
-        if not (item.get("artist") or "").strip() and (item.get("title") or "").strip():
+        artist = (item.get("artist") or "").strip()
+        title = (item.get("title") or "").strip()
+        artist_missing = not artist and title
+        artist_same_as_title = bool(artist and title and artist.lower() == title.lower())
+        if artist_missing or artist_same_as_title:
             item["artist"] = inferred_artist
             item["artist_exists"] = True
             item["is_complete"] = True
