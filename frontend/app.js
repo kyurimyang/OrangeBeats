@@ -836,7 +836,8 @@ async function matchCandidatesFromCurrentSongs(sourceMode = "text", { offerFallb
         total_elapsed_ms: (lastResultData?.analysis_elapsed_ms || 0) + (matchData?.spotify_elapsed_ms || 0),
       },
     };
-    const poorResults = (combined.failed_count > 0 || combined.needs_review_count > 0 || combined.candidate_count === 0);
+    const hasCandidates = combined.candidate_count > 0;
+    const poorResults = !hasCandidates || combined.failed_count > 0 || combined.needs_review_count > 0;
     combined.needs_fallback = offerFallback;
     combined.next_action = poorResults ? "choose_fallback" : "select_tracks";
     applyAnalysisData(combined, "Spotify 후보 검색");
@@ -849,7 +850,7 @@ async function matchCandidatesFromCurrentSongs(sourceMode = "text", { offerFallb
         : "Spotify 매칭 후보를 찾았습니다. 후보 선택 탭에서 확인하거나 OCR/ACR로 추가 보강할 수 있습니다.";
       setFallbackPanelVisible(true, fallbackMsg, false);
       setStatus(poorResults ? "warn" : "success", statusMsg);
-      activateTab("runTab");
+      activateTab(hasCandidates ? "candidatesTab" : "runTab");
     } else {
       setFallbackPanelVisible(false);
       if (candidateResults.some(canSelectCandidate)) {
