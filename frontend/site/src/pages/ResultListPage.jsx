@@ -2,14 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import SiteHeader from "../components/SiteHeader.jsx";
 import trashDefaultUrl from "../assets/figma/trash-default.svg?url";
-import trashHoverUrl from "../assets/figma/trash-hover.svg?url";
-import trashPressedUrl from "../assets/figma/trash-pressed.svg?url";
-
-const TRASH_ICON_URL = {
-  default: trashDefaultUrl,
-  hover: trashHoverUrl,
-  pressed: trashPressedUrl,
-};
 
 function ResultTrashButton({ ariaLabel, onRemove }) {
   const [hovered, setHovered] = useState(false);
@@ -30,7 +22,15 @@ function ResultTrashButton({ ariaLabel, onRemove }) {
       onMouseDown={() => setPressed(true)}
       onMouseUp={() => setPressed(false)}
     >
-      <img className="figma-trash__icon" src={TRASH_ICON_URL[phase]} alt="" aria-hidden="true" />
+      <span className="result-track-item__delete-label" aria-hidden="true">
+        삭제
+      </span>
+      <img
+        className={`figma-trash__icon figma-trash__icon--${phase}`}
+        src={trashDefaultUrl}
+        alt=""
+        aria-hidden="true"
+      />
     </button>
   );
 }
@@ -181,18 +181,7 @@ export default function ResultListPage() {
   if (loading) {
     return (
       <div className="result-list-page result-list-page--loading" data-node-id="97:131">
-        <header className="result-loading-header" data-node-id="351:567">
-          <div className="result-loading-header__inner" data-node-id="351:568">
-            <a className="result-loading-header__logo" href="/" aria-label="Orange Beats 홈" data-node-id="351:569">
-              <img src="/assets/home/logo.png" alt="Orange Beats" />
-            </a>
-            <nav className="result-loading-header__nav" aria-label="주요 메뉴" data-node-id="351:570">
-              <a href="/help">Help</a>
-              <a href="/faq">FAQ</a>
-              <a href="/contact">Contact us</a>
-            </nav>
-          </div>
-        </header>
+        <SiteHeader />
         <main className="result-loading-main">
           <p className="result-list-loading__title">
             <span>Youtube에서 음원 가져오는 중</span>

@@ -62,8 +62,10 @@ button {
 .site-header {
   flex: 0 0 auto;
   width: 100%;
-  max-width: 1440px;
+  max-width: none;
   height: 68px;
+  position: relative;
+  z-index: 200;
   background: var(--home-header-bg);
   box-shadow: 0 1px 0 var(--home-header-border);
   color: #ffffff;
@@ -72,13 +74,21 @@ button {
 .site-header__inner {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 1440px;
   height: 100%;
+  margin-left: auto;
+  margin-right: auto;
   padding-left: 85px;
+  padding-right: 85px;
 }
 
-.site-header__cluster {
+.site-header__start {
   display: flex;
   align-items: center;
+  gap: 48px;
+  min-width: 0;
 }
 
 .site-header__logo {
@@ -103,7 +113,119 @@ button {
   display: flex;
   align-items: flex-end;
   gap: 52px;
-  padding: 20px 55px;
+  margin-left: auto;
+  padding: 20px 0;
+  flex-shrink: 0;
+}
+
+.site-header__spotify {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.site-header__spotify-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 4px 0;
+  border: none;
+  background: transparent;
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: -0.32px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.site-header__spotify-trigger:hover .site-header__spotify-trigger-label {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.site-header__spotify-chevron {
+  display: block;
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid #ffffff;
+  transition: transform 0.15s ease;
+}
+
+.site-header__spotify-chevron--open {
+  transform: rotate(180deg);
+}
+
+.site-header__spotify-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  z-index: 50;
+  min-width: 220px;
+  padding: 12px 0;
+  border-radius: 15px;
+  background: rgba(108, 108, 108, 0.35);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.site-header__spotify-menu-item {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 10px 20px;
+  border: none;
+  background: transparent;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.25;
+  letter-spacing: -0.28px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.site-header__spotify-menu-item:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.site-header__spotify-menu-item:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.site-header__spotify-menu-rule {
+  height: 1px;
+  margin: 8px 16px;
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.site-header__spotify-connect {
+  margin: 0;
+  padding: 4px 0;
+  border: none;
+  background: transparent;
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: -0.32px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.site-header__spotify-connect:hover:not(:disabled) {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.site-header__spotify-connect:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .home-shell {
@@ -655,6 +777,8 @@ a.figma-spotify-connect {
 
 .playlist-url-page .site-header {
   flex-shrink: 0;
+  align-self: stretch;
+  width: 100%;
 }
 
 .playlist-url-page__main {
@@ -782,11 +906,11 @@ a.figma-spotify-connect {
   background: #000000;
   /* 브라우저 75% 줌에 가깝게 — 패널·행·휴지통·하단 CTA 동일 비율 */
   --result-scale: 0.75;
-  /* 곡명/가수 — Figma(px). 숫자만 바꾸면 전체에 calc(값 × --result-scale) 반영 */
-  --result-track-title-px: 35;
-  --result-track-title-line-px: 52;
-  --result-track-artist-px: 25;
-  --result-track-artist-line-px: 39;
+  /* 곡명/가수 — Figma(px) 기준. --result-scale(0.75)와 곱해져 패널·행과 비슷한 체감 크기로 맞춤 */
+  --result-track-title-px: 28;
+  --result-track-title-line-px: 40;
+  --result-track-artist-px: 20;
+  --result-track-artist-line-px: 31;
 }
 
 .result-list-page--loading {
@@ -794,54 +918,10 @@ a.figma-spotify-connect {
   flex-direction: column;
 }
 
-.result-loading-header {
+.result-list-page--loading .site-header {
+  flex-shrink: 0;
+  align-self: stretch;
   width: 100%;
-  height: 68px;
-  background: rgba(0, 0, 0, 0.82);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.12);
-}
-
-.result-loading-header__inner {
-  display: flex;
-  align-items: center;
-  height: 100%;
-  width: 100%;
-  max-width: 1440px;
-  margin: 0 auto;
-  padding-left: 85px;
-}
-
-.result-loading-header__logo {
-  position: relative;
-  display: inline-flex;
-  width: 233px;
-  height: 42px;
-  overflow: hidden;
-}
-
-.result-loading-header__logo img {
-  position: absolute;
-  width: 124.61%;
-  height: 327.62%;
-  left: -13.94%;
-  top: -111.43%;
-  max-width: none;
-}
-
-.result-loading-header__nav {
-  display: flex;
-  align-items: flex-end;
-  gap: 52px;
-  padding: 20px 55px;
-}
-
-.result-loading-header__nav a {
-  color: #ffffff;
-  text-decoration: none;
-  font-family: "Pretendard", "Gowun Dodum", sans-serif;
-  font-size: 16px;
-  font-weight: 500;
-  line-height: 27.2px;
 }
 
 .result-loading-main {
@@ -901,7 +981,8 @@ a.figma-spotify-connect {
     minmax(0, 1fr)
     calc(56px * var(--result-scale, 1));
   align-items: center;
-  gap: calc(20px * var(--result-scale, 1));
+  column-gap: calc(28px * var(--result-scale, 1));
+  row-gap: 0;
 }
 
 .result-track-item__index {
@@ -926,6 +1007,7 @@ a.figma-spotify-connect {
 
 .result-track-item__meta {
   min-width: 0;
+  padding-left: calc(20px * var(--result-scale, 1));
 }
 
 .result-track-item__title {
@@ -955,22 +1037,72 @@ a.figma-spotify-connect {
 }
 
 .result-track-item__remove {
-  justify-self: end;
+  justify-self: start;
 }
 
-/* trashcan — Figma 48.926×76.877px × --result-scale(0.75) */
+/* 삭제 라벨: 기본 숨김, 휴지통 호버·포커스·누름 시에만 표시 (아이콘 위 툴팁) */
 .result-track-item .figma-trash {
-  width: calc(48.926px * var(--result-scale, 1));
-  height: calc(76.877px * var(--result-scale, 1));
-  min-width: calc(48.926px * var(--result-scale, 1));
-  min-height: calc(76.877px * var(--result-scale, 1));
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  min-width: calc(36px * var(--result-scale, 1));
+  height: auto;
+  min-height: 0;
+  margin-left: calc(-16px * var(--result-scale, 1));
+}
+
+.result-track-item__delete-label {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: calc(5px * var(--result-scale, 1));
+  padding: 0 calc(2px * var(--result-scale, 1));
+  font-family: "Pretendard", "Gowun Dodum", sans-serif;
+  font-size: calc(7px * var(--result-scale, 1));
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  z-index: 3;
+  transition: opacity 0.12s ease, visibility 0.12s ease;
+}
+
+.result-track-item .figma-trash:hover .result-track-item__delete-label,
+.result-track-item .figma-trash:focus-visible .result-track-item__delete-label,
+.result-track-item .figma-trash--hover .result-track-item__delete-label,
+.result-track-item .figma-trash--pressed .result-track-item__delete-label {
+  opacity: 1;
+  visibility: visible;
 }
 
 .result-track-item .figma-trash__icon {
-  width: 100%;
-  height: 100%;
+  width: calc(44px * var(--result-scale, 1));
+  height: calc(69px * var(--result-scale, 1));
   object-fit: contain;
   object-position: center center;
+  flex-shrink: 0;
+  transition: opacity 0.1s ease, transform 0.1s ease, filter 0.1s ease;
+}
+
+.result-track-item .figma-trash__icon--default {
+  opacity: 0.88;
+}
+
+.result-track-item .figma-trash__icon--hover {
+  opacity: 1;
+  filter: brightness(1.15);
+}
+
+.result-track-item .figma-trash__icon--pressed {
+  opacity: 0.62;
+  transform: scale(0.93);
 }
 
 /* Group 18 / 하단 CTA — 동일 --result-scale */
@@ -993,7 +1125,7 @@ a.figma-spotify-connect {
   max-width: 100%;
   height: auto;
   min-height: 0;
-  padding: calc(22px * var(--result-scale, 1)) calc(49px * var(--result-scale, 1));
+  padding: calc(18px * var(--result-scale, 1)) calc(40px * var(--result-scale, 1));
   justify-content: center;
   align-items: center;
   gap: calc(10px * var(--result-scale, 1));
@@ -1018,7 +1150,7 @@ a.figma-spotify-connect {
   color: #fff;
   text-align: center;
   font-family: "Pretendard", "Gowun Dodum", sans-serif;
-  font-size: calc(32px * var(--result-scale, 1));
+  font-size: calc(28px * var(--result-scale, 1));
   font-style: normal;
   font-weight: 400;
   line-height: normal;
@@ -1032,7 +1164,7 @@ a.figma-spotify-connect {
   max-width: 100%;
   height: auto;
   min-height: 0;
-  padding: calc(22px * var(--result-scale, 1)) calc(49px * var(--result-scale, 1));
+  padding: calc(18px * var(--result-scale, 1)) calc(40px * var(--result-scale, 1));
   justify-content: center;
   align-items: center;
   gap: calc(10px * var(--result-scale, 1));
@@ -1096,22 +1228,6 @@ a.figma-spotify-connect {
 }
 
 @media (max-width: 840px) {
-  .result-loading-header__inner {
-    padding-left: 16px;
-    padding-right: 16px;
-    justify-content: space-between;
-  }
-
-  .result-loading-header__logo {
-    width: 180px;
-    height: 34px;
-  }
-
-  .result-loading-header__nav {
-    gap: 20px;
-    padding: 0;
-  }
-
   .result-list-page__main {
     padding: 40px 14px 36px;
     gap: 16px;
@@ -1131,7 +1247,8 @@ a.figma-spotify-connect {
   .result-track-item {
     min-height: 72px;
     grid-template-columns: 16px 56px minmax(0, 1fr) 44px;
-    gap: 12px;
+    column-gap: 18px;
+    row-gap: 0;
   }
 
   .result-track-item__index {
@@ -1143,6 +1260,10 @@ a.figma-spotify-connect {
     height: 56px;
   }
 
+  .result-track-item__meta {
+    padding-left: 14px;
+  }
+
   .result-track-item__title {
     font-size: clamp(15px, 3.2vw, calc(var(--result-track-title-px) * 1px * var(--result-scale, 1)));
     line-height: clamp(20px, 4vw, calc(var(--result-track-title-line-px) * 1px * var(--result-scale, 1)));
@@ -1152,6 +1273,19 @@ a.figma-spotify-connect {
     margin-top: 4px;
     font-size: clamp(12px, 2.6vw, calc(var(--result-track-artist-px) * 1px * var(--result-scale, 1)));
     line-height: clamp(16px, 3.4vw, calc(var(--result-track-artist-line-px) * 1px * var(--result-scale, 1)));
+  }
+
+  .result-track-item__delete-label {
+    font-size: 6px;
+  }
+
+  .result-track-item .figma-trash {
+    margin-left: -10px;
+  }
+
+  .result-track-item .figma-trash__icon {
+    width: 36px;
+    height: 56px;
   }
 
   .result-list-page__actions {
@@ -1169,7 +1303,7 @@ a.figma-spotify-connect {
 
   .result-list-page__actions .figma-playlist-create__label,
   .result-list-page__actions .figma-rematch__label {
-    font-size: clamp(17px, 5vw, calc(32px * var(--result-scale, 1)));
+    font-size: clamp(16px, 4.6vw, calc(28px * var(--result-scale, 1)));
   }
 
   .playlist-url-page__main {
