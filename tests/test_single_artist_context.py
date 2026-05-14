@@ -97,6 +97,64 @@ class SingleArtistContextTests(unittest.TestCase):
         self.assertEqual(result["single_artist_detection"]["source"], "extracted_songs")
         analyze_comments_mock.assert_not_called()
 
+    @patch(
+        "app.services.pipeline_service.get_video_music_section",
+        return_value=[
+            {"artist": "Shawn Mendes", "title": "Treat You Better", "album": ""},
+            {"artist": "Harry Styles", "title": "As It Was", "album": ""},
+        ],
+    )
+    @patch("app.services.pipeline_service.analyze_comments_prioritized")
+    @patch("app.services.pipeline_service.analyze_description")
+    @patch("app.services.pipeline_service.collect_text_sources")
+    def test_description_hashtag_single_artist_is_overridden_by_multi_artist_music_section(
+        self,
+        collect_mock,
+        analyze_description_mock,
+        analyze_comments_mock,
+        music_section_mock,
+    ):
+        collect_mock.return_value = {
+            "input_url": "https://youtu.be/test",
+            "video_id": "test",
+            "youtube_title": "favorite playlist",
+            "description": "#cortis\n1. Treat You Better\n2. As It Was",
+            "comments": [],
+            "comment_items": [],
+        }
+        analyze_description_mock.return_value = {
+            "success": True,
+            "songs": [
+                {
+                    "artist": "cortis",
+                    "title": "Treat You Better",
+                    "artist_inferred": True,
+                    "is_complete": True,
+                    "completeness_score": 1.0,
+                },
+                {
+                    "artist": "cortis",
+                    "title": "As It Was",
+                    "artist_inferred": True,
+                    "is_complete": True,
+                    "completeness_score": 1.0,
+                },
+            ],
+            "signals": {},
+            "metrics": {"song_count": 2, "complete_song_count": 2, "avg_completeness": 1.0},
+            "failure_reason": "",
+        }
+
+        result = run_youtube_text_pipeline("https://youtu.be/test")
+
+        self.assertFalse(result["is_single_artist"])
+        self.assertEqual(result["single_artist_detection"]["source"], "music_section_multi_artist_override")
+        self.assertEqual(result["songs"][0]["artist"], "Shawn Mendes")
+        self.assertFalse(result["songs"][0]["artist_inferred"])
+        self.assertTrue(result["songs"][0]["music_section_confirmed"])
+        self.assertEqual(result["songs"][1]["artist"], "Harry Styles")
+        analyze_comments_mock.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

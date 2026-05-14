@@ -7,6 +7,7 @@ const modeSelect = $("mode");
 const titleModeSelect = $("titleMode");
 
 const spotifyLoginBtn = $("spotifyLoginBtn");
+const spotifyLogoutBtn = $("spotifyLogoutBtn");
 const analyzeBtn = $("analyzeBtn");
 const createPlaylistBtn = $("createPlaylistBtn");
 const openSpotifyBtn = $("openSpotifyBtn");
@@ -50,6 +51,7 @@ let selectedQaId = null;
 let loginStatusRequestInFlight = null;
 let loginStatusLastFetchedAt = 0;
 let isAnalyzing = false;
+let isSpotifyLoggedIn = false;
 const LOGIN_STATUS_MIN_INTERVAL_MS = 30000;
 
 function inferBackendBaseUrl() {
@@ -126,10 +128,21 @@ function setStatus(type, message) {
 }
 
 function setButtonsDisabled(disabled) {
-  [spotifyLoginBtn, analyzeBtn, createPlaylistBtn, createSelectedInlineBtn, runOcrBtn, runAcrBtn, matchTextOnlyBtn].forEach((button) => {
+  [spotifyLoginBtn, spotifyLogoutBtn, analyzeBtn, createPlaylistBtn, createSelectedInlineBtn, runOcrBtn, runAcrBtn, matchTextOnlyBtn].forEach((button) => {
     if (!button) return;
     button.disabled = disabled;
   });
+}
+
+function updateSpotifyLoginUi(loggedIn) {
+  isSpotifyLoggedIn = Boolean(loggedIn);
+  setText("loginSummaryText", isSpotifyLoggedIn ? "로그인 완료" : "미로그인", "확인 중");
+  if (spotifyLoginBtn) {
+    spotifyLoginBtn.textContent = isSpotifyLoggedIn ? "다른 계정으로 로그인" : "Spotify 로그인";
+  }
+  if (spotifyLogoutBtn) {
+    spotifyLogoutBtn.hidden = !isSpotifyLoggedIn;
+  }
 }
 
 function renderJson(data) {
@@ -581,6 +594,12 @@ function renderDebug(data) {
   if (debugResults.length) {
     debugResults.forEach((item) => {
       const caseResults = safeArray(item?.match_debug?.case_results);
+      spotifyLogs.push(
+        `[spotify-match:filter] input='${item.input_artist || ""} - ${item.input_title || ""}' `
+          + `single_artist_filter_applied=${Boolean(item?.single_artist_filter_applied)} `
+          + `reason='${item?.single_artist_filter_reason || item?.match_debug?.single_artist_filter_reason || ""}' `
+          + `artist_id='${item?.spotify_artist_id_filter || item?.match_debug?.spotify_artist_id_filter || ""}'`,
+      );
       caseResults.forEach((caseResult) => {
         const logs = safeArray(caseResult?.candidate_logs);
         const queries = safeArray(caseResult?.queries);
@@ -721,7 +740,7 @@ async function refreshLoginStatus() {
     try {
       const response = await fetch(buildApiUrl("/spotify/login-status"), { credentials: "include" });
       const data = await handleApiResponse(response);
-      setText("loginSummaryText", data?.logged_in ? "로그인 완료" : "미로그인", "확인 중");
+      updateSpotifyLoginUi(data?.logged_in);
       return data;
     } catch (error) {
       setText("loginSummaryText", "확인 실패", "확인 중");
@@ -919,6 +938,8 @@ function updateNoticeFromQuery() {
 
   if (loginStatus === "success") {
     history.replaceState(null, "", window.location.pathname);
+    loginStatusLastFetchedAt = 0;
+    updateSpotifyLoginUi(true);
     noticeBoard.textContent = "Spotify 로그인이 완료되었습니다. 이제 YouTube URL을 분석해 후보를 확인할 수 있습니다.";
     setStatus("success", "Spotify 로그인 완료. YouTube URL을 분석해주세요.");
     return;
@@ -933,10 +954,23 @@ function updateNoticeFromQuery() {
   }
 }
 
-spotifyLoginBtn.addEventListener("click", async () => {
+async function clearSpotifyLoginState() {
+  const response = await fetch(buildApiUrl("/spotify/logout"), {
+    method: "POST",
+    credentials: "include",
+  });
+  await handleApiResponse(response);
+  loginStatusLastFetchedAt = 0;
+  updateSpotifyLoginUi(false);
+}
+
+async function startSpotifyLogin({ replaceAccount = false } = {}) {
   try {
     setButtonsDisabled(true);
-    setStatus("loading", "Spotify 로그인 URL을 가져오는 중입니다.");
+    setStatus("loading", replaceAccount ? "기존 Spotify 로그인 기록을 지우고 새 로그인 URL을 가져오는 중입니다." : "Spotify 로그인 URL을 가져오는 중입니다.");
+    if (replaceAccount) {
+      await clearSpotifyLoginState();
+    }
     const frontendRedirect = getFrontendRedirectUrl();
     const response = await fetch(
       buildApiUrl(`/spotify/login?frontend_origin=${encodeURIComponent(frontendRedirect)}`),
@@ -949,6 +983,25 @@ spotifyLoginBtn.addEventListener("click", async () => {
   } catch (error) {
     setStatus("error", `Spotify 로그인 준비 실패: ${error.message}`);
     renderErrorBox(`Spotify 로그인 준비 실패\n${error.message}`);
+    setButtonsDisabled(false);
+  }
+}
+
+spotifyLoginBtn.addEventListener("click", () => {
+  startSpotifyLogin({ replaceAccount: isSpotifyLoggedIn });
+});
+
+spotifyLogoutBtn?.addEventListener("click", async () => {
+  try {
+    setButtonsDisabled(true);
+    setStatus("loading", "Spotify 로그인 기록을 지우는 중입니다.");
+    await clearSpotifyLoginState();
+    noticeBoard.textContent = "Spotify 로그아웃이 완료되었습니다. 필요하면 다른 계정으로 다시 로그인할 수 있습니다.";
+    setStatus("success", "Spotify 로그아웃 완료.");
+  } catch (error) {
+    setStatus("error", `Spotify 로그아웃 실패: ${error.message}`);
+    renderErrorBox(`Spotify 로그아웃 실패\n${error.message}`);
+  } finally {
     setButtonsDisabled(false);
   }
 });

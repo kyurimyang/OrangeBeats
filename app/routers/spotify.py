@@ -6,7 +6,13 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import RedirectResponse
 
-from app.config import FRONTEND_URL, is_allowed_frontend_url, normalize_frontend_url
+from app.config import (
+    FRONTEND_URL,
+    SPOTIFY_SESSION_COOKIE_NAME,
+    SPOTIFY_SESSION_COOKIE_SECURE,
+    is_allowed_frontend_url,
+    normalize_frontend_url,
+)
 from app.dependencies.spotify_session import get_spotify_session_service
 from app.services.spotify_service import (
     SpotifyServiceError,
@@ -170,6 +176,28 @@ def spotify_login_status(
             "logged_in": False,
             "reason": str(exc),
         }
+
+
+@router.post("/logout")
+def spotify_logout(
+    request: Request,
+    response: Response,
+    session_service: SpotifySessionDep,
+):
+    session_id = get_session_id(request)
+    if session_id:
+        session_service.clear_tokens(session_id)
+
+    response.delete_cookie(
+        key=SPOTIFY_SESSION_COOKIE_NAME,
+        httponly=True,
+        samesite="lax",
+        secure=SPOTIFY_SESSION_COOKIE_SECURE,
+    )
+    return {
+        "success": True,
+        "logged_in": False,
+    }
 
 
 @router.post("/create-playlist")
