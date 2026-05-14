@@ -51,12 +51,12 @@ function normalizeTracks(data) {
       ? data.extracted_songs
       : [];
   return rows.map((item, index) => {
-    const spotifyTitle = String(
-      item.spotify_title ?? item.spotifyTitle ?? "",
-    ).trim();
-    const spotifyArtist = String(
-      item.spotify_artist ?? item.spotifyArtist ?? "",
-    ).trim();
+    const uiTrack = String(item.ui_track_line ?? item.uiTrackLine ?? "").trim();
+    const uiArtist = String(item.ui_artist_line ?? item.uiArtistLine ?? "").trim();
+    const spotifyTitle =
+      uiTrack || String(item.spotify_title ?? item.spotifyTitle ?? "").trim();
+    const spotifyArtist =
+      uiArtist || String(item.spotify_artist ?? item.spotifyArtist ?? "").trim();
     const songRow = songs[index] || {};
     const corr = songRow.corrected_input && typeof songRow.corrected_input === "object" ? songRow.corrected_input : null;
     const inputTitle = String(

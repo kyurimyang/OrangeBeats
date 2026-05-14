@@ -175,6 +175,13 @@ def _album_cover_url_from_track(track: Dict[str, Any]) -> str | None:
     return None
 
 
+def _stamp_ui_display_lines(results: List[Dict[str, Any]]) -> None:
+    """결과 리스트 UI(곡명 위·가수 아래)용 — spotify_title/artist 최종값을 ui_*에 복사한다."""
+    for row in results:
+        row["ui_track_line"] = (row.get("spotify_title") or "").strip()
+        row["ui_artist_line"] = (row.get("spotify_artist") or "").strip()
+
+
 def enrich_results_album_images(access_token: str, results: List[Dict[str, Any]], market: str = "KR") -> None:
     """트랙 ID가 있으면 /tracks 배치 조회로 커버·공식 곡명·아티스트를 채운다(기존 커버가 있어도 메타는 동기화)."""
     id_to_indices: Dict[str, List[int]] = {}
@@ -185,6 +192,7 @@ def enrich_results_album_images(access_token: str, results: List[Dict[str, Any]]
         id_to_indices.setdefault(tid, []).append(idx)
 
     if not id_to_indices:
+        _stamp_ui_display_lines(results)
         return
 
     unique_ids = list(id_to_indices.keys())
@@ -192,25 +200,29 @@ def enrich_results_album_images(access_token: str, results: List[Dict[str, Any]]
         fetched = get_tracks_by_ids(access_token, unique_ids, market=market)
     except SpotifyServiceError as exc:
         print("[enrich_results_album_images] get_tracks_by_ids failed:", str(exc))
-        return
-    for tid, track in zip(unique_ids, fetched):
-        if not track:
-            continue
-        url = _album_cover_url_from_track(track)
-        display_name = (track.get("name") or "").strip()
-        artists_raw = track.get("artists") or []
-        display_artist = ", ".join(
-            (a.get("name") or "").strip() for a in artists_raw if isinstance(a, dict) and (a.get("name") or "").strip()
-        )
-        for i in id_to_indices.get(tid, []):
-            row = results[i]
-            img = row.get("album_image")
-            if url and not (isinstance(img, str) and img.strip().startswith(("http://", "https://"))):
-                row["album_image"] = url
-            if display_name:
-                row["spotify_title"] = display_name
-            if display_artist:
-                row["spotify_artist"] = display_artist
+    else:
+        for tid, track in zip(unique_ids, fetched):
+            if not track:
+                continue
+            url = _album_cover_url_from_track(track)
+            display_name = (track.get("name") or "").strip()
+            artists_raw = track.get("artists") or []
+            display_artist = ", ".join(
+                (a.get("name") or "").strip()
+                for a in artists_raw
+                if isinstance(a, dict) and (a.get("name") or "").strip()
+            )
+            for i in id_to_indices.get(tid, []):
+                row = results[i]
+                img = row.get("album_image")
+                if url and not (isinstance(img, str) and img.strip().startswith(("http://", "https://"))):
+                    row["album_image"] = url
+                if display_name:
+                    row["spotify_title"] = display_name
+                if display_artist:
+                    row["spotify_artist"] = display_artist
+    finally:
+        _stamp_ui_display_lines(results)
 
 
 def _selection_recommended(confidence_label: str, *, source_mode: str = "") -> bool:
