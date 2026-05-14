@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from app.services.spotify_playlist import create_playlist_from_songs
+from app.services.spotify_playlist import analyze_spotify_candidates, create_playlist_from_songs
 
 
 class SpotifyPlaylistOrderTests(unittest.TestCase):
@@ -59,6 +59,103 @@ class SpotifyPlaylistOrderTests(unittest.TestCase):
         self.assertFalse(result["playlist_created"])
         self.assertIsNone(result["playlist_id"])
         self.assertEqual(result["unmatched_count"], 1)
+
+    @patch("app.services.spotify_playlist.pick_best_track_match")
+    @patch(
+        "app.services.spotify_playlist.resolve_spotify_artist_id",
+        return_value={"id": "3HqSLMAZ3g3d5poNaI7GOU", "name": "IU", "score": 1.0},
+    )
+    def test_single_artist_context_passes_spotify_artist_id_to_matching(self, resolve_mock, match_mock):
+        match_mock.return_value = {
+            "uri": "spotify:track:1",
+            "name": "Celebrity",
+            "artists": ["IU"],
+            "score": 0.95,
+            "match_status": "matched",
+            "top_candidates": [],
+        }
+
+        results = analyze_spotify_candidates(
+            access_token="token",
+            songs=[
+                {"artist": "IU", "title": "Celebrity", "artist_inferred": True},
+                {"artist": "IU", "title": "Good Day", "artist_inferred": True},
+            ],
+        )
+
+        resolve_mock.assert_called_once_with("token", "IU", market="KR")
+        first_meta = match_mock.call_args_list[0].kwargs["song_meta"]
+        self.assertEqual(first_meta["spotify_artist_id"], "3HqSLMAZ3g3d5poNaI7GOU")
+        self.assertTrue(results[0]["single_artist_mode"])
+        self.assertEqual(results[0]["spotify_artist_id_filter"], "3HqSLMAZ3g3d5poNaI7GOU")
+
+    @patch("app.services.spotify_playlist.pick_best_track_match")
+    @patch(
+        "app.services.spotify_playlist.resolve_spotify_artist_id",
+        return_value={"id": "cortis-id", "name": "CORTIS", "score": 1.0},
+    )
+    def test_music_section_confirmed_songs_do_not_use_single_artist_filter(self, resolve_mock, match_mock):
+        match_mock.return_value = {
+            "uri": "spotify:track:1",
+            "name": "Treat You Better",
+            "artists": ["Shawn Mendes"],
+            "score": 0.95,
+            "match_status": "matched",
+            "top_candidates": [],
+        }
+
+        results = analyze_spotify_candidates(
+            access_token="token",
+            songs=[
+                {"artist": "CORTIS", "title": "GO!", "artist_inferred": True},
+                {
+                    "artist": "Shawn Mendes",
+                    "title": "Treat You Better",
+                    "artist_inferred": False,
+                    "music_section_confirmed": True,
+                    "confidence": "high",
+                },
+            ],
+        )
+
+        confirmed_call = match_mock.call_args_list[1].kwargs
+        self.assertEqual(confirmed_call["artist"], "Shawn Mendes")
+        self.assertNotIn("spotify_artist_id", confirmed_call["song_meta"])
+        self.assertFalse(results[1]["single_artist_filter_applied"])
+        self.assertEqual(results[1]["single_artist_filter_reason"], "music_section_confirmed")
+
+    @patch("app.services.spotify_playlist.pick_best_track_match")
+    @patch(
+        "app.services.spotify_playlist.resolve_spotify_artist_id",
+        return_value={"id": "cortis-id", "name": "CORTIS", "score": 1.0},
+    )
+    def test_single_artist_filter_is_limited_to_inferred_unconfirmed_songs(self, resolve_mock, match_mock):
+        match_mock.return_value = {
+            "uri": "spotify:track:1",
+            "name": "GO!",
+            "artists": ["CORTIS"],
+            "score": 0.95,
+            "match_status": "matched",
+            "top_candidates": [],
+        }
+
+        results = analyze_spotify_candidates(
+            access_token="token",
+            songs=[
+                {"artist": "CORTIS", "title": "GO!", "artist_inferred": True, "music_section_confirmed": False},
+                {"artist": "Harry Styles", "title": "As It Was", "artist_inferred": False, "confidence": "high"},
+            ],
+        )
+
+        inferred_call = match_mock.call_args_list[0].kwargs
+        high_conf_call = match_mock.call_args_list[1].kwargs
+        self.assertIsNone(inferred_call["artist"])
+        self.assertEqual(inferred_call["song_meta"]["spotify_artist_id"], "cortis-id")
+        self.assertEqual(high_conf_call["artist"], "Harry Styles")
+        self.assertNotIn("spotify_artist_id", high_conf_call["song_meta"])
+        self.assertTrue(results[0]["single_artist_filter_applied"])
+        self.assertFalse(results[1]["single_artist_filter_applied"])
+        self.assertEqual(results[1]["single_artist_filter_reason"], "artist_not_inferred")
 
 
 if __name__ == "__main__":

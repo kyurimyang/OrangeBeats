@@ -1,15 +1,22 @@
 from __future__ import annotations
 
+import os
 import shutil
 import tempfile
 import difflib
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from app.ocr.frame_extractor import extract_frames
 from app.ocr.ocr_reader import read_text_from_image
 from app.services.youtube_downloader import download_youtube_video
+
+# Vision API 동시 호출 수. 높일수록 빠르지만 rate limit 위험
+VISION_MAX_WORKERS = int(os.getenv("OCR_VISION_MAX_WORKERS", "5"))
+# 픽셀 표준편차가 이 값 미만이면 단색 프레임으로 간주하고 Vision API 스킵
+BLANK_FRAME_STD_THRESHOLD = float(os.getenv("OCR_BLANK_FRAME_STD", "12.0"))
 
 STANDALONE_TIMESTAMP_REGEX = re.compile(r"^\s*(?:\d{1,2}:)?\d{1,2}:\d{2}\s*$")
 LEADING_TIMESTAMP_REGEX = re.compile(r"^\s*(?P<timestamp>(?:\d{1,2}:)?\d{1,2}:\d{2})\s+")
@@ -28,6 +35,26 @@ OCR_NOISE_KEYWORDS = {
     "cover",
     "lyrics",
 }
+
+
+def _is_blank_frame(image_path: str) -> bool:
+    """픽셀 분산이 낮은 단색 프레임은 텍스트가 없을 가능성이 높다."""
+    try:
+        from PIL import Image, ImageStat
+        with Image.open(image_path) as img:
+            stat = ImageStat.Stat(img.convert("L"))
+            return stat.stddev[0] < BLANK_FRAME_STD_THRESHOLD
+    except Exception:
+        return False
+
+
+def _read_frame_worker(index: int, frame_path: str) -> Tuple[int, str, str, Optional[str]]:
+    """Vision API 호출 단위 작업. (index, path, text, error) 반환."""
+    try:
+        text = read_text_from_image(frame_path).strip()
+        return index, frame_path, text, None
+    except Exception as exc:
+        return index, frame_path, "", str(exc)
 
 
 def _append_unique_text(texts: list[Dict[str, Any]], seen: set[str], item: Dict[str, Any]) -> None:
@@ -261,6 +288,9 @@ def run_ocr_pipeline(
     work_dir: Optional[str] = None,
     interval_sec: int = 40,
     max_frames: Optional[int] = None,
+    use_scene_detection: bool = True,
+    scene_threshold: float = 0.35,
+    max_scene_frames: int = 40,
 ) -> Dict[str, Any]:
     """
     Extract sampled frames from a video and read visible playlist text with OpenAI vision.
@@ -292,28 +322,48 @@ def run_ocr_pipeline(
             output_dir=str(frame_dir),
             interval_sec=interval_sec,
             max_frames=max_frames,
+            use_scene_detection=use_scene_detection,
+            scene_threshold=scene_threshold,
+            max_scene_frames=max_scene_frames,
         )
         print("[ocr-pipeline] frame extraction end frame_count =", len(frames))
 
-        print("[ocr-pipeline] vision OCR start")
+        # 단색 프레임 사전 필터 (Vision API 호출 전 로컬 픽셀 분산 검사)
+        blank_skipped = 0
+        vision_frames: List[Tuple[int, str]] = []
         for index, frame_path in enumerate(frames):
-            try:
-                print(f"[ocr-pipeline] vision frame {index + 1}/{len(frames)} start")
-                text = read_text_from_image(frame_path).strip()
-                print(f"[ocr-pipeline] vision frame {index + 1}/{len(frames)} done text_len={len(text)}")
-                if text:
-                    _append_unique_text(
-                        raw_texts,
-                        seen_texts,
-                        {
-                            "frame_index": index,
-                            "frame_path": frame_path,
-                            "text": text,
-                        },
-                    )
-            except Exception as exc:
-                errors.append({"frame_path": frame_path, "error": str(exc)})
-                print(f"[ocr-pipeline] vision frame {index + 1}/{len(frames)} failed error={exc}")
+            if _is_blank_frame(frame_path):
+                blank_skipped += 1
+            else:
+                vision_frames.append((index, frame_path))
+        print(f"[ocr-pipeline] blank_frame_skipped={blank_skipped} vision_target={len(vision_frames)}")
+
+        # Vision API 병렬 호출
+        print(f"[ocr-pipeline] vision OCR start workers={VISION_MAX_WORKERS}")
+        completed = 0
+        with ThreadPoolExecutor(max_workers=VISION_MAX_WORKERS) as pool:
+            future_map = {
+                pool.submit(_read_frame_worker, idx, fp): (idx, fp)
+                for idx, fp in vision_frames
+            }
+            for future in as_completed(future_map):
+                index, frame_path, text, err = future.result()
+                completed += 1
+                if err:
+                    errors.append({"frame_path": frame_path, "error": err})
+                    print(f"[ocr-pipeline] vision frame failed frame_index={index} error={err}")
+                else:
+                    print(f"[ocr-pipeline] vision frame done {completed}/{len(vision_frames)} frame_index={index} text_len={len(text)}")
+                    if text:
+                        _append_unique_text(
+                            raw_texts,
+                            seen_texts,
+                            {
+                                "frame_index": index,
+                                "frame_path": frame_path,
+                                "text": text,
+                            },
+                        )
         print("[ocr-pipeline] vision OCR end unique_text_count =", len(raw_texts))
         combined_text = build_vision_text(raw_texts)
         block_selection = select_representative_ocr_block(raw_texts)

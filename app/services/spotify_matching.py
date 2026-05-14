@@ -1,7 +1,9 @@
+import json
 import re
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.services.spotify_api import get_track, search_track, search_tracks_query
+from app.services.spotify_api import get_track, search_artists_query, search_track, search_tracks_query
 from app.services.spotify_common import (
     ARTIST_ALIAS_MAP,
     TITLE_ALIAS_MAP,
@@ -25,7 +27,48 @@ from app.services.spotify_common import (
 _MATCH_CACHE: Dict[Tuple[str, str], Optional[Dict[str, Any]]] = {}
 _MATCH_DEBUG: Dict[Tuple[str, str], Dict[str, Any]] = {}
 
-EARLY_RETURN_SCORE = 0.90
+# Persistent disk cache: survives server restarts so dev re-runs don't burn API quota.
+_DISK_CACHE_FILE = Path(__file__).resolve().parents[2] / ".spotify_match_disk_cache.json"
+_disk_cache: Dict[str, Optional[Dict[str, Any]]] = {}
+
+
+def _load_disk_cache() -> None:
+    if not _DISK_CACHE_FILE.exists():
+        return
+    try:
+        data = json.loads(_DISK_CACHE_FILE.read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            _disk_cache.update(data)
+    except Exception:
+        pass
+
+
+def _save_disk_cache_entry(key: str, value: Optional[Dict[str, Any]]) -> None:
+    _disk_cache[key] = value
+    if len(_disk_cache) % 5 != 0:
+        return
+    try:
+        _DISK_CACHE_FILE.write_text(
+            json.dumps(_disk_cache, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
+
+
+def flush_disk_cache() -> None:
+    try:
+        _DISK_CACHE_FILE.write_text(
+            json.dumps(_disk_cache, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
+
+
+_load_disk_cache()
+
+EARLY_RETURN_SCORE = 0.85
 DIRECT_ACCEPT_SCORE = 0.80
 MIN_ACCEPT_SCORE = 0.80
 MIN_TITLE_SCORE = 0.65
@@ -34,8 +77,9 @@ EXACT_ARTIST_SCORE = 0.999
 EXACT_ARTIST_MIN_TITLE_SCORE = 0.50
 MAX_CACHE_SIZE = 300
 SEARCH_LIMIT = 5
-MAX_QUERY_COUNT = 3
+MAX_QUERY_COUNT = 2
 SWAP_GUARD_MARGIN = 0.05
+ARTIST_ID_RESOLVE_MIN_SCORE = 0.78
 
 # Candidate classification thresholds. These do not trigger extra Spotify requests.
 ARTIST_ALIAS_CANDIDATE_TITLE_SCORE = 0.90
@@ -139,6 +183,27 @@ SHORT_TITLE_RISK_TOKENS = {
     "you",
     "day",
 }
+
+# 단어 1개 = 항상 high, 2단어 단음절 = medium, 그 외 = low
+# 하드코딩 목록 대신 토큰 수+언어로 판단하여 누락 방지
+def _title_collision_risk(title: str) -> str:
+    tokens = normalize_title(title).split()
+    if not tokens:
+        return "high"
+    if len(tokens) == 1:
+        return "high"
+    if len(tokens) == 2 and all(len(t) <= 5 for t in tokens):
+        return "medium"
+    return "low"
+
+
+def _artist_mismatch_severity(artist_similarity: float) -> str:
+    """아티스트 유사도로 불일치 심각도를 반환한다."""
+    if artist_similarity < 0.30:
+        return "confirmed_wrong"   # 완전히 다른 이름
+    if artist_similarity < 0.45:
+        return "ambiguous"         # 로마자·별칭 가능성 남아 있음
+    return "partial"
 
 REASON_MESSAGES = {
     "matched": "자동 매칭되었습니다.",
@@ -422,8 +487,10 @@ def _enrich_variant_detail(
     candidate_title: str,
     candidate_artists: List[str],
     detail: Dict[str, Any],
+    title_metadata_hints: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     enriched = dict(detail)
+    title_metadata_hints = title_metadata_hints or {}
     input_title_variants = _build_title_compare_variants(input_title)
     candidate_title_variants = _build_title_compare_variants(candidate_title)
     input_artist_variants = _build_artist_compare_variants(input_artist)
@@ -445,6 +512,21 @@ def _enrich_variant_detail(
         or bool(title_alias_matched and _has_korean(input_title))
     )
     title_core, featured_artists, feature_tags = _extract_title_core_and_features(input_title)
+    hinted_feature_artists = [
+        str(value).strip()
+        for value in title_metadata_hints.get("title_feature_artists", [])
+        if str(value).strip()
+    ]
+    hinted_producer_artists = [
+        str(value).strip()
+        for value in title_metadata_hints.get("title_producer_artists", [])
+        if str(value).strip()
+    ]
+    for hinted_artist in hinted_feature_artists:
+        if hinted_artist not in featured_artists:
+            featured_artists.append(hinted_artist)
+    if hinted_feature_artists and "featured_artist_metadata" not in feature_tags:
+        feature_tags.append("featured_artist_metadata")
 
     # Multi-artist coverage: main artist parts + feat. artists extracted from title.
     # Only checked against candidate_artists (not title text) so karaoke tracks that
@@ -482,6 +564,9 @@ def _enrich_variant_detail(
         "matched_input_title_variant": title_input,
         "matched_input_artist_variant": artist_input,
         "featured_artist_variants": _build_artist_compare_variants(featured_artists) if featured_artists else [],
+        "title_metadata_hints": title_metadata_hints.get("title_metadata_hints", []),
+        "title_feature_artists": hinted_feature_artists,
+        "title_producer_artists": hinted_producer_artists,
         "multi_artist_expected": multi_artist_expected,
         "multi_artist_matched": multi_artist_matched,
         "multi_artist_coverage": round(multi_artist_coverage, 4),
@@ -553,7 +638,8 @@ def _is_short_title_false_positive(input_title: str, candidate_title: str, title
     candidate_tokens = normalize_title(candidate_title).split()
     if not input_tokens or len(input_tokens) > 2:
         return False
-    risky = len(input_tokens) == 1 and input_tokens[0] in SHORT_TITLE_RISK_TOKENS
+    # 1토큰 = 충돌 위험 항상 high (하드코딩 목록 불필요)
+    risky = _title_collision_risk(input_title) in ("high", "medium")
     much_longer = len(candidate_tokens) >= len(input_tokens) + 3
     return title_score >= 0.70 and (risky or much_longer)
 
@@ -1487,6 +1573,15 @@ def _apply_ocr_matching_policy(candidate: Optional[Dict[str, Any]]) -> Optional[
     pattern_tags = set(score_detail.get("pattern_tags", []))
     applied_pattern = str(score_detail.get("applied_pattern") or evidence_confidence.get("applied_pattern") or "")
 
+    input_title_for_ocr = str(candidate.get("search_title", ""))
+    # 아티스트가 완전히 다른 이름 + 충돌 위험 높은 제목 → OCR에서는 후보 자체 제거
+    if (
+        _artist_mismatch_severity(artist_similarity) == "confirmed_wrong"
+        and not artist_alias_matched
+        and _title_collision_risk(input_title_for_ocr) in ("high", "medium")
+    ):
+        return None
+
     ocr_reasons: List[str] = []
     should_review = False
 
@@ -1873,6 +1968,52 @@ def _track_dedupe_key(track: Dict[str, Any]) -> Tuple[Any, ...]:
     return (track.get("id") or track.get("uri") or "",)
 
 
+def _track_has_artist_id(track: Dict[str, Any], spotify_artist_id: str) -> bool:
+    spotify_artist_id = (spotify_artist_id or "").strip()
+    if not spotify_artist_id:
+        return True
+    return any(
+        str(artist.get("id") or "").strip() == spotify_artist_id
+        for artist in track.get("artists", [])
+        if isinstance(artist, dict)
+    )
+
+
+def resolve_spotify_artist_id(
+    access_token: str,
+    artist: str,
+    market: Optional[str] = None,
+) -> Dict[str, Any]:
+    artist = (artist or "").strip()
+    if not artist:
+        return {}
+
+    candidates = search_artists_query(
+        access_token=access_token,
+        query=artist,
+        market=market,
+        limit=SEARCH_LIMIT,
+    )
+    best: Dict[str, Any] = {}
+    best_score = 0.0
+    for candidate in candidates:
+        candidate_name = str(candidate.get("name") or "")
+        score = _artist_match_score(artist, [candidate_name])
+        if score > best_score:
+            best = candidate
+            best_score = score
+
+    if not best or best_score < ARTIST_ID_RESOLVE_MIN_SCORE:
+        return {}
+
+    return {
+        "id": best.get("id", ""),
+        "name": best.get("name", ""),
+        "score": round(best_score, 4),
+        "uri": best.get("uri", ""),
+    }
+
+
 def _build_case_queries(title: str, artist: str) -> List[Dict[str, str]]:
     primary_title = ""
     title_variants = build_title_search_variants(title)
@@ -1935,6 +2076,7 @@ def _score_tracks(
     input_title: str,
     input_artist: str,
     chosen_case: str,
+    title_metadata_hints: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     unique_tracks: List[Dict[str, Any]] = []
     seen_keys = set()
@@ -1958,6 +2100,7 @@ def _score_tracks(
             candidate_title=track_name,
             candidate_artists=track_artists,
             detail=detail,
+            title_metadata_hints=title_metadata_hints,
         )
         detail.update(_candidate_version_info(
             input_title=input_title,
@@ -1992,6 +2135,9 @@ def _score_tracks(
                 chosen_case=chosen_case,
             )
             candidate["actual_query_used"] = source.get("query_used", "")
+            if source.get("spotify_artist_id_filter"):
+                candidate["spotify_artist_id_filter"] = source.get("spotify_artist_id_filter")
+                candidate["score_detail"]["spotify_artist_id_filter"] = source.get("spotify_artist_id_filter")
             candidate["match_status"] = "invalid_candidate"
             candidate["unmatched_reason"] = "invalid_candidate"
             candidate["rejection_reason"] = "low_title_sim"
@@ -2035,14 +2181,17 @@ def _score_tracks(
         detail["rank_bonus_applied"] = bool(detail.get("search_engine_signal"))
         detail["candidate_decision"] = "selectable"
         candidate = _candidate_to_result(
-                track,
-                score,
-                detail,
-                search_title=source.get("search_title", input_title),
-                search_artist=source.get("search_artist", input_artist),
-                chosen_case=chosen_case,
-            )
+            track,
+            score,
+            detail,
+            search_title=source.get("search_title", input_title),
+            search_artist=source.get("search_artist", input_artist),
+            chosen_case=chosen_case,
+        )
         candidate["actual_query_used"] = source.get("query_used", "")
+        if source.get("spotify_artist_id_filter"):
+            candidate["spotify_artist_id_filter"] = source.get("spotify_artist_id_filter")
+            candidate["score_detail"]["spotify_artist_id_filter"] = source.get("spotify_artist_id_filter")
         metadata_signal = _official_metadata_signal(
             input_title=input_title,
             candidate=candidate,
@@ -2085,6 +2234,16 @@ def _classify_candidate(candidate: Dict[str, Any], *, has_artist: bool, input_ar
         return "review_needed"
     if decision == "rejected":
         return "unmatched"
+    blocked_reason = str(detail.get("blocked_reason") or detail.get("search_engine_signal_blocked_reason") or "")
+    if blocked_reason == "title_exact_artist_mismatch":
+        input_title_val = str(candidate.get("search_title", ""))
+        artist_sim_val = float(detail.get("artist_variant_score", detail.get("artist_score", 0.0)))
+        # signal 차단된 이유가 아티스트 확인 불가인데 제목이 고충돌 위험 → unmatched
+        if _title_collision_risk(input_title_val) in ("high", "medium"):
+            return "unmatched"
+        # 아티스트가 완전히 다른 이름 → review_needed 이상 허용하지 않음
+        if _artist_mismatch_severity(artist_sim_val) == "confirmed_wrong":
+            return "review_needed" if score >= REVIEW_NEEDED_SCORE else "unmatched"
     api_rank = int(detail.get("api_rank", 999))
     low_confidence_search_candidate = (
         api_rank == 1
@@ -2107,6 +2266,13 @@ def _classify_candidate(candidate: Dict[str, Any], *, has_artist: bool, input_ar
         and not bool(detail.get("artist_alias_matched"))
         and not bool(detail.get("romanization_matched"))
     ):
+        artist_sim = float(detail.get("artist_variant_score", detail.get("artist_score", 0.0)))
+        # 아티스트가 완전히 다른 이름 + 충돌 위험 높은 제목 → score 무관하게 unmatched
+        if (
+            _artist_mismatch_severity(artist_sim) == "confirmed_wrong"
+            and _title_collision_risk(str(candidate.get("search_title", ""))) in ("high", "medium")
+        ):
+            return "unmatched"
         return "review_needed" if score >= REVIEW_NEEDED_SCORE else "unmatched"
     if (
         "artist_only_overconfidence_pattern" in pattern_tags
@@ -2289,6 +2455,7 @@ def _summarize_case_result(case_result: Dict[str, Any]) -> Dict[str, Any]:
         "best_score": best.get("score", 0.0),
         "matched_name": best.get("name", ""),
         "matched_artists": best.get("artists", []),
+        "spotify_artist_id_filter": case_result.get("spotify_artist_id_filter", ""),
         "unmatched_reason": case_result.get("unmatched_reason", ""),
         "candidate_logs": [_candidate_score_log(candidate) for candidate in scored_candidates[:SEARCH_LIMIT]],
     }
@@ -2322,6 +2489,7 @@ def _store_match_debug(
                 "low_confidence_reason": candidate.get("low_confidence_reason", ""),
                 "unmatched_reason": candidate.get("unmatched_reason", ""),
                 "user_message": candidate.get("user_message", ""),
+                "spotify_artist_id_filter": candidate.get("spotify_artist_id_filter", ""),
             }
             for candidate in top_candidates[:3]
         ],
@@ -2448,6 +2616,8 @@ def _evaluate_case(
     title: str,
     artist: str,
     market: Optional[str],
+    spotify_artist_id: str = "",
+    title_metadata_hints: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     input_title = (title or "").strip()
     input_artist = (artist or "").strip()
@@ -2465,6 +2635,7 @@ def _evaluate_case(
         "unmatched_reason": "empty_search_terms",
         "search_title": input_title,
         "search_artist": input_artist,
+        "spotify_artist_id_filter": spotify_artist_id,
     }
 
     if not input_title:
@@ -2501,6 +2672,12 @@ def _evaluate_case(
                 limit=SEARCH_LIMIT,
             )
 
+        if spotify_artist_id:
+            fetched_tracks = [
+                track for track in fetched_tracks
+                if _track_has_artist_id(track, spotify_artist_id)
+            ]
+
         if index > 0 and fetched_tracks:
             result["fallback_used"] = True
 
@@ -2514,6 +2691,7 @@ def _evaluate_case(
                     "query_used": strategy["query"],
                     "api_rank": str(rank_index),
                     "query_index": str(index),
+                    "spotify_artist_id_filter": spotify_artist_id,
                 }
             raw_tracks.append(track)
 
@@ -2526,6 +2704,7 @@ def _evaluate_case(
             input_title=input_title,
             input_artist=input_artist,
             chosen_case=case_name,
+            title_metadata_hints=title_metadata_hints,
         )
         result["scored_candidates"] = scored_candidates
         result["chosen_candidate"] = _pick_best_acceptable_candidate(
@@ -2631,6 +2810,12 @@ def pick_best_track_match(
     swap_guard_applied = bool(song_meta.get("swap_guard_applied", False))
     swap_guard_reason = str(song_meta.get("swap_guard_reason") or "")
     source_mode = str(song_meta.get("source_mode") or "").strip().lower()
+    spotify_artist_id = str(song_meta.get("spotify_artist_id") or "").strip()
+    title_metadata_hints = {
+        "title_metadata_hints": song_meta.get("title_metadata_hints", []),
+        "title_feature_artists": song_meta.get("title_feature_artists", []),
+        "title_producer_artists": song_meta.get("title_producer_artists", []),
+    }
 
     if cache_key in _MATCH_CACHE:
         cached = _MATCH_CACHE[cache_key]
@@ -2660,6 +2845,14 @@ def pick_best_track_match(
         )
         return _apply_ocr_matching_policy(cached) if source_mode == "ocr" else cached
 
+    # Disk cache: avoids re-querying Spotify across server restarts during development.
+    disk_cache_key = f"{input_title.lower()}::{(input_artist or '').lower()}"
+    if disk_cache_key in _disk_cache:
+        cached = _disk_cache[disk_cache_key]
+        _MATCH_CACHE[cache_key] = cached
+        print(f"[spotify-match] disk cache hit: '{input_artist} - {input_title}'")
+        return _apply_ocr_matching_policy(cached) if source_mode == "ocr" else cached
+
     # ACR direct path: ACR이 제공한 Spotify track ID가 있으면 검색 없이 직접 조회
     acr_spotify_track_id = str(song_meta.get("acr_spotify_track_id") or "").strip()
     if acr_spotify_track_id:
@@ -2673,7 +2866,9 @@ def pick_best_track_match(
         if direct:
             best = dict(direct)
             if source_mode == "ocr":
-                best = _apply_ocr_matching_policy(best) or best
+                best = _apply_ocr_matching_policy(best)
+                if best is None:
+                    return None
             best["top_candidates"] = [direct]
             best["chosen_case"] = "original"
             best["selection_reason"] = "acr_direct_id_match"
@@ -2717,6 +2912,8 @@ def pick_best_track_match(
             title=case_input["title"],
             artist=case_input["artist"],
             market=market,
+            spotify_artist_id=spotify_artist_id,
+            title_metadata_hints=title_metadata_hints,
         )
         for case_input in case_inputs
     ]
@@ -2752,6 +2949,7 @@ def pick_best_track_match(
             early_return=False,
         )
         _MATCH_CACHE[cache_key] = None
+        _save_disk_cache_entry(disk_cache_key, None)
         return None
 
     best_candidate = selected_case_result.get("best_candidate") or {}
@@ -2773,6 +2971,7 @@ def pick_best_track_match(
             case_results=case_results,
         )
         _MATCH_CACHE[cache_key] = None
+        _save_disk_cache_entry(disk_cache_key, None)
         _log_match(
             input_title=input_title,
             input_artist=input_artist,
@@ -2791,7 +2990,9 @@ def pick_best_track_match(
 
     best = dict(chosen_candidate)
     if source_mode == "ocr":
-        best = _apply_ocr_matching_policy(best) or best
+        best = _apply_ocr_matching_policy(best)
+        if best is None:
+            return None
     best["top_candidates"] = selected_case_result.get("scored_candidates", [])[:3]
     best["chosen_case"] = selected_case
     best["selection_reason"] = decision_reason
@@ -2800,6 +3001,13 @@ def pick_best_track_match(
         selected_queries[0] if selected_queries else ""
     )
     best["parse_reason"] = str(song_meta.get("reason") or "")
+    if any(title_metadata_hints.values()):
+        best["title_metadata_hints"] = title_metadata_hints.get("title_metadata_hints", [])
+        best["title_feature_artists"] = title_metadata_hints.get("title_feature_artists", [])
+        best["title_producer_artists"] = title_metadata_hints.get("title_producer_artists", [])
+    if spotify_artist_id:
+        best["spotify_artist_id_filter"] = spotify_artist_id
+        best["spotify_artist_name_filter"] = str(song_meta.get("spotify_artist_name") or "")
     if song_meta.get("normalized_by") == "swap_detected":
         best["normalized_by"] = "swap_detected"
         best["original_input"] = song_meta.get("original_input", {})
@@ -2841,4 +3049,5 @@ def pick_best_track_match(
         _MATCH_CACHE.clear()
         _MATCH_DEBUG.clear()
     _MATCH_CACHE[cache_key] = best
+    _save_disk_cache_entry(disk_cache_key, best)
     return best

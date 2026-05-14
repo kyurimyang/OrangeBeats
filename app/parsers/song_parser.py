@@ -26,6 +26,10 @@ TRACK_NUMBER_ONLY_REGEX = re.compile(r"^\s*(?:\d{1,3}|[A-Za-z])[\.)]?\s*$")
 MULTISPACE_REGEX = re.compile(r"\s+")
 BRACKET_REGEX = re.compile(r"[\[\(\{].*?[\]\)\}]")
 PARENTHETICAL_REGEX = re.compile(r"[\(\[\{]([^\)\]\}]{1,12})[\)\]\}]")
+TITLE_METADATA_HINT_REGEX = re.compile(
+    r"[\(\[\{]?\s*(?P<kind>feat|ft|featuring|with|prod(?:uced)?\s+by)\.?\s+(?P<value>[^\)\]\}\-_/|]{1,80})[\)\]\}]?",
+    re.IGNORECASE,
+)
 PAIR_REGEX = re.compile(r".+\s[-–—|/:~]\s.+")
 PURE_PUNCT_REGEX = re.compile(r"^[^\w\uAC00-\uD7A3]+$")
 LEADING_DECORATION_REGEX = re.compile(r"^[~*#>+\-\s]+")
@@ -160,6 +164,50 @@ def _strip_bracketed_metadata(value: str) -> str:
     return PARENTHETICAL_REGEX.sub(replace, value)
 
 
+def _strip_title_metadata_phrases(value: str) -> str:
+    return TITLE_METADATA_HINT_REGEX.sub(" ", value or "")
+
+
+def _extract_title_metadata_hints(value: str) -> dict:
+    value = _normalize_parentheses(str(value or ""))
+    hints = []
+    featured_artists = []
+    producer_artists = []
+    for match in TITLE_METADATA_HINT_REGEX.finditer(value):
+        kind = MULTISPACE_REGEX.sub(" ", match.group("kind").lower()).strip()
+        raw_value = _clean_text(match.group("value"))
+        raw_value = re.split(
+            r"\b(?:remix|instrumental|inst|live|remaster(?:ed)?|version|ver)\b",
+            raw_value,
+            maxsplit=1,
+            flags=re.IGNORECASE,
+        )[0].strip(" -_/:|")
+        if not raw_value:
+            continue
+        hint = f"{kind} {raw_value}"
+        if hint not in hints:
+            hints.append(hint)
+        parts = [
+            _clean_text(part)
+            for part in re.split(r"\s*(?:,|&| x | and |/)\s*", raw_value, flags=re.IGNORECASE)
+            if _clean_text(part)
+        ]
+        if kind in {"feat", "ft", "featuring", "with"}:
+            for part in parts:
+                if part not in featured_artists:
+                    featured_artists.append(part)
+        else:
+            for part in parts:
+                if part not in producer_artists:
+                    producer_artists.append(part)
+
+    return {
+        "title_metadata_hints": hints,
+        "title_feature_artists": featured_artists,
+        "title_producer_artists": producer_artists,
+    }
+
+
 def _has_preserved_parenthetical_identifier(value: str) -> bool:
     value = _normalize_parentheses(value)
     return any(_should_preserve_parenthetical_identifier(value, match) for match in PARENTHETICAL_REGEX.finditer(value))
@@ -169,6 +217,7 @@ def _clean_text(value: str) -> str:
     value = str(value or "")
     value = value.replace("\u2018", "'").replace("\u2019", "'")
     value = value.replace("\u201c", '"').replace("\u201d", '"')
+    value = _strip_title_metadata_phrases(value)
     value = _strip_bracketed_metadata(value)
     value = TIME_PREFIX_REGEX.sub("", value)
     value = _strip_timestamps(value)
@@ -479,6 +528,9 @@ def _extract_pair_parts(text: str) -> dict | None:
         if sep not in cleaned:
             continue
         raw_left, raw_right = cleaned.split(sep, 1)
+        original_left, original_right = (
+            text.split(sep, 1) if sep in text else (raw_left, raw_right)
+        )
         left, right = raw_left, raw_right
         left = _clean_text(left)
         right = _clean_text(right)
@@ -501,6 +553,8 @@ def _extract_pair_parts(text: str) -> dict | None:
                 "left": left,
                 "right": right,
                 "artist_parentheses_preserved": _has_preserved_parenthetical_identifier(raw_left),
+                "left_title_metadata": _extract_title_metadata_hints(original_left),
+                "right_title_metadata": _extract_title_metadata_hints(original_right),
             }
     return None
 
@@ -1019,6 +1073,11 @@ def _log_parse_line(parsed: dict) -> None:
 def _resolve_orientation(parts: dict, global_direction: str = "artist_title") -> dict:
     finalized = finalize_pair(parts.get("left", ""), parts.get("right", ""), global_direction)
     finalized["raw"] = parts.get("raw", "")
+    title_side = "left" if finalized.get("title") == parts.get("left", "") else "right"
+    metadata = parts.get(f"{title_side}_title_metadata") or {}
+    for key in ["title_metadata_hints", "title_feature_artists", "title_producer_artists"]:
+        if metadata.get(key):
+            finalized[key] = metadata.get(key)
     if parts.get("artist_parentheses_preserved"):
         finalized["artist_parentheses_preserved"] = True
         reason = finalized.get("reason", "")
@@ -1032,6 +1091,9 @@ def _direction_vote(parts: dict) -> str:
     right = parts.get("right", "")
 
     # title - artist 패턴을 먼저 감지한다.
+    if re.fullmatch(r"[A-Z0-9]{1,4}", right or "") and re.search(r"[\uAC00-\uD7A3]", left or "") and len(left) >= 4:
+        return "artist_title"
+
     if _probable_title_artist_pair(left, right, "per_line"):
         return "title_artist"
 
@@ -1241,6 +1303,11 @@ def _append_song(results: list[dict], artist: str, title: str, meta: dict | None
         "original_input",
         "corrected_input",
         "normalized_by",
+        "artist_inferred",
+        "inferred_artist_source",
+        "title_metadata_hints",
+        "title_feature_artists",
+        "title_producer_artists",
     ]:
         if key in meta:
             song[key] = meta.get(key)
@@ -1260,21 +1327,37 @@ def parse_unstructured_lines_to_json(text: str) -> dict:
             continue
 
         ts_match = TIMESTAMP_LINE_REGEX.match(line)
-        target = _clean_text(ts_match.group("body") if ts_match else line)
+        raw_target = ts_match.group("body") if ts_match else line
+        target = _clean_text(raw_target)
         if not target or not _is_valid_music_line(target):
             continue
 
-        parts = _extract_pair_parts(target)
+        parts = _extract_pair_parts(raw_target)
         if not parts:
-            continue
+            # 타임스탬프가 있는데 구분자가 없으면 body 전체를 title-only로 보관
+            if ts_match:
+                parts = {"raw": raw_target, "left": "", "right": "", "_title_only": True}
+            else:
+                continue
 
         if ts_match:
             parts["_timestamp"] = ts_match.group("ts")
         pair_candidates.append(parts)
 
-    global_direction, direction_meta = _resolve_global_direction(pair_candidates)
+    pair_candidates_with_sep = [p for p in pair_candidates if not p.get("_title_only")]
+    global_direction, direction_meta = _resolve_global_direction(pair_candidates_with_sep)
     results = []
     for parts in pair_candidates:
+        # 타임스탬프 + 제목만 있는 줄: artist는 inferred_artist에서 채워질 예정
+        if parts.get("_title_only"):
+            title = _clean_text(parts["raw"])
+            if title:
+                meta: dict = {"_title_only": True}
+                if parts.get("_timestamp"):
+                    meta["timestamp"] = parts["_timestamp"]
+                _append_song(results, artist="", title=title, meta=meta)
+            continue
+
         line_direction = "title_artist" if parts.get("nested_pair_extracted") else global_direction
         parsed = _resolve_orientation(parts, line_direction)
         parsed.update(direction_meta)
@@ -1292,10 +1375,11 @@ def parse_unstructured_lines_to_json(text: str) -> dict:
     return {"songs": deduplicate_songs(results)}
 
 
-def normalize_song_candidates(data: Any) -> dict:
+def normalize_song_candidates(data: Any, inferred_artist: str = "") -> dict:
     if not data:
         return {"songs": []}
 
+    inferred_artist = _clean_text(inferred_artist)
     songs = data.get("songs", []) if isinstance(data, dict) else data
     normalized = []
     pair_candidates = []
@@ -1344,10 +1428,22 @@ def normalize_song_candidates(data: Any) -> dict:
             "global_direction": global_direction,
             **direction_meta,
         }
+        for hint_key in ["title_metadata_hints", "title_feature_artists", "title_producer_artists"]:
+            if item.get(hint_key):
+                meta[hint_key] = item.get(hint_key)
 
         if left and right:
             line_direction = "title_artist" if item.get("nested_pair_extracted") else global_direction
-            parsed = _resolve_orientation({"raw": raw, "left": left, "right": right}, line_direction)
+            parsed = _resolve_orientation(
+                {
+                    "raw": raw,
+                    "left": left,
+                    "right": right,
+                    "left_title_metadata": item.get("left_title_metadata", {}),
+                    "right_title_metadata": item.get("right_title_metadata", {}),
+                },
+                line_direction,
+            )
             parsed.update(direction_meta)
             if item.get("nested_pair_extracted"):
                 parsed["nested_pair_extracted"] = True
@@ -1365,6 +1461,12 @@ def normalize_song_candidates(data: Any) -> dict:
             meta.update(parsed)
         else:
             meta["score"] = max(meta["score"], 0.5 if title else 0.0)
+
+        if not artist and inferred_artist:
+            artist = inferred_artist
+            meta["artist_inferred"] = True
+            meta["inferred_artist_source"] = str(item.get("inferred_artist_source") or "single_artist_context")
+            meta["reason"] = str(meta.get("reason") or "provided_artist_title")
 
         if not _is_meaningful_text(title):
             continue
@@ -1433,6 +1535,11 @@ def deduplicate_songs(songs: list[dict]) -> list[dict]:
             "original_input",
             "corrected_input",
             "normalized_by",
+            "artist_inferred",
+            "inferred_artist_source",
+            "title_metadata_hints",
+            "title_feature_artists",
+            "title_producer_artists",
         ]:
             if meta_key in song:
                 entry[meta_key] = song.get(meta_key)

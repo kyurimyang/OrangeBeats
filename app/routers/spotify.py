@@ -1,11 +1,18 @@
 import secrets
+import time
 from typing import Annotated, Dict, List
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import RedirectResponse
 
-from app.config import FRONTEND_URL, is_allowed_frontend_url, normalize_frontend_url
+from app.config import (
+    FRONTEND_URL,
+    SPOTIFY_SESSION_COOKIE_NAME,
+    SPOTIFY_SESSION_COOKIE_SECURE,
+    is_allowed_frontend_url,
+    normalize_frontend_url,
+)
 from app.dependencies.spotify_session import get_spotify_session_service
 from app.services.spotify_service import (
     SpotifyServiceError,
@@ -13,6 +20,7 @@ from app.services.spotify_service import (
     exchange_code_for_token,
     get_spotify_login_url,
 )
+from app.services.spotify_playlist import analyze_spotify_candidates
 from app.services.spotify_session_service import SpotifySessionService
 from app.sessions.session_id import get_or_create_session_id, get_session_id
 
@@ -170,6 +178,28 @@ def spotify_login_status(
         }
 
 
+@router.post("/logout")
+def spotify_logout(
+    request: Request,
+    response: Response,
+    session_service: SpotifySessionDep,
+):
+    session_id = get_session_id(request)
+    if session_id:
+        session_service.clear_tokens(session_id)
+
+    response.delete_cookie(
+        key=SPOTIFY_SESSION_COOKIE_NAME,
+        httponly=True,
+        samesite="lax",
+        secure=SPOTIFY_SESSION_COOKIE_SECURE,
+    )
+    return {
+        "success": True,
+        "logged_in": False,
+    }
+
+
 @router.post("/create-playlist")
 def create_spotify_playlist(
     payload: Dict,
@@ -216,3 +246,61 @@ def create_spotify_playlist(
     except SpotifyServiceError as exc:
         print("SpotifyServiceError =", str(exc))
         raise HTTPException(status_code=_spotify_http_status(exc), detail=str(exc))
+
+
+@router.post("/match-candidates")
+def match_spotify_candidates(
+    payload: Dict,
+    request: Request,
+    session_service: SpotifySessionDep,
+):
+    session_id = get_session_id(request)
+    if not session_id:
+        raise HTTPException(status_code=401, detail="Spotify 로그인이 필요합니다.")
+
+    songs: List[Dict[str, str]] = payload.get("songs", []) or payload.get("extracted_songs", [])
+    if not songs:
+        raise HTTPException(status_code=400, detail="매칭할 곡 목록이 없습니다.")
+
+    try:
+        access_token = session_service.ensure_valid_access_token(session_id)
+    except SpotifyServiceError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+
+    started_at = time.perf_counter()
+    try:
+        results = analyze_spotify_candidates(
+            access_token=access_token,
+            songs=songs,
+            market=str(payload.get("market") or "KR"),
+            source_mode=str(payload.get("source_mode") or payload.get("mode") or "text"),
+        )
+    except SpotifyServiceError as exc:
+        raise HTTPException(status_code=_spotify_http_status(exc), detail=str(exc)) from exc
+
+    spotify_elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+    candidate_count = sum(1 for item in results if item.get("matched") and item.get("spotify_uri"))
+    needs_review_count = sum(1 for item in results if item.get("confidence_label") in {"mid", "low"})
+    failed_count = sum(1 for item in results if item.get("confidence_label") == "failed")
+    matched_tracks = [item for item in results if item.get("matched") and item.get("spotify_uri")]
+    unmatched_tracks = [item for item in results if not (item.get("matched") and item.get("spotify_uri"))]
+
+    return {
+        "success": True,
+        "analysis_state": "candidates_ready",
+        "needs_fallback": False,
+        "next_action": "select_tracks",
+        "message": "Spotify 후보 검색을 완료했습니다.",
+        "songs": songs,
+        "extracted_songs": songs,
+        "results": results,
+        "matched_tracks": matched_tracks,
+        "unmatched_tracks": unmatched_tracks,
+        "extracted_count": len(songs),
+        "spotify_candidate_count": candidate_count,
+        "candidate_count": candidate_count,
+        "needs_review_count": needs_review_count,
+        "failed_count": failed_count,
+        "spotify_elapsed_ms": spotify_elapsed_ms,
+        "timings": {"spotify_elapsed_ms": spotify_elapsed_ms},
+    }

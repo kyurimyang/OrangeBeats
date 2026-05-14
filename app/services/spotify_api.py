@@ -59,6 +59,28 @@ def search_tracks_query(
     return data.get('tracks', {}).get('items', [])
 
 
+def search_artists_query(
+    access_token: str,
+    query: str,
+    market: Optional[str] = None,
+    limit: int = 5,
+) -> List[Dict[str, Any]]:
+    query = (query or '').strip()
+    if not query:
+        return []
+
+    limit = max(1, min(int(limit), 5))
+    params = {'q': query, 'type': 'artist', 'market': market or 'KR', 'limit': limit}
+
+    url = f'{SPOTIFY_API_BASE}/search'
+    resp = spotify_request('GET', url, access_token=access_token, params=params)
+    if resp.status_code != 200:
+        _handle_response_error(resp, '?꾪떚?ㅽ듃 寃???ㅽ뙣')
+
+    data = resp.json()
+    return data.get('artists', {}).get('items', [])
+
+
 def search_track(
     access_token: str,
     title: str,

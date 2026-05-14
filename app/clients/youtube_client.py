@@ -10,6 +10,8 @@ from fastapi import HTTPException
 from app.config import YOUTUBE_API_KEY
 
 YOUTUBE_API_BASE = "https://www.googleapis.com/youtube/v3"
+_INNERTUBE_BASE = "https://www.youtube.com/youtubei/v1"
+_INNERTUBE_CLIENT = {"clientName": "WEB", "clientVersion": "2.20240101.00.00", "hl": "ko", "gl": "KR"}
 _TEXT_SOURCE_CACHE: dict[str, tuple[dict, float]] = {}
 _CACHE_TTL_SECONDS = 3600
 
@@ -262,4 +264,55 @@ def get_playlist_title(playlist_id: str) -> str:
     if not items:
         return ""
 
-    return items[0]["snippet"].get("title", "").strip() 
+    return items[0]["snippet"].get("title", "").strip()
+
+
+def get_video_music_section(video_id: str) -> list[dict]:
+    """YouTube InnerTube API로 영상의 '음악' 섹션(Content ID 매칭) 추출.
+    반환: [{"title": ..., "artist": ..., "album": ...}, ...]
+    음악 섹션이 없으면 빈 리스트.
+    """
+    try:
+        resp = requests.post(
+            f"{_INNERTUBE_BASE}/next",
+            json={"videoId": video_id, "context": {"client": _INNERTUBE_CLIENT}},
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            return []
+        data = resp.json()
+    except requests.RequestException:
+        return []
+
+    try:
+        panels = data.get("engagementPanels", [])
+        for panel in panels:
+            renderer = panel.get("engagementPanelSectionListRenderer", {})
+            if renderer.get("panelIdentifier") != "engagement-panel-structured-description":
+                continue
+            items = renderer["content"]["structuredDescriptionContentRenderer"]["items"]
+            for item in items:
+                hcl = item.get("horizontalCardListRenderer", {})
+                if not hcl:
+                    continue
+                subtitle = (
+                    hcl.get("header", {})
+                    .get("richListHeaderRenderer", {})
+                    .get("subtitle", {})
+                    .get("simpleText", "")
+                )
+                if "곡" not in subtitle and "song" not in subtitle.lower():
+                    continue
+                songs = []
+                for card in hcl.get("cards", []):
+                    vm = card.get("videoAttributeViewModel", {})
+                    title = vm.get("title", "").strip()
+                    artist = vm.get("subtitle", "").strip()
+                    album = vm.get("secondarySubtitle", {}).get("content", "").strip()
+                    if title and artist:
+                        songs.append({"title": title, "artist": artist, "album": album})
+                return songs
+    except (KeyError, TypeError):
+        pass
+
+    return []

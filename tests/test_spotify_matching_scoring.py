@@ -6,16 +6,21 @@ from app.services.spotify_matching import (
     _build_case_queries,
     _classify_candidate,
     _score_tracks,
+    _track_has_artist_id,
     _track_dedupe_key,
 )
 
 
 def track(name, artists, popularity=50, album_images=None, duration_ms=None):
+    artist_names = [artist[0] if isinstance(artist, tuple) else artist for artist in artists]
     return {
-        "id": f"{name}:{','.join(artists)}",
+        "id": f"{name}:{','.join(artist_names)}",
         "uri": f"spotify:track:{name}",
         "name": name,
-        "artists": [{"name": artist} for artist in artists],
+        "artists": [
+            {"name": artist[0], "id": artist[1]} if isinstance(artist, tuple) else {"name": artist}
+            for artist in artists
+        ],
         "album": {"name": "Test Album", "images": album_images or []},
         "popularity": popularity,
         "duration_ms": duration_ms,
@@ -41,6 +46,12 @@ def fallback_source(track_obj, title, artist):
 
 
 class SpotifyMatchingScoringTests(unittest.TestCase):
+    def test_track_artist_id_filter_checks_spotify_artist_ids(self):
+        candidate = track("Celebrity", [("IU", "3HqSLMAZ3g3d5poNaI7GOU")])
+
+        self.assertTrue(_track_has_artist_id(candidate, "3HqSLMAZ3g3d5poNaI7GOU"))
+        self.assertFalse(_track_has_artist_id(candidate, "other-artist"))
+
     def test_search_queries_follow_spotify_search_api_shape(self):
         queries = _build_case_queries("Ditto", "NewJeans")
 
