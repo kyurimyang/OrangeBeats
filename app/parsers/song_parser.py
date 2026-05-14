@@ -1334,15 +1334,30 @@ def parse_unstructured_lines_to_json(text: str) -> dict:
 
         parts = _extract_pair_parts(raw_target)
         if not parts:
-            continue
+            # 타임스탬프가 있는데 구분자가 없으면 body 전체를 title-only로 보관
+            if ts_match:
+                parts = {"raw": raw_target, "left": "", "right": "", "_title_only": True}
+            else:
+                continue
 
         if ts_match:
             parts["_timestamp"] = ts_match.group("ts")
         pair_candidates.append(parts)
 
-    global_direction, direction_meta = _resolve_global_direction(pair_candidates)
+    pair_candidates_with_sep = [p for p in pair_candidates if not p.get("_title_only")]
+    global_direction, direction_meta = _resolve_global_direction(pair_candidates_with_sep)
     results = []
     for parts in pair_candidates:
+        # 타임스탬프 + 제목만 있는 줄: artist는 inferred_artist에서 채워질 예정
+        if parts.get("_title_only"):
+            title = _clean_text(parts["raw"])
+            if title:
+                meta: dict = {"_title_only": True}
+                if parts.get("_timestamp"):
+                    meta["timestamp"] = parts["_timestamp"]
+                _append_song(results, artist="", title=title, meta=meta)
+            continue
+
         line_direction = "title_artist" if parts.get("nested_pair_extracted") else global_direction
         parsed = _resolve_orientation(parts, line_direction)
         parsed.update(direction_meta)
