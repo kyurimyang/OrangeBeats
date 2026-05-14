@@ -22,7 +22,9 @@ TIME_PREFIX_REGEX = re.compile(r"^\s*(?:\d{1,2}:\d{2}(?::\d{2})?)\s*[-|~>*]*\s*"
 TIMESTAMP_TOKEN_REGEX = re.compile(r"(?<!\d)(?:\d{1,2}:\d{2}(?::\d{2})?)(?!\d)")
 TIMESTAMP_LINE_REGEX = re.compile(r"^(?P<ts>\d{1,2}:\d{2}(?::\d{2})?)\s+(?P<body>.+)$")
 TIMESTAMP_PREFIX_ONLY_REGEX = re.compile(r"^\d{1,2}:\d{2}(?::\d{2})?\s+")
+NUMBERED_HYPHEN_TRACK_REGEX = re.compile(r"^\d{1,3}-(.+?)-(.+)$")
 TRACK_NUMBER_ONLY_REGEX = re.compile(r"^\s*(?:\d{1,3}|[A-Za-z])[\.)]?\s*$")
+TITLE_TRACK_NUMBER_PREFIX_REGEX = re.compile(r"^\s*(?:\d{1,3}|[A-Za-z])\s*[\.)]\s+")
 MULTISPACE_REGEX = re.compile(r"\s+")
 BRACKET_REGEX = re.compile(r"[\[\(\{].*?[\]\)\}]")
 PARENTHETICAL_REGEX = re.compile(r"[\(\[\{]([^\)\]\}]{1,12})[\)\]\}]")
@@ -341,7 +343,7 @@ def _looks_like_natural_sentence(line: str) -> bool:
 
 
 def _is_valid_music_line(line: str) -> bool:
-    if not line or len(line.strip()) < 3:
+    if not line or len(line.strip()) < 2:
         return False
 
     normalized = _normalize_line(line)
@@ -631,6 +633,28 @@ def _extract_pair_parts(text: str) -> dict | None:
 def _looks_like_track_number_prefix(text: str) -> bool:
     cleaned = _clean_text(text)
     return bool(cleaned and TRACK_NUMBER_ONLY_REGEX.fullmatch(cleaned))
+
+
+def _extract_numbered_hyphen_track(text: str) -> dict | None:
+    """01-KiiiKiii-404, 13-NewJeans-Super Shy 같이 NN-Artist-Title 형식을 처리한다."""
+    cleaned = _clean_text(text)
+    if not cleaned:
+        return None
+    match = NUMBERED_HYPHEN_TRACK_REGEX.match(cleaned)
+    if not match:
+        return None
+    artist = _clean_text(match.group(1))
+    title = _clean_text(match.group(2))
+    if not artist or not title:
+        return None
+    return {
+        "raw": text,
+        "left": artist,
+        "right": title,
+        "artist": artist,
+        "title": title,
+        "_numbered_track": True,
+    }
 
 
 def _extract_numbered_nested_pair(left: str, right: str) -> tuple[str, str, str] | None:
@@ -1300,6 +1324,7 @@ def _reuse_existing_direction_meta(songs: list[dict]) -> tuple[str, dict] | None
 def _append_song(results: list[dict], artist: str, title: str, meta: dict | None = None) -> None:
     artist = _clean_text(artist)
     title = _clean_text(title)
+    title = TITLE_TRACK_NUMBER_PREFIX_REGEX.sub("", title).strip()
     meta = meta or {}
 
     if not _is_meaningful_text(title):
@@ -1409,6 +1434,8 @@ def parse_unstructured_lines_to_json(text: str) -> dict:
 
         parts = _extract_pair_parts(raw_target)
         if not parts:
+            parts = _extract_numbered_hyphen_track(raw_target)
+        if not parts:
             # 타임스탬프가 있는데 구분자가 없으면 body 전체를 title-only로 보관
             if ts_match:
                 parts = {"raw": raw_target, "left": "", "right": "", "_title_only": True}
@@ -1419,7 +1446,10 @@ def parse_unstructured_lines_to_json(text: str) -> dict:
             parts["_timestamp"] = ts_match.group("ts")
         pair_candidates.append(parts)
 
-    pair_candidates_with_sep = [p for p in pair_candidates if not p.get("_title_only")]
+    pair_candidates_with_sep = [
+        p for p in pair_candidates
+        if not p.get("_title_only") and not p.get("_numbered_track")
+    ]
     global_direction, direction_meta = _resolve_global_direction(pair_candidates_with_sep)
     results = []
     for parts in pair_candidates:
@@ -1431,6 +1461,27 @@ def parse_unstructured_lines_to_json(text: str) -> dict:
                 if parts.get("_timestamp"):
                     meta["timestamp"] = parts["_timestamp"]
                 _append_song(results, artist="", title=title, meta=meta)
+            continue
+
+        # NN-Artist-Title 형식: 방향이 확정되어 있으므로 orientation 로직 건너뜀
+        # "404" 같은 숫자 제목도 유효하므로 _is_meaningful_text 필터를 우회해 직접 추가
+        if parts.get("_numbered_track"):
+            artist = parts.get("artist", "")
+            title = parts.get("title", "")
+            if artist and title:
+                entry: dict = {
+                    "artist": artist,
+                    "title": title,
+                    "artist_exists": True,
+                    "title_exists": True,
+                    "is_complete": True,
+                    "completeness_score": 1.0,
+                    "_numbered_track": True,
+                    "raw": parts.get("raw", ""),
+                }
+                if parts.get("_timestamp"):
+                    entry["timestamp"] = parts["_timestamp"]
+                results.append(entry)
             continue
 
         line_direction = "title_artist" if parts.get("nested_pair_extracted") else global_direction

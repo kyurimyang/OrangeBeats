@@ -43,6 +43,27 @@ class SongParserMetadataNoiseTests(unittest.TestCase):
         self.assertEqual(result["songs"][0]["artist"], "d4vd")
         self.assertEqual(result["songs"][0]["title"], "here with me")
 
+    @patch(
+        "app.parsers.song_parser._detect_llm_global_direction",
+        return_value={"global_direction": "artist_title", "confidence": "high", "reason": ""},
+    )
+    def test_social_handle_pairs_are_not_song_candidates(self, _direction_mock):
+        result = parse_unstructured_lines_to_json(
+            "\n".join(
+                [
+                    "ig : offwebkr",
+                    "spotify : offweb",
+                    "instagram : @offwebkr",
+                    "Mitski - my love mine all mine",
+                ]
+            )
+        )
+
+        self.assertEqual(
+            [(song["artist"], song["title"]) for song in result["songs"]],
+            [("Mitski", "my love mine all mine")],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

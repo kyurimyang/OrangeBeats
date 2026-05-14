@@ -1,4 +1,4 @@
-# 단계 종료 기준
+﻿# 단계 종료 기준
 MIN_SONG_COUNT = 3
 MIN_COMPLETE_SONG_COUNT = 2
 MIN_COMPLETENESS_RATIO = 0.6
@@ -50,6 +50,7 @@ NON_MUSIC_LINE_PATTERNS = [
     r"^\s*수익은 발생하지 않습니다.*",
     r"^\s*all rights reserved.*",
     r"^\s*provided to youtube by.*",
+    r"^\s*(?:ig|insta|instagram|spotify|yt|youtube|tiktok|soundcloud)\s*[:|]\s*@?[\w\.\-]{2,}\s*$",
     # Photo/image credit lines
     r"사진\s*출처",
     r"이미지\s*출처",
