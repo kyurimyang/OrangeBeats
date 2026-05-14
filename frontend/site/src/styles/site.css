@@ -777,6 +777,312 @@ a.figma-spotify-connect {
   outline: none;
 }
 
+.result-list-page {
+  min-height: 100vh;
+  background: #000000;
+  /* 브라우저 75% 줌에 가깝게 — 패널·행·휴지통·하단 CTA 동일 비율 */
+  --result-scale: 0.75;
+  /* 곡명/가수 — Figma(px). 숫자만 바꾸면 전체에 calc(값 × --result-scale) 반영 */
+  --result-track-title-px: 35;
+  --result-track-title-line-px: 52;
+  --result-track-artist-px: 25;
+  --result-track-artist-line-px: 39;
+}
+
+.result-list-page--loading {
+  display: flex;
+  flex-direction: column;
+}
+
+.result-loading-header {
+  width: 100%;
+  height: 68px;
+  background: rgba(0, 0, 0, 0.82);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.result-loading-header__inner {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  width: 100%;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding-left: 85px;
+}
+
+.result-loading-header__logo {
+  position: relative;
+  display: inline-flex;
+  width: 233px;
+  height: 42px;
+  overflow: hidden;
+}
+
+.result-loading-header__logo img {
+  position: absolute;
+  width: 124.61%;
+  height: 327.62%;
+  left: -13.94%;
+  top: -111.43%;
+  max-width: none;
+}
+
+.result-loading-header__nav {
+  display: flex;
+  align-items: flex-end;
+  gap: 52px;
+  padding: 20px 55px;
+}
+
+.result-loading-header__nav a {
+  color: #ffffff;
+  text-decoration: none;
+  font-family: "Pretendard", "Gowun Dodum", sans-serif;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 27.2px;
+}
+
+.result-loading-main {
+  flex: 1;
+  display: grid;
+  place-items: center;
+}
+
+.result-list-page__main {
+  position: relative;
+  width: 100%;
+  max-width: min(calc(1172px * var(--result-scale, 1)), calc(100vw - 32px));
+  margin: 0 auto;
+  padding: calc(40px * var(--result-scale, 1)) 16px calc(48px * var(--result-scale, 1));
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: calc(24px * var(--result-scale, 1));
+}
+
+.result-list-page__heading {
+  margin: 0;
+  font-family: "Pretendard", "Gowun Dodum", sans-serif;
+  font-size: calc(35px * var(--result-scale, 1));
+  font-weight: 400;
+  line-height: calc(50px * var(--result-scale, 1));
+  letter-spacing: -0.5px;
+  color: #ffffff;
+  text-align: center;
+}
+
+/* Rectangle 11 — Figma 비율 × --result-scale */
+.result-list-panel {
+  width: 100%;
+  max-width: min(calc(1152px * var(--result-scale, 1)), calc(100vw - 32px));
+  align-self: stretch;
+  flex-shrink: 0;
+  height: auto;
+  overflow: visible;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: calc(25px * var(--result-scale, 1));
+  background: linear-gradient(90deg, rgba(253, 109, 17, 0.2) 0%, rgba(255, 255, 255, 0.2) 100%);
+  backdrop-filter: blur(4px);
+  padding: calc(18px * var(--result-scale, 1)) calc(24px * var(--result-scale, 1)) calc(20px * var(--result-scale, 1));
+  display: flex;
+  flex-direction: column;
+  gap: calc(29px * var(--result-scale, 1));
+}
+
+/* 트랙 행 × --result-scale */
+.result-track-item {
+  min-height: calc(100px * var(--result-scale, 1));
+  display: grid;
+  grid-template-columns:
+    calc(20px * var(--result-scale, 1))
+    calc(85px * var(--result-scale, 1))
+    minmax(0, 1fr)
+    calc(56px * var(--result-scale, 1));
+  align-items: center;
+  gap: calc(20px * var(--result-scale, 1));
+}
+
+.result-track-item__index {
+  font-family: "Pretendard", "Gowun Dodum", sans-serif;
+  font-size: calc(30px * var(--result-scale, 1));
+  font-weight: 500;
+  line-height: 1;
+  color: #ffffff;
+}
+
+.result-track-item__cover {
+  width: calc(85px * var(--result-scale, 1));
+  height: calc(85px * var(--result-scale, 1));
+  border-radius: calc(6px * var(--result-scale, 1));
+  object-fit: cover;
+  background: #d9d9d9;
+}
+
+.result-track-item__cover--placeholder {
+  border: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+.result-track-item__meta {
+  min-width: 0;
+}
+
+.result-track-item__title {
+  margin: 0;
+  font-family: "Pretendard", "Gowun Dodum", sans-serif;
+  font-size: calc(var(--result-track-title-px) * 1px * var(--result-scale, 1));
+  font-style: normal;
+  font-weight: 500;
+  line-height: calc(var(--result-track-title-line-px) * 1px * var(--result-scale, 1));
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.result-track-item__artist {
+  margin: calc(4px * var(--result-scale, 1)) 0 0;
+  font-family: "Pretendard", "Gowun Dodum", sans-serif;
+  font-size: calc(var(--result-track-artist-px) * 1px * var(--result-scale, 1));
+  font-style: normal;
+  font-weight: 500;
+  line-height: calc(var(--result-track-artist-line-px) * 1px * var(--result-scale, 1));
+  color: #d9d9d9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.result-track-item__remove {
+  justify-self: end;
+}
+
+/* trashcan — Figma 48.926×76.877px × --result-scale(0.75) */
+.result-track-item .figma-trash {
+  width: calc(48.926px * var(--result-scale, 1));
+  height: calc(76.877px * var(--result-scale, 1));
+  min-width: calc(48.926px * var(--result-scale, 1));
+  min-height: calc(76.877px * var(--result-scale, 1));
+}
+
+.result-track-item .figma-trash__icon {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center center;
+}
+
+/* Group 18 / 하단 CTA — 동일 --result-scale */
+.result-list-page__actions {
+  width: 100%;
+  max-width: min(calc(1152px * var(--result-scale, 1)), calc(100vw - 32px));
+  align-self: stretch;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(calc(16px * var(--result-scale, 1)), 10vw, calc(191px * var(--result-scale, 1)));
+  padding-top: 4px;
+}
+
+.result-list-page__actions .figma-playlist-create {
+  display: inline-flex;
+  box-sizing: border-box;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  min-height: 0;
+  padding: calc(22px * var(--result-scale, 1)) calc(49px * var(--result-scale, 1));
+  justify-content: center;
+  align-items: center;
+  gap: calc(10px * var(--result-scale, 1));
+  border-radius: calc(20px * var(--result-scale, 1));
+  border: 0;
+  /* Figma Group 18: 두 CTA 동일 배경 (주황 그라데이션 미적용) */
+  background: rgba(217, 217, 217, 0.6);
+  background-image: none;
+  box-shadow: none;
+}
+
+.result-list-page__actions .figma-playlist-create--default,
+.result-list-page__actions .figma-playlist-create--hover,
+.result-list-page__actions .figma-playlist-create--pressed {
+  background: rgba(217, 217, 217, 0.6);
+  background-image: none;
+  box-shadow: none;
+}
+
+.result-list-page__actions .figma-playlist-create__label,
+.result-list-page__actions .figma-rematch__label {
+  color: #fff;
+  text-align: center;
+  font-family: "Pretendard", "Gowun Dodum", sans-serif;
+  font-size: calc(32px * var(--result-scale, 1));
+  font-style: normal;
+  font-weight: 400;
+  line-height: normal;
+  white-space: nowrap;
+}
+
+.result-list-page__actions .figma-rematch {
+  display: inline-flex;
+  box-sizing: border-box;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  min-height: 0;
+  padding: calc(22px * var(--result-scale, 1)) calc(49px * var(--result-scale, 1));
+  justify-content: center;
+  align-items: center;
+  gap: calc(10px * var(--result-scale, 1));
+  border-radius: calc(20px * var(--result-scale, 1));
+  border: 0;
+  background: rgba(217, 217, 217, 0.6);
+}
+
+.result-list-page__actions .figma-rematch--pressed {
+  width: auto;
+  max-width: 100%;
+  background: rgba(217, 217, 217, 0.6);
+  background-image: none;
+  box-shadow: none;
+}
+
+.result-list-page__error {
+  margin: 0;
+  color: #fd9f7b;
+  font-size: 18px;
+}
+
+.result-list-loading__title {
+  margin: 0;
+  font-family: "Pretendard", "Gowun Dodum", sans-serif;
+  font-size: 30px;
+  font-weight: 500;
+  line-height: 20px;
+  letter-spacing: -0.5px;
+  color: #ffffff;
+}
+
+.result-list-loading__dots::after {
+  content: "...";
+  display: inline-block;
+  width: 1.2em;
+  overflow: hidden;
+  vertical-align: bottom;
+  animation: loading-dots 1.2s steps(4, end) infinite;
+}
+
+@keyframes loading-dots {
+  from {
+    width: 0;
+  }
+  to {
+    width: 1.2em;
+  }
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -790,6 +1096,82 @@ a.figma-spotify-connect {
 }
 
 @media (max-width: 840px) {
+  .result-loading-header__inner {
+    padding-left: 16px;
+    padding-right: 16px;
+    justify-content: space-between;
+  }
+
+  .result-loading-header__logo {
+    width: 180px;
+    height: 34px;
+  }
+
+  .result-loading-header__nav {
+    gap: 20px;
+    padding: 0;
+  }
+
+  .result-list-page__main {
+    padding: 40px 14px 36px;
+    gap: 16px;
+  }
+
+  .result-list-page__heading {
+    font-size: clamp(20px, 4.8vw, 35px);
+    line-height: 1.25;
+  }
+
+  .result-list-panel {
+    padding: 12px 12px 14px;
+    gap: 16px;
+    border-radius: 18px;
+  }
+
+  .result-track-item {
+    min-height: 72px;
+    grid-template-columns: 16px 56px minmax(0, 1fr) 44px;
+    gap: 12px;
+  }
+
+  .result-track-item__index {
+    font-size: 20px;
+  }
+
+  .result-track-item__cover {
+    width: 56px;
+    height: 56px;
+  }
+
+  .result-track-item__title {
+    font-size: clamp(15px, 3.2vw, calc(var(--result-track-title-px) * 1px * var(--result-scale, 1)));
+    line-height: clamp(20px, 4vw, calc(var(--result-track-title-line-px) * 1px * var(--result-scale, 1)));
+  }
+
+  .result-track-item__artist {
+    margin-top: 4px;
+    font-size: clamp(12px, 2.6vw, calc(var(--result-track-artist-px) * 1px * var(--result-scale, 1)));
+    line-height: clamp(16px, 3.4vw, calc(var(--result-track-artist-line-px) * 1px * var(--result-scale, 1)));
+  }
+
+  .result-list-page__actions {
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .result-list-page__actions .figma-playlist-create,
+  .result-list-page__actions .figma-rematch {
+    width: 100%;
+    max-width: 100%;
+    padding: clamp(12px, 3.5vw, 22px) clamp(16px, 5vw, 49px);
+    gap: 8px;
+  }
+
+  .result-list-page__actions .figma-playlist-create__label,
+  .result-list-page__actions .figma-rematch__label {
+    font-size: clamp(17px, 5vw, calc(32px * var(--result-scale, 1)));
+  }
+
   .playlist-url-page__main {
     justify-content: flex-start;
     padding-top: 40px;

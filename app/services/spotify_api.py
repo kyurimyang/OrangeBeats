@@ -93,6 +93,32 @@ def get_track(
     return resp.json()
 
 
+def get_tracks_by_ids(
+    access_token: str,
+    track_ids: List[str],
+    market: Optional[str] = None,
+) -> List[Optional[Dict[str, Any]]]:
+    """Spotify Web API: 최대 50개 ID당 1회 요청. 반환 순서는 ``track_ids``와 동일."""
+    clean = [str(t).strip() for t in track_ids if str(t).strip()]
+    if not clean:
+        return []
+    market = market or 'KR'
+    out: List[Optional[Dict[str, Any]]] = []
+    for i in range(0, len(clean), 50):
+        chunk = clean[i : i + 50]
+        params = {'ids': ','.join(chunk), 'market': market}
+        url = f'{SPOTIFY_API_BASE}/tracks'
+        resp = spotify_request('GET', url, access_token=access_token, params=params)
+        if resp.status_code != 200:
+            _handle_response_error(resp, '여러 트랙 조회 실패')
+        data = resp.json()
+        items = data.get('tracks') or []
+        for j, _tid in enumerate(chunk):
+            t = items[j] if j < len(items) else None
+            out.append(t if isinstance(t, dict) else None)
+    return out
+
+
 def add_tracks_to_playlist(
     access_token: str,
     playlist_id: str,

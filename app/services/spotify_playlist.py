@@ -1,6 +1,6 @@
 ﻿from typing import Any, Dict, List
 
-from app.services.spotify_api import add_tracks_to_playlist, create_playlist
+from app.services.spotify_api import add_tracks_to_playlist, create_playlist, get_tracks_by_ids
 from app.services.spotify_common import _is_suspicious_song, build_match_cache_key
 from app.services.spotify_exceptions import SpotifyServiceError
 from app.services.spotify_matching import explain_match_reason, get_match_debug, pick_best_track_match
@@ -31,6 +31,89 @@ def _confidence_label(match_status: str, score: float, has_uri: bool) -> str:
     if match_status == "probable_match" or score >= 0.70:
         return "mid"
     return "low"
+
+
+def _track_id_from_result_row(row: Dict[str, Any]) -> str | None:
+    tid = row.get("spotify_track_id")
+    if tid:
+        s = str(tid).strip()
+        if s:
+            return s
+    uri = str(row.get("spotify_uri") or "").strip()
+    if uri.startswith("spotify:track:"):
+        tail = uri.split(":")[-1].strip()
+        return tail or None
+    return None
+
+
+def _join_artists_field(raw: Any) -> str:
+    """매칭 객체의 artists가 str 목록이든 Spotify 원본(dict) 목록이든 공통으로 문자열로 합친다."""
+    if raw is None:
+        return ""
+    if isinstance(raw, str):
+        return raw.strip()
+    if not isinstance(raw, list):
+        return ""
+    parts: List[str] = []
+    for item in raw:
+        if isinstance(item, str):
+            s = item.strip()
+        elif isinstance(item, dict):
+            s = str(item.get("name") or "").strip()
+        else:
+            continue
+        if s:
+            parts.append(s)
+    return ", ".join(parts)
+
+
+def _album_cover_url_from_track(track: Dict[str, Any]) -> str | None:
+    images = (track.get("album") or {}).get("images") or []
+    for img in images:
+        if not isinstance(img, dict):
+            continue
+        u = img.get("url")
+        if isinstance(u, str) and u.strip().startswith(("http://", "https://")):
+            return u.strip()
+    return None
+
+
+def enrich_results_album_images(access_token: str, results: List[Dict[str, Any]], market: str = "KR") -> None:
+    """트랙 ID가 있으면 /tracks 배치 조회로 커버·공식 곡명·아티스트를 채운다(기존 커버가 있어도 메타는 동기화)."""
+    id_to_indices: Dict[str, List[int]] = {}
+    for idx, row in enumerate(results):
+        tid = _track_id_from_result_row(row)
+        if not tid:
+            continue
+        id_to_indices.setdefault(tid, []).append(idx)
+
+    if not id_to_indices:
+        return
+
+    unique_ids = list(id_to_indices.keys())
+    try:
+        fetched = get_tracks_by_ids(access_token, unique_ids, market=market)
+    except SpotifyServiceError as exc:
+        print("[enrich_results_album_images] get_tracks_by_ids failed:", str(exc))
+        return
+    for tid, track in zip(unique_ids, fetched):
+        if not track:
+            continue
+        url = _album_cover_url_from_track(track)
+        display_name = (track.get("name") or "").strip()
+        artists_raw = track.get("artists") or []
+        display_artist = ", ".join(
+            (a.get("name") or "").strip() for a in artists_raw if isinstance(a, dict) and (a.get("name") or "").strip()
+        )
+        for i in id_to_indices.get(tid, []):
+            row = results[i]
+            img = row.get("album_image")
+            if url and not (isinstance(img, str) and img.strip().startswith(("http://", "https://"))):
+                row["album_image"] = url
+            if display_name:
+                row["spotify_title"] = display_name
+            if display_artist:
+                row["spotify_artist"] = display_artist
 
 
 def _selection_recommended(confidence_label: str, *, source_mode: str = "") -> bool:
@@ -182,6 +265,19 @@ def _result_from_match(
         reason_array = [str(reason)]
     status = str(match.get("status") or ("low_confidence" if confidence_label == "low" else match_status))
 
+    album_image = match.get("album_image")
+    if isinstance(album_image, str) and album_image.strip().startswith(("http://", "https://")):
+        album_image = album_image.strip()
+    else:
+        album_image = None
+        for cand in match.get("top_candidates") or []:
+            if not isinstance(cand, dict):
+                continue
+            img = cand.get("album_image")
+            if isinstance(img, str) and img.strip().startswith(("http://", "https://")):
+                album_image = img.strip()
+                break
+
     return {
         "input_artist": input_artist,
         "input_title": input_title,
@@ -189,8 +285,8 @@ def _result_from_match(
         "spotify_track_id": match.get("id"),
         "spotify_uri": spotify_uri,
         "spotify_title": match.get("name"),
-        "spotify_artist": ", ".join(match.get("artists", [])),
-        "album_image": match.get("album_image"),
+        "spotify_artist": _join_artists_field(match.get("artists")),
+        "album_image": album_image,
         "confidence": round(score, 4),
         "score": round(score, 4),
         "final_score": round(float(match.get("final_score", score) or 0.0), 4),
@@ -277,6 +373,7 @@ def analyze_spotify_candidates(
 
         results.append(_result_from_match(song, match, source_mode=source_mode or str(song.get("source_mode") or "")))
 
+    enrich_results_album_images(access_token, results, market=market)
     return results
 
 

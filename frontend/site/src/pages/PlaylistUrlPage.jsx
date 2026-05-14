@@ -78,7 +78,7 @@ export default function PlaylistUrlPage() {
     } catch {
       // sessionStorage unavailable — still navigate; user can paste in Lab
     }
-    window.location.assign(`${window.location.origin}/lab/index.html`);
+    window.location.assign(`${window.location.origin}/result`);
   };
 
   return (
