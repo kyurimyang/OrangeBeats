@@ -12,6 +12,10 @@ _RATE_LIMIT_FILE = Path(__file__).resolve().parents[2] / ".spotify_rate_limit.js
 _rate_limited_until = 0.0
 _rate_limit_message: Optional[str] = None
 
+# Minimum interval between Spotify API calls (seconds). Prevents burst spikes.
+_MIN_REQUEST_INTERVAL = 0.05
+_last_request_time = 0.0
+
 
 def _load_rate_limit_state() -> None:
     global _rate_limited_until
@@ -95,6 +99,15 @@ def _auth_headers(access_token: str, content_type: str = "application/json") -> 
     return headers
 
 
+def _throttle() -> None:
+    global _last_request_time
+    now = time.time()
+    wait = _MIN_REQUEST_INTERVAL - (now - _last_request_time)
+    if wait > 0:
+        time.sleep(wait)
+    _last_request_time = time.time()
+
+
 def spotify_request(
     method: str,
     url: str,
@@ -110,6 +123,7 @@ def spotify_request(
         raise SpotifyServiceError("Spotify access token이 없습니다.")
 
     _raise_if_rate_limited()
+    _throttle()
 
     headers = _auth_headers(access_token, content_type=content_type)
     try:

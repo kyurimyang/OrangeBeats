@@ -7,6 +7,7 @@ from typing import Annotated, Any, Dict, List
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.dependencies.spotify_session import get_spotify_session_service
+from app.services.analysis_flow import classify_text_analysis
 from app.services.pipeline_service import run_youtube_pipeline
 from app.services.spotify_cover import SpotifyCoverUploadError, upload_playlist_cover_image
 from app.services.spotify_playlist import analyze_spotify_candidates, create_playlist_from_track_uris
@@ -114,6 +115,17 @@ def _dedupe_pipeline_songs(raw_songs: List[Dict]) -> List[Dict[str, str]]:
                 "reason": item.get("reason", ""),
                 "swap_guard_applied": item.get("swap_guard_applied", False),
                 "swap_guard_reason": item.get("swap_guard_reason", ""),
+                "artist_inferred": item.get("artist_inferred", False),
+                "inferred_artist_source": item.get("inferred_artist_source", ""),
+                "artist_exists": item.get("artist_exists", bool(artist)),
+                "title_exists": item.get("title_exists", bool(title)),
+                "is_complete": item.get("is_complete", bool(artist and title)),
+                "completeness_score": item.get("completeness_score", 1.0 if artist and title else 0.5),
+                "confidence": item.get("confidence", item.get("score", 0.0)),
+                "sources": item.get("sources", []),
+                "title_metadata_hints": item.get("title_metadata_hints", []),
+                "title_feature_artists": item.get("title_feature_artists", []),
+                "title_producer_artists": item.get("title_producer_artists", []),
             }
         )
     return songs
@@ -270,6 +282,9 @@ def _compact_youtube_result(youtube_result: Dict, songs: List[Dict[str, str]]) -
         "songs": songs,
         "failure_reason": youtube_result.get("failure_reason", ""),
         "is_ai_playlist": youtube_result.get("is_ai_playlist", False),
+        "is_single_artist": youtube_result.get("is_single_artist", False),
+        "inferred_artist": youtube_result.get("inferred_artist", ""),
+        "single_artist_detection": youtube_result.get("single_artist_detection", {}),
         "fallback_recommendation": youtube_result.get("fallback_recommendation", {}),
         "signals": youtube_result.get("signals", {}),
         "metrics": youtube_result.get("metrics", {}),
@@ -347,10 +362,32 @@ def _build_analysis_response(
 
     compact_youtube_result = _compact_youtube_result(youtube_result, songs)
 
+    if spotify_error:
+        text_class = classify_text_analysis(youtube_result, songs)
+        analysis_state = text_class["analysis_state"]
+        needs_fallback = text_class["needs_fallback"]
+        next_action = text_class["next_action"]
+    elif results:
+        analysis_state = "candidates_ready"
+        needs_fallback = False
+        next_action = "select_tracks"
+    elif songs:
+        text_class = classify_text_analysis(youtube_result, songs)
+        analysis_state = text_class["analysis_state"]
+        needs_fallback = text_class["needs_fallback"]
+        next_action = text_class["next_action"]
+    else:
+        analysis_state = "text_failed"
+        needs_fallback = True
+        next_action = "choose_fallback"
+
     return {
         "success": not spotify_error,
         "partial_success": bool(youtube_result.get("partial_success")),
         "warning": str(youtube_result.get("warning") or ""),
+        "analysis_state": analysis_state,
+        "needs_fallback": needs_fallback,
+        "next_action": next_action,
         "message": message,
         "playlist_name": _playlist_name(title_mode, user_playlist_name, youtube_title),
         "youtube_url": youtube_url,
@@ -361,6 +398,9 @@ def _build_analysis_response(
         "selected_stage": youtube_result.get("selected_stage"),
         "ocr_used": youtube_result.get("ocr_used", False),
         "acr_used": youtube_result.get("acr_used", False),
+        "is_single_artist": youtube_result.get("is_single_artist", False),
+        "inferred_artist": youtube_result.get("inferred_artist", ""),
+        "single_artist_detection": youtube_result.get("single_artist_detection", {}),
         "extracted_count": len(songs),
         "spotify_candidate_count": candidate_count,
         "candidate_count": candidate_count,
@@ -412,10 +452,21 @@ def _build_ocr_preview_response(
 
     partial_success = bool(youtube_result.get("partial_success"))
     warning = str(youtube_result.get("warning") or "")
+    if songs:
+        ocr_state = "fallback_success"
+        ocr_needs_fallback = False
+        ocr_next_action = "match_candidates"
+    else:
+        ocr_state = "fallback_failed"
+        ocr_needs_fallback = True
+        ocr_next_action = "choose_fallback"
     return {
         "success": True,
         "partial_success": partial_success,
         "warning": warning,
+        "analysis_state": ocr_state,
+        "needs_fallback": ocr_needs_fallback,
+        "next_action": ocr_next_action,
         "message": message,
         "playlist_name": _playlist_name(title_mode, user_playlist_name, youtube_title),
         "youtube_url": youtube_url,
@@ -425,6 +476,9 @@ def _build_ocr_preview_response(
         "selected_stage": youtube_result.get("selected_stage"),
         "ocr_used": True,
         "acr_used": False,
+        "is_single_artist": youtube_result.get("is_single_artist", False),
+        "inferred_artist": youtube_result.get("inferred_artist", ""),
+        "single_artist_detection": youtube_result.get("single_artist_detection", {}),
         "extracted_count": len(songs),
         "spotify_candidate_count": 0,
         "candidate_count": 0,
@@ -446,6 +500,9 @@ def _build_ocr_preview_response(
             "youtube_title": youtube_title,
             "ocr_used": True,
             "acr_used": False,
+            "is_single_artist": youtube_result.get("is_single_artist", False),
+            "inferred_artist": youtube_result.get("inferred_artist", ""),
+            "single_artist_detection": youtube_result.get("single_artist_detection", {}),
             "vision_text": vision_text,
             "ocr_text": vision_debug.get("raw_ocr_text", vision_text),
             "ocr_blocks": vision_debug.get("ocr_blocks", []),
@@ -715,7 +772,11 @@ def create_playlist_from_selected_tracks(
     request: Request,
     session_service: SpotifySessionDep,
 ):
-    playlist_name = (payload.get("playlist_name") or "YouTube 변환 플레이리스트").strip()
+    youtube_url = (payload.get("youtube_url") or "").strip()
+    youtube_title = (payload.get("youtube_title") or "").strip()
+    title_mode = (payload.get("title_mode") or "youtube").strip().lower()
+    user_playlist_name = (payload.get("playlist_name") or "").strip()
+    playlist_name = _playlist_name(title_mode, user_playlist_name, youtube_title)
     description = (payload.get("description") or "").strip()
     thumbnail_url = (payload.get("thumbnail_url") or "").strip()
     track_uris = payload.get("track_uris") or []
@@ -746,21 +807,36 @@ def create_playlist_from_selected_tracks(
         )
         result["cover_upload_status"] = "not_attempted"
         result["cover_upload_error"] = None
-        if thumbnail_url and result.get("playlist_id"):
+        if result.get("playlist_id"):
             try:
-                image_base64 = get_thumbnail_base64_from_image_url(thumbnail_url)
-                upload_playlist_cover_image(
-                    access_token=access_token,
-                    playlist_id=result["playlist_id"],
-                    image_base64=image_base64,
-                )
-                result["cover_upload_status"] = "success"
+                if thumbnail_url:
+                    image_base64 = get_thumbnail_base64_from_image_url(thumbnail_url)
+                elif youtube_url:
+                    image_base64 = get_thumbnail_base64_from_youtube_url(youtube_url)
+                else:
+                    image_base64 = None
+                if image_base64:
+                    upload_playlist_cover_image(
+                        access_token=access_token,
+                        playlist_id=result["playlist_id"],
+                        image_base64=image_base64,
+                    )
+                    result["cover_upload_status"] = "success"
             except (YouTubeThumbnailError, SpotifyCoverUploadError, Exception) as exc:
                 result["cover_upload_status"] = "failed"
                 result["cover_upload_error"] = str(exc)
         return result
     except SpotifyServiceError as exc:
         raise HTTPException(status_code=_spotify_http_status(exc), detail=str(exc)) from exc
+
+
+@router.post("/create")
+def create_playlist_from_selected_tracks_alias(
+    payload: Dict,
+    request: Request,
+    session_service: SpotifySessionDep,
+):
+    return create_playlist_from_selected_tracks(payload, request, session_service)
 
 
 @router.post("/match-songs")

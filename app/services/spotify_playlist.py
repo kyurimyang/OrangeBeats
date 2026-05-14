@@ -3,7 +3,12 @@
 from app.services.spotify_api import add_tracks_to_playlist, create_playlist, get_tracks_by_ids
 from app.services.spotify_common import _is_suspicious_song, build_match_cache_key
 from app.services.spotify_exceptions import SpotifyServiceError
-from app.services.spotify_matching import explain_match_reason, get_match_debug, pick_best_track_match
+from app.services.spotify_matching import (
+    explain_match_reason,
+    get_match_debug,
+    pick_best_track_match,
+    resolve_spotify_artist_id,
+)
 
 LOW_CONF_MIN_SCORE = 0.60
 ALLOWED_LOW_CONF_REASONS = {
@@ -17,6 +22,98 @@ ALLOWED_LOW_CONF_REASONS = {
     "version_candidate",
     "partial_match_needs_review",
 }
+
+
+def _single_artist_name_from_songs(songs: List[Dict[str, Any]]) -> str:
+    music_section_artists = {
+        str(song.get("artist") or "").strip().casefold()
+        for song in songs
+        if (
+            isinstance(song, dict)
+            and song.get("music_section_confirmed")
+            and str(song.get("artist") or "").strip()
+        )
+    }
+    if len(music_section_artists) >= 2:
+        return ""
+
+    names = {
+        str(song.get("artist") or "").strip()
+        for song in songs
+        if (
+            isinstance(song, dict)
+            and song.get("artist_inferred")
+            and not song.get("music_section_confirmed")
+            and str(song.get("artist") or "").strip()
+        )
+    }
+    if len(names) == 1:
+        return next(iter(names))
+
+    artist_names = [
+        str(song.get("artist") or "").strip()
+        for song in songs
+        if isinstance(song, dict) and str(song.get("artist") or "").strip()
+    ]
+    if len(artist_names) < 2:
+        return ""
+
+    counts: Dict[str, int] = {}
+    display_names: Dict[str, str] = {}
+    for name in artist_names:
+        key = name.lower()
+        counts[key] = counts.get(key, 0) + 1
+        display_names.setdefault(key, name)
+
+    key, count = max(counts.items(), key=lambda item: item[1])
+    if count / max(len(artist_names), 1) < 0.7:
+        return ""
+    return display_names[key]
+
+
+def _resolve_single_artist_context(
+    access_token: str,
+    songs: List[Dict[str, Any]],
+    market: str = "KR",
+) -> Dict[str, Any]:
+    artist_name = _single_artist_name_from_songs(songs)
+    if not artist_name:
+        return {}
+    resolved = resolve_spotify_artist_id(access_token, artist_name, market=market)
+    if not resolved.get("id"):
+        return {}
+    return {
+        "spotify_artist_id": resolved.get("id", ""),
+        "spotify_artist_name": resolved.get("name", artist_name),
+        "spotify_artist_resolve_score": resolved.get("score", 0.0),
+    }
+
+
+def _single_artist_filter_decision(song: Dict[str, Any], single_artist_context: Dict[str, Any]) -> Dict[str, Any]:
+    if not single_artist_context:
+        return {
+            "applied": False,
+            "reason": "no_single_artist_context",
+            "context": {},
+        }
+    if song.get("music_section_confirmed"):
+        return {
+            "applied": False,
+            "reason": "music_section_confirmed",
+            "context": {},
+        }
+    if not song.get("artist_inferred"):
+        return {
+            "applied": False,
+            "reason": "artist_not_inferred",
+            "context": {},
+        }
+
+    return {
+        "applied": True,
+        "reason": "artist_inferred_without_music_section",
+        "context": single_artist_context,
+    }
 
 
 def _confidence_label(match_status: str, score: float, has_uri: bool) -> str:
@@ -315,6 +412,7 @@ def analyze_spotify_candidates(
 ) -> List[Dict[str, Any]]:
     results: List[Dict[str, Any]] = []
     request_match_cache: Dict[tuple[str, str], Any] = {}
+    single_artist_context = _resolve_single_artist_context(access_token, songs, market=market)
 
     for song in songs:
         title = (song.get("title") or "").strip()
@@ -344,6 +442,8 @@ def analyze_spotify_candidates(
             )
             continue
 
+        filter_decision = _single_artist_filter_decision(song, single_artist_context)
+        song_single_artist_context = filter_decision["context"]
         song_meta = {
             "raw": song.get("raw", ""),
             "left": song.get("left", ""),
@@ -357,21 +457,48 @@ def analyze_spotify_candidates(
             "swap_guard_reason": song.get("swap_guard_reason", ""),
             "source_mode": source_mode or song.get("source_mode", ""),
             "acr_spotify_track_id": song.get("acr_spotify_track_id", ""),
+            "title_metadata_hints": song.get("title_metadata_hints", []),
+            "title_feature_artists": song.get("title_feature_artists", []),
+            "title_producer_artists": song.get("title_producer_artists", []),
+            **song_single_artist_context,
         }
-        cache_key = build_match_cache_key(title, artist)
+        # artist_inferred + music_section 미확인 → single artist filter로만 제한하고 title-only 검색
+        artist_unreliable = bool(filter_decision["applied"])
+        search_artist = None if artist_unreliable else (artist or None)
+
+        cache_key = build_match_cache_key(
+            title,
+            f"{search_artist or ''}|artist_id:{song_single_artist_context.get('spotify_artist_id', '')}",
+        )
         if cache_key in request_match_cache:
             match = request_match_cache[cache_key]
         else:
             match = pick_best_track_match(
                 access_token=access_token,
                 title=title,
-                artist=artist or None,
+                artist=search_artist,
                 market=market,
                 song_meta=song_meta,
             )
             request_match_cache[cache_key] = match
 
-        results.append(_result_from_match(song, match, source_mode=source_mode or str(song.get("source_mode") or "")))
+        result = _result_from_match(song, match, source_mode=source_mode or str(song.get("source_mode") or ""))
+        search_debug = get_match_debug(title, search_artist or "")
+        result["single_artist_filter_applied"] = bool(filter_decision["applied"])
+        result["single_artist_filter_reason"] = str(filter_decision["reason"])
+        result["single_artist_mode"] = bool(filter_decision["applied"])
+        if filter_decision["applied"]:
+            result["spotify_artist_id_filter"] = song_single_artist_context.get("spotify_artist_id", "")
+            result["spotify_artist_name_filter"] = song_single_artist_context.get("spotify_artist_name", "")
+        debug = {
+            **search_debug,
+            **dict(result.get("match_debug") or {}),
+        }
+        debug["single_artist_filter_applied"] = bool(filter_decision["applied"])
+        debug["single_artist_filter_reason"] = str(filter_decision["reason"])
+        debug["spotify_artist_id_filter"] = song_single_artist_context.get("spotify_artist_id", "")
+        result["match_debug"] = debug
+        results.append(result)
 
     enrich_results_album_images(access_token, results, market=market)
     return results
@@ -477,10 +604,15 @@ def create_playlist_from_songs(
     unmatched: List[Dict[str, Any]] = []
     seen_uris = set()
     request_match_cache: Dict[tuple[str, str], Any] = {}
+    single_artist_context = _resolve_single_artist_context(access_token, songs, market='KR')
 
     for song in songs:
         title = (song.get('title') or '').strip()
-        artist = (song.get('artist') or '').strip() or None
+        input_artist = (song.get('artist') or '').strip()
+        filter_decision = _single_artist_filter_decision(song, single_artist_context)
+        song_single_artist_context = filter_decision["context"]
+        artist_unreliable = bool(filter_decision["applied"])
+        search_artist = None if artist_unreliable else (input_artist or None)
         song_meta = {
             'raw': song.get('raw', ''),
             'left': song.get('left', ''),
@@ -493,6 +625,10 @@ def create_playlist_from_songs(
             'swap_guard_applied': song.get('swap_guard_applied', False),
             'swap_guard_reason': song.get('swap_guard_reason', ''),
             'acr_spotify_track_id': song.get('acr_spotify_track_id', ''),
+            'title_metadata_hints': song.get('title_metadata_hints', []),
+            'title_feature_artists': song.get('title_feature_artists', []),
+            'title_producer_artists': song.get('title_producer_artists', []),
+            **song_single_artist_context,
         }
 
         if not title:
@@ -503,21 +639,24 @@ def create_playlist_from_songs(
             unmatched.append({'song': song, 'reason': 'artist/title 동일 또는 정보 부족'})
             continue
 
-        cache_key = build_match_cache_key(title, artist or '')
+        cache_key = build_match_cache_key(
+            title,
+            f"{search_artist or ''}|artist_id:{song_single_artist_context.get('spotify_artist_id', '')}",
+        )
         if cache_key in request_match_cache:
             match = request_match_cache[cache_key]
         else:
             match = pick_best_track_match(
                 access_token=access_token,
                 title=title,
-                artist=artist,
+                artist=search_artist,
                 market='KR',
                 song_meta=song_meta,
             )
             request_match_cache[cache_key] = match
 
         if not match:
-            debug = get_match_debug(title, artist or '')
+            debug = get_match_debug(title, search_artist or '')
             unmatched_reason = debug.get('unmatched_reason') or 'no_search_result'
             unmatched.append({
                 'song': song,
@@ -527,8 +666,11 @@ def create_playlist_from_songs(
                 'score_detail': {},
                 'user_message': explain_match_reason(str(unmatched_reason).split('(', 1)[0]),
                 'search_title': debug.get('search_title', title),
-                'search_artist': debug.get('search_artist', artist or ''),
+                'search_artist': debug.get('search_artist', search_artist or ''),
                 'chosen_case': debug.get('selected_case', song_meta['chosen_case']),
+                'single_artist_filter_applied': bool(filter_decision['applied']),
+                'single_artist_filter_reason': str(filter_decision['reason']),
+                'spotify_artist_id_filter': song_single_artist_context.get('spotify_artist_id', ''),
                 'top_candidates': debug.get('top_candidates', []),
                 'case_results': debug.get('case_results', []),
             })
@@ -539,7 +681,7 @@ def create_playlist_from_songs(
             low_conf_reason = match.get('low_confidence_reason', '') or match.get('reason', '')
             low_confidence_item = {
                 'input': {
-                    'artist': artist or '',
+                    'artist': input_artist,
                     'title': title,
                 },
                 'matched_name': match.get('name', ''),
@@ -559,6 +701,9 @@ def create_playlist_from_songs(
                 'global_direction': song_meta['global_direction'],
                 'parse_reason': song_meta['reason'],
                 'parse_score': song_meta['score'],
+                'single_artist_filter_applied': bool(filter_decision['applied']),
+                'single_artist_filter_reason': str(filter_decision['reason']),
+                'spotify_artist_id_filter': song_single_artist_context.get('spotify_artist_id', ''),
                 'top_candidates': [
                     _candidate_summary(candidate, match.get('chosen_case', song_meta['chosen_case']))
                     for candidate in match.get('top_candidates', [])
@@ -571,7 +716,7 @@ def create_playlist_from_songs(
             if skip_reason:
                 skipped_low_confidence.append({
                     'input': {
-                        'artist': artist or '',
+                        'artist': input_artist,
                         'title': title,
                     },
                     'matched_name': match.get('name', ''),
@@ -586,7 +731,7 @@ def create_playlist_from_songs(
                     playlist_uris.append(uri)
                 added_low_confidence.append({
                     'input': {
-                        'artist': artist or '',
+                        'artist': input_artist,
                         'title': title,
                     },
                     'matched_name': match.get('name', ''),
@@ -609,7 +754,7 @@ def create_playlist_from_songs(
 
         matched_debug.append({
             'input': {
-                'artist': artist or '',
+                'artist': input_artist,
                 'title': title,
             },
             'matched_name': match.get('name', ''),
@@ -635,6 +780,9 @@ def create_playlist_from_songs(
             'parse_score': song_meta['score'],
             'swap_guard_applied': song_meta['swap_guard_applied'],
             'swap_guard_reason': song_meta['swap_guard_reason'],
+            'single_artist_filter_applied': bool(filter_decision['applied']),
+            'single_artist_filter_reason': str(filter_decision['reason']),
+            'spotify_artist_id_filter': song_single_artist_context.get('spotify_artist_id', ''),
             'top_candidates': [
                 _candidate_summary(candidate, match.get('chosen_case', song_meta['chosen_case']))
                 for candidate in match.get('top_candidates', [])
@@ -660,6 +808,8 @@ def create_playlist_from_songs(
             'added_count': 0,
             'playlist_added_tracks': 0,
             'playlist_uri_count': 0,
+            'single_artist_mode': bool(single_artist_context),
+            'spotify_artist_context': single_artist_context,
             'matched': matched_debug,
             'low_confidence': low_confidence,
             'unmatched': unmatched,
@@ -694,6 +844,8 @@ def create_playlist_from_songs(
         'added_count': len(playlist_uris),
         'playlist_added_tracks': len(playlist_uris),
         'playlist_uri_count': len(playlist_uris),
+        'single_artist_mode': bool(single_artist_context),
+        'spotify_artist_context': single_artist_context,
         'matched': matched_debug,
         'low_confidence': low_confidence,
         'unmatched': unmatched,

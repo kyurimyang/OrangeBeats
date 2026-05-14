@@ -5,7 +5,7 @@ from typing import List
 
 from app.utils.ffmpeg import resolve_ffmpeg_binary
 
-ACR_MAX_SEGMENTS = 20
+ACR_MAX_SEGMENTS = 30
 ACR_SEGMENT_SECONDS = 10
 MIN_SAMPLE_INTERVAL_SECONDS = 30
 MAX_SAMPLE_INTERVAL_SECONDS = 180  # 3분 상한 — 60분 영상도 20개 세그먼트로 전체 커버

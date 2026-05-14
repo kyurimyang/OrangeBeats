@@ -1,5 +1,5 @@
-#python -m uvicorn app.main:app --reload
-#.\.venv\Scripts\python.exe -m uvicorn app.main:app --port 8000
+# python -m uvicorn app.main:app --reload
+# .\.venv\Scripts\python.exe -m uvicorn app.main:app --port 8000
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -38,11 +38,16 @@ DIST_DIR = FRONTEND_DIR / "dist"
 LAB_DIR = FRONTEND_DIR / "lab"
 FIGMA_DIR = FRONTEND_DIR / "figma"
 
-app.mount("/lab", StaticFiles(directory=str(LAB_DIR), html=True), name="lab")
-app.mount("/figma", StaticFiles(directory=str(FIGMA_DIR), html=True), name="figma")
+if LAB_DIR.is_dir():
+    app.mount("/lab", StaticFiles(directory=str(LAB_DIR), html=True), name="lab")
+if FIGMA_DIR.is_dir():
+    app.mount("/figma", StaticFiles(directory=str(FIGMA_DIR), html=True), name="figma")
 
 if (DIST_DIR / "assets").is_dir():
     app.mount("/assets", StaticFiles(directory=str(DIST_DIR / "assets")), name="spa_assets")
+
+if FRONTEND_DIR.is_dir():
+    app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="frontend_static")
 
 
 def _resolve_spa_file(path: str) -> Path | None:
