@@ -34,6 +34,12 @@ PAIR_REGEX = re.compile(r".+\s[-–—|/:~]\s.+")
 PURE_PUNCT_REGEX = re.compile(r"^[^\w\uAC00-\uD7A3]+$")
 LEADING_DECORATION_REGEX = re.compile(r"^[~*#>+\-\s]+")
 TRAILING_DECORATION_REGEX = re.compile(r"[~*#<>\-\s]+$")
+TITLE_METADATA_WITH_PRONOUNS = {"me", "you", "us", "him", "her", "them", "it"}
+PROVIDER_CREDIT_REGEX = re.compile(r"^\s*provided\s+by\b", re.IGNORECASE)
+OST_LABEL_REGEX = re.compile(r"^\s*ost\s*$", re.IGNORECASE)
+KOREAN_EXPLANATORY_REGEX = re.compile(
+    r"(?:\uC218\uB85D|\uC2DC\uC9D1|\uBB38\uC7A5|\uC81C\uBAA9\uC785\uB2C8\uB2E4|\uC801\uD600|\uC5D0\uC11C\uB294|\uC788\uAD6C\uC694|\uC788\uACE0\uC694|\uC704\uC758|\uB294\s*['\"])"
+)
 
 SEPARATORS = PAIR_SEPARATORS
 KOREAN_NAME_REGEX = re.compile(r"^[\uAC00-\uD7A3]{2,4}$")
@@ -164,8 +170,33 @@ def _strip_bracketed_metadata(value: str) -> str:
     return PARENTHETICAL_REGEX.sub(replace, value)
 
 
+def _clean_text_without_title_metadata(value: str) -> str:
+    value = str(value or "")
+    value = value.replace("\u2018", "'").replace("\u2019", "'")
+    value = value.replace("\u201c", '"').replace("\u201d", '"')
+    value = _strip_bracketed_metadata(value)
+    value = TIME_PREFIX_REGEX.sub("", value)
+    value = _strip_timestamps(value)
+    value = LEADING_DECORATION_REGEX.sub("", value)
+    value = TRAILING_DECORATION_REGEX.sub("", value)
+    value = MULTISPACE_REGEX.sub(" ", value)
+    return value.strip(" -|/:~").strip()
+
+
+def _metadata_hint_is_title_phrase(match: re.Match) -> bool:
+    kind = MULTISPACE_REGEX.sub(" ", (match.group("kind") or "").lower()).strip()
+    value = _clean_text_without_title_metadata(match.group("value") or "").lower()
+    value_key = re.sub(r"[^a-z]+", " ", value).strip()
+    return kind == "with" and value_key in TITLE_METADATA_WITH_PRONOUNS
+
+
 def _strip_title_metadata_phrases(value: str) -> str:
-    return TITLE_METADATA_HINT_REGEX.sub(" ", value or "")
+    def replace(match: re.Match) -> str:
+        if _metadata_hint_is_title_phrase(match):
+            return match.group(0)
+        return " "
+
+    return TITLE_METADATA_HINT_REGEX.sub(replace, value or "")
 
 
 def _extract_title_metadata_hints(value: str) -> dict:
@@ -174,6 +205,8 @@ def _extract_title_metadata_hints(value: str) -> dict:
     featured_artists = []
     producer_artists = []
     for match in TITLE_METADATA_HINT_REGEX.finditer(value):
+        if _metadata_hint_is_title_phrase(match):
+            continue
         kind = MULTISPACE_REGEX.sub(" ", match.group("kind").lower()).strip()
         raw_value = _clean_text(match.group("value"))
         raw_value = re.split(
@@ -243,6 +276,36 @@ def _contains_section_keyword(line: str) -> bool:
     return any(keyword.lower() in lower for keyword in SECTION_KEYWORDS)
 
 
+def _is_provider_credit(value: str) -> bool:
+    return bool(PROVIDER_CREDIT_REGEX.search(value or ""))
+
+
+def _is_ost_label(value: str) -> bool:
+    return bool(OST_LABEL_REGEX.fullmatch(_clean_text_without_title_metadata(value or "")))
+
+
+def _looks_like_explanatory_text(value: str) -> bool:
+    cleaned = _clean_text_without_title_metadata(value)
+    if not cleaned:
+        return False
+    compact_len = _compact_len(cleaned)
+    if KOREAN_EXPLANATORY_REGEX.search(cleaned) and compact_len >= 12:
+        return True
+    return False
+
+
+def _is_metadata_pair(left: str, right: str) -> bool:
+    left_clean = _clean_text_without_title_metadata(left)
+    right_clean = _clean_text_without_title_metadata(right)
+    if _is_provider_credit(left_clean):
+        return True
+    if _is_ost_label(left_clean):
+        return True
+    if _looks_like_explanatory_text(left_clean) or _looks_like_explanatory_text(right_clean):
+        return True
+    return False
+
+
 def _left_part_is_metadata(normalized: str) -> bool:
     """True when the LEFT side of a delimiter contains a section keyword.
 
@@ -254,6 +317,8 @@ def _left_part_is_metadata(normalized: str) -> bool:
         if delimiter in normalized:
             left = normalized.split(delimiter, 1)[0].strip()
             if _contains_section_keyword(left):
+                return True
+            if _is_provider_credit(left) or _is_ost_label(left):
                 return True
             break
     return False
@@ -534,9 +599,13 @@ def _extract_pair_parts(text: str) -> dict | None:
         left, right = raw_left, raw_right
         left = _clean_text(left)
         right = _clean_text(right)
+        if _is_metadata_pair(left, right):
+            return None
         nested = _extract_numbered_nested_pair(left, right)
         if nested:
             nested_left, nested_right, nested_sep = nested
+            if _is_metadata_pair(nested_left, nested_right):
+                return None
             return {
                 "raw": text,
                 "separator": nested_sep,
@@ -1234,6 +1303,12 @@ def _append_song(results: list[dict], artist: str, title: str, meta: dict | None
     meta = meta or {}
 
     if not _is_meaningful_text(title):
+        return
+    if artist and _is_metadata_pair(artist, title):
+        return
+    if artist and _looks_like_explanatory_text(artist):
+        return
+    if _is_provider_credit(artist) or _is_ost_label(artist):
         return
 
     artist_ok = _is_meaningful_text(artist)

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import get_allowed_frontend_origins
@@ -33,26 +33,33 @@ app.include_router(spotify.router)
 app.include_router(playlist.router)
 app.include_router(qa.router)
 
-FRONTEND_DIR = Path("frontend")
-LAB_DIR = FRONTEND_DIR / "lab"
-FIGMA_DIR = FRONTEND_DIR / "figma"
-
-if LAB_DIR.is_dir():
-    app.mount("/lab", StaticFiles(directory=str(LAB_DIR), html=True), name="lab")
-if FIGMA_DIR.is_dir():
-    app.mount("/figma", StaticFiles(directory=str(FIGMA_DIR), html=True), name="figma")
-
-app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="frontend_static")
+# Next.js static export lives in orangebeats/out/ after `npm run build`.
+# Mount /_next first so asset requests don't fall into the catch-all.
+STATIC_DIR = Path("orangebeats/out")
+if (STATIC_DIR / "_next").is_dir():
+    app.mount("/_next", StaticFiles(directory=str(STATIC_DIR / "_next")), name="next_assets")
 
 
 @app.get("/")
-async def root() -> FileResponse:
-    return FileResponse(str(FRONTEND_DIR / "index.html"))
+async def root():
+    index = STATIC_DIR / "index.html"
+    if index.is_file():
+        return FileResponse(str(index))
+    return JSONResponse({"service": "Orange Beats API", "note": "Run 'npm run build' in orangebeats/ to serve the UI here."})
 
 
 @app.get("/{path:path}")
-async def catch_all(path: str) -> FileResponse:
-    candidate = FRONTEND_DIR / path
+async def catch_all(path: str):
+    # 1. Exact file match (e.g. favicon.ico, images)
+    candidate = STATIC_DIR / path
     if candidate.is_file():
         return FileResponse(str(candidate))
-    return FileResponse(str(FRONTEND_DIR / "index.html"))
+    # 2. Next.js page: url → url.html
+    html_file = STATIC_DIR / f"{path}.html"
+    if html_file.is_file():
+        return FileResponse(str(html_file))
+    # 3. SPA fallback
+    index = STATIC_DIR / "index.html"
+    if index.is_file():
+        return FileResponse(str(index))
+    return JSONResponse({"error": "not found"}, status_code=404)

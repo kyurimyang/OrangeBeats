@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Orange Beats — Move your YouTube playlist to Spotify</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          sans: ['Pretendard Variable', 'Pretendard', 'Inter', 'system-ui', 'sans-serif'],
+          display: ['Pretendard Variable', 'Pretendard', 'Inter', 'sans-serif'],
+          mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+        },
+        colors: {
+          orange: { DEFAULT: '#FD6D11', soft: '#FFB07A', deep: '#C24A00' },
+          mint: { DEFAULT: '#5EEAD4', soft: '#A6F2E5', deep: '#2BB8A3' },
+          ink: { 950: '#070707', 900: '#0a0a0a', 850: '#101010', 800: '#161616', 700: '#1f1f1f', 600: '#2a2a2a', 500: '#3a3a3a' },
+        },
+      },
+    },
+  };
+</script>
+
+<style>
+  :root {
+    --ob-orange: #FD6D11;
+    --ob-mint: #5EEAD4;
+    --ob-bg: #0a0a0a;
+    --ob-grid: rgba(255,255,255,0.04);
+  }
+  html, body { background: var(--ob-bg); color: white; }
+  body {
+    font-family: 'Pretendard Variable', Pretendard, Inter, system-ui, sans-serif;
+    font-feature-settings: 'ss01' on, 'cv11' on;
+    -webkit-font-smoothing: antialiased;
+  }
+  /* gradient panel like Figma cards */
+  .ob-glass {
+    background:
+      radial-gradient(120% 80% at 0% 0%, rgba(253,109,17,0.18) 0%, rgba(253,109,17,0) 55%),
+      radial-gradient(120% 80% at 100% 100%, rgba(94,234,212,0.10) 0%, rgba(94,234,212,0) 55%),
+      linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%);
+    border: 1px solid rgba(255,255,255,0.08);
+    backdrop-filter: blur(20px);
+  }
+  .ob-glass-soft {
+    background: linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.015) 100%);
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+  .ob-chip {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .ob-grad-text {
+    background: linear-gradient(180deg, #fff 0%, #b9b9b9 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .ob-grad-accent {
+    background: linear-gradient(95deg, #FD6D11 0%, #FFB07A 60%, #5EEAD4 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  /* primary CTA */
+  .ob-btn-primary {
+    background: linear-gradient(180deg, #FD6D11 0%, #E45F08 100%);
+    box-shadow: 0 8px 24px -8px rgba(253,109,17,0.6), inset 0 1px 0 rgba(255,255,255,0.25);
+    color: white;
+  }
+  .ob-btn-primary:hover { filter: brightness(1.08); }
+  .ob-btn-ghost {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  .ob-btn-ghost:hover { background: rgba(255,255,255,0.08); }
+
+  /* input gradient border */
+  .ob-input-shell {
+    background: linear-gradient(135deg, rgba(253,109,17,0.6) 0%, rgba(94,234,212,0.4) 100%);
+    padding: 2px;
+    border-radius: 999px;
+  }
+  .ob-input-shell.is-error {
+    background: linear-gradient(135deg, #ff4d4d 0%, #ff8a3d 100%);
+  }
+  .ob-input-inner {
+    background: #0d0d0d;
+    border-radius: 999px;
+  }
+
+  /* nav blur */
+  .ob-nav {
+    background: rgba(8,8,8,0.72);
+    backdrop-filter: blur(16px) saturate(140%);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+
+  /* track-cover placeholders (procedural color blocks) */
+  .ob-cover {
+    background:
+      radial-gradient(80% 80% at 30% 25%, rgba(255,255,255,0.4) 0%, transparent 60%),
+      linear-gradient(135deg, var(--c1, #FD6D11) 0%, var(--c2, #2BB8A3) 100%);
+  }
+
+  /* equaliser bars */
+  @keyframes obBar {
+    0%, 100% { transform: scaleY(0.25); }
+    50% { transform: scaleY(1); }
+  }
+  .ob-bar {
+    transform-origin: bottom;
+    animation: obBar 1.2s ease-in-out infinite;
+  }
+
+  /* waveform svg pulse */
+  @keyframes obWave {
+    0% { stroke-dashoffset: 0; }
+    100% { stroke-dashoffset: -80; }
+  }
+
+  /* slow rotate for vinyl */
+  @keyframes obSpin {
+    to { transform: rotate(360deg); }
+  }
+  .ob-spin { animation: obSpin 10s linear infinite; }
+
+  /* fade-in */
+  @keyframes obFade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  .ob-fade { animation: obFade .45s ease-out both; }
+
+  /* grid backdrop */
+  .ob-dotgrid {
+    background-image: radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+
+  /* scrollbar */
+  *::-webkit-scrollbar { width: 10px; height: 10px; }
+  *::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 8px; }
+  *::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.16); }
+
+  /* selection */
+  ::selection { background: rgba(253,109,17,0.4); }
+
+  /* progress shimmer */
+  @keyframes obShimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+  .ob-shimmer {
+    background: linear-gradient(90deg, transparent 0%, rgba(253,109,17,0.6) 50%, transparent 100%);
+    background-size: 200% 100%;
+    animation: obShimmer 1.8s linear infinite;
+  }
+
+  /* range input style for confidence */
+  .ob-meter {
+    height: 3px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.08);
+    overflow: hidden;
+  }
+  .ob-meter > span {
+    display: block; height: 100%;
+    background: linear-gradient(90deg, var(--ob-orange) 0%, var(--ob-mint) 100%);
+  }
+</style>
+</head>
+<body class="min-h-screen">
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="ob-components.jsx"></script>
+<script type="text/babel" src="ob-data.jsx"></script>
+<script type="text/babel" src="ob-screen-landing.jsx"></script>
+<script type="text/babel" src="ob-screen-url.jsx"></script>
+<script type="text/babel" src="ob-screen-loading.jsx"></script>
+<script type="text/babel" src="ob-screen-candidates.jsx"></script>
+<script type="text/babel" src="ob-screen-playlist.jsx"></script>
+<script type="text/babel" src="ob-screen-misc.jsx"></script>
+<script type="text/babel" src="ob-app.jsx"></script>
+</body>
+</html>
