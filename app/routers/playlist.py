@@ -1,6 +1,7 @@
 ﻿import time
 import math
 import json
+import re
 from pathlib import Path
 from typing import Annotated, Any, Dict, List
 
@@ -10,7 +11,11 @@ from app.dependencies.spotify_session import get_spotify_session_service
 from app.services.analysis_flow import classify_text_analysis
 from app.services.pipeline_service import run_youtube_pipeline
 from app.services.spotify_cover import SpotifyCoverUploadError, upload_playlist_cover_image
-from app.services.spotify_playlist import analyze_spotify_candidates, create_playlist_from_track_uris
+from app.services.spotify_playlist import (
+    analyze_spotify_candidates,
+    create_playlist_from_track_uris,
+    enrich_results_album_images,
+)
 from app.services.spotify_service import SpotifyServiceError, create_playlist_from_songs
 from app.services.spotify_session_service import SpotifySessionService
 from app.services.youtube_thumbnail import (
@@ -233,15 +238,41 @@ def _run_youtube_analysis(youtube_url: str, mode: str) -> tuple[Dict, List[Dict[
     return youtube_result, songs, analysis_elapsed_ms
 
 
-def _source_only_candidate(song: Dict[str, str]) -> Dict:
+def _normalize_spotify_track_id(value: Any) -> str:
+    s = str(value or "").strip()
+    if re.fullmatch(r"[0-9A-Za-z]{22}", s):
+        return s
+    return ""
+
+
+def _normalize_spotify_track_uri(value: Any) -> str:
+    """track_uris 페이로드 — spotify: URI, open.spotify URL, 22자 track id 모두 허용."""
+    s = str(value or "").strip()
+    if not s:
+        return ""
+    if s.startswith("spotify:track:"):
+        return s
+    if "open.spotify.com" in s and "/track/" in s:
+        m = re.search(r"/(?:intl-[a-z]{2}/)?track/([0-9A-Za-z]{22})", s)
+        if m:
+            return f"spotify:track:{m.group(1)}"
+    tid = _normalize_spotify_track_id(s)
+    if tid:
+        return f"spotify:track:{tid}"
+    return s if s.startswith("spotify:") else ""
+
+
+def _source_only_candidate(song: Dict[str, Any]) -> Dict:
     artist = (song.get("artist") or "").strip()
     title = (song.get("title") or "").strip()
+    acr_tid = _normalize_spotify_track_id(song.get("acr_spotify_track_id"))
+    spotify_uri = f"spotify:track:{acr_tid}" if acr_tid else None
     return {
         "input_artist": artist,
         "input_title": title,
         "matched": False,
-        "spotify_track_id": None,
-        "spotify_uri": None,
+        "spotify_track_id": acr_tid or None,
+        "spotify_uri": spotify_uri,
         "spotify_title": None,
         "spotify_artist": None,
         "album_image": None,
@@ -714,11 +745,13 @@ def analyze_youtube_for_playlist(
         print("[playlist/analyze-youtube] spotify matching end results =", len(results))
     except SpotifyServiceError as exc:
         total_elapsed_ms = int((time.perf_counter() - total_started_at) * 1000)
+        partial_results = [_source_only_candidate(song) for song in songs]
+        enrich_results_album_images(access_token, partial_results, market="KR")
         response_payload = _build_analysis_response(
             youtube_url=youtube_url,
             youtube_result=youtube_result,
             songs=songs,
-            results=[_source_only_candidate(song) for song in songs],
+            results=partial_results,
             title_mode=title_mode,
             user_playlist_name=user_playlist_name,
             mode=mode,
@@ -787,7 +820,7 @@ def create_playlist_from_selected_tracks(
     unique_track_uris = []
     seen = set()
     for uri in track_uris:
-        normalized = (str(uri) if uri is not None else "").strip()
+        normalized = _normalize_spotify_track_uri(uri)
         if not normalized or normalized in seen:
             continue
         seen.add(normalized)
