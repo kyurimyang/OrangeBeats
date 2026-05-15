@@ -58,11 +58,15 @@ export default function PlaylistCreateLoading({ percent, secondsLeft, playlistTi
           <div className="playlist-create-loading__glow playlist-create-loading__glow--secondary" aria-hidden="true" />
           <div className="playlist-create-loading__disc-3d">
             <div className="playlist-create-loading__vinyl" aria-hidden="true">
-              <div className="playlist-create-loading__rim" aria-hidden="true" />
               <div className="playlist-create-loading__grooves" />
-              <div className="playlist-create-loading__shine" aria-hidden="true" />
+              <div className="playlist-create-loading__runout" aria-hidden="true" />
+              <div className="playlist-create-loading__reflection" aria-hidden="true" />
+              <div
+                className="playlist-create-loading__reflection playlist-create-loading__reflection--alt"
+                aria-hidden="true"
+              />
               <div className="playlist-create-loading__label">
-                <div className="playlist-create-loading__label-gloss" aria-hidden="true" />
+                <div className="playlist-create-loading__spindle" aria-hidden="true" />
               </div>
             </div>
           </div>

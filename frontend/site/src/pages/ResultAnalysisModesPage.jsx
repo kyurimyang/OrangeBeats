@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import SiteHeader from "../components/SiteHeader.jsx";
+import UrlLoadingScreen from "../components/UrlLoadingScreen.jsx";
 
 const REMATCH_MODE_KEY = "orangebeats.rematch.mode";
 const SPA_ANALYZE_BUNDLE_KEY = "orangebeats.spaAnalyzeBundle";
@@ -22,6 +23,24 @@ export default function ResultAnalysisModesPage() {
       navigate("/create", { replace: true });
     }
   }, [navigate]);
+
+  /* transform+vw 음수마진 대신 zoom 사용 — 탭 복귀 시 레이아웃 드리프트 방지용 리플로우 */
+  useEffect(() => {
+    const nudgeLayout = () => {
+      window.dispatchEvent(new Event("resize"));
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        nudgeLayout();
+      }
+    };
+    window.addEventListener("pageshow", nudgeLayout);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pageshow", nudgeLayout);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
 
   const runAnalysis = async (mode) => {
     if (runningMode) return;
@@ -69,6 +88,10 @@ export default function ResultAnalysisModesPage() {
   };
 
   const busy = Boolean(runningMode);
+
+  if (runningMode) {
+    return <UrlLoadingScreen />;
+  }
 
   return (
     <div className="result-analysis-page" data-node-id="161:1457">
