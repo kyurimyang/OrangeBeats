@@ -76,7 +76,18 @@ export default function PlaylistCreatedPage() {
           ))}
         </section>
 
-        <SpotifyShortcutLink url={playlistUrl} className="playlist-created-page__shortcut" />
+        <SpotifyShortcutLink
+          url={playlistUrl}
+          className="playlist-created-page__shortcut"
+          onAfterOpen={() =>
+            navigate("/result/rating", {
+              state: {
+                playlistUrl,
+                playlistName: String(bundle?.playlistName || "").trim(),
+              },
+            })
+          }
+        />
       </main>
     </div>
   );

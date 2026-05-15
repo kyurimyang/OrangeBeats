@@ -1192,11 +1192,13 @@ a.figma-spotify-connect {
 .playlist-created-page__shortcut {
   align-self: center;
   flex-shrink: 0;
-  width: min(calc(586px * var(--result-scale, 1)), calc(100vw - 48px));
+  /* Figma 453×50 기준, --result-scale(0.75)와 동일 비율로 소폭 축소 */
+  width: min(calc(453px * var(--result-scale, 1)), calc(100vw - 48px));
   max-width: 100%;
-  height: calc(50px * var(--result-scale, 1));
-  font-size: calc(40px * var(--result-scale, 1));
-  line-height: calc(50px * var(--result-scale, 1));
+  height: calc(44px * var(--result-scale, 1));
+  font-size: calc(32px * var(--result-scale, 1));
+  line-height: calc(44px * var(--result-scale, 1));
+  letter-spacing: -0.5px;
 }
 
 .playlist-created-page__shortcut:disabled {
@@ -1232,6 +1234,259 @@ a.figma-spotify-connect {
   }
 }
 
+/* 003 → Spotify 플레이리스트 생성 중 (LP + 프로그레스) */
+.result-list-page--creating {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.result-list-page--creating .site-header {
+  flex-shrink: 0;
+  align-self: stretch;
+  width: 100%;
+}
+
+.playlist-create-loading {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(48px, 12vh, 120px);
+  padding: 24px 24px 56px;
+  box-sizing: border-box;
+}
+
+.playlist-create-loading__stage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+
+.playlist-create-loading__vinyl-scene {
+  position: relative;
+  width: min(400px, 82vw);
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  perspective: 1100px;
+  animation: playlist-vinyl-float 4.8s ease-in-out infinite;
+}
+
+.playlist-create-loading__disc-3d {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  will-change: transform;
+  animation: playlist-vinyl-rock 7.2s ease-in-out infinite;
+}
+
+.playlist-create-loading__glow {
+  position: absolute;
+  inset: -18%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(253, 109, 17, 0.55) 0%, rgba(253, 109, 17, 0.12) 42%, transparent 72%);
+  filter: blur(18px);
+  pointer-events: none;
+  animation: playlist-glow-pulse 3.2s ease-in-out infinite;
+}
+
+.playlist-create-loading__glow--secondary {
+  inset: -8%;
+  background: radial-gradient(circle, rgba(255, 178, 45, 0.28) 0%, transparent 62%);
+  filter: blur(28px);
+  animation-delay: -1.2s;
+}
+
+.playlist-create-loading__vinyl {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  transform-style: preserve-3d;
+  background:
+    radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.1) 0%, transparent 36%),
+    radial-gradient(circle at 50% 50%, #1c1c1c 0%, #080808 55%, #000000 100%);
+  box-shadow:
+    inset 0 3px 6px rgba(255, 255, 255, 0.1),
+    inset 0 -10px 18px rgba(0, 0, 0, 0.85),
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 18px 36px rgba(0, 0, 0, 0.72),
+    0 32px 64px rgba(253, 109, 17, 0.22);
+  animation: playlist-vinyl-spin 2.1s linear infinite;
+}
+
+.playlist-create-loading__rim {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow:
+    inset 0 0 0 4px rgba(40, 40, 40, 0.95),
+    inset 0 0 0 5px rgba(255, 255, 255, 0.05),
+    inset 0 0 22px rgba(0, 0, 0, 0.65);
+  pointer-events: none;
+}
+
+.playlist-create-loading__grooves {
+  position: absolute;
+  inset: 6%;
+  border-radius: 50%;
+  background: repeating-radial-gradient(
+    circle at center,
+    rgba(255, 255, 255, 0.05) 0 1px,
+    transparent 1px 3px
+  );
+  opacity: 0.9;
+}
+
+.playlist-create-loading__shine {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 200deg,
+    transparent 0deg,
+    rgba(255, 255, 255, 0.14) 28deg,
+    transparent 56deg,
+    transparent 210deg,
+    rgba(255, 255, 255, 0.06) 250deg,
+    transparent 300deg
+  );
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+
+.playlist-create-loading__label {
+  position: absolute;
+  inset: 28%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ff8a3d 0%, #fd6d11 48%, #e85f0a 100%);
+  box-shadow:
+    inset 0 5px 12px rgba(255, 255, 255, 0.28),
+    inset 0 -8px 16px rgba(0, 0, 0, 0.35),
+    0 4px 10px rgba(0, 0, 0, 0.45);
+  transform: translateZ(6px);
+}
+
+.playlist-create-loading__label-gloss {
+  position: absolute;
+  inset: 12% 18% auto;
+  height: 32%;
+  border-radius: 50%;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.45) 0%, transparent 100%);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.playlist-create-loading__footer {
+  width: min(520px, calc(100vw - 48px));
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.playlist-create-loading__meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  font-family: "Pretendard", "Gowun Dodum", sans-serif;
+  letter-spacing: -0.5px;
+}
+
+.playlist-create-loading__percent {
+  font-size: 22px;
+  font-weight: 500;
+  line-height: 1;
+  color: #ffffff;
+}
+
+.playlist-create-loading__eta {
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.72);
+  text-transform: uppercase;
+}
+
+.playlist-create-loading__bar-track {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: #000000;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.playlist-create-loading__bar-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #fd6d11 0%, #ffb22d 55%, #ffffff 100%);
+  transition: width 120ms linear;
+  box-shadow: 0 0 12px rgba(253, 109, 17, 0.65);
+}
+
+@keyframes playlist-vinyl-spin {
+  from {
+    transform: rotateZ(0deg);
+  }
+  to {
+    transform: rotateZ(360deg);
+  }
+}
+
+@keyframes playlist-vinyl-rock {
+  0%,
+  100% {
+    transform: rotateX(14deg) rotateY(-20deg) rotateZ(0deg);
+  }
+  35% {
+    transform: rotateX(8deg) rotateY(16deg) rotateZ(1.5deg);
+  }
+  68% {
+    transform: rotateX(18deg) rotateY(-10deg) rotateZ(-1deg);
+  }
+}
+
+@keyframes playlist-vinyl-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-12px);
+  }
+}
+
+@keyframes playlist-glow-pulse {
+  0%,
+  100% {
+    opacity: 0.78;
+    transform: scale(0.98);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .playlist-create-loading__vinyl-scene,
+  .playlist-create-loading__disc-3d,
+  .playlist-create-loading__glow {
+    animation: none;
+  }
+
+  .playlist-create-loading__vinyl {
+    animation-duration: 6s;
+  }
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -1242,6 +1497,75 @@ a.figma-spotify-connect {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+/* 005_rating — 서비스 별점 (Figma 245:396) */
+.rating-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: #000000;
+  color: #ffffff;
+}
+
+.rating-page__main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 40px;
+  padding: 48px 24px 80px;
+  box-sizing: border-box;
+}
+
+.rating-page__copy {
+  margin: 0;
+  text-align: center;
+  font-family: "Pretendard", "Gowun Dodum", sans-serif;
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 27.2px;
+  letter-spacing: -0.6px;
+}
+
+.rating-page__copy p {
+  margin: 0;
+}
+
+.star-rating {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.star-rating__star {
+  flex-shrink: 0;
+  transition: transform 120ms ease;
+}
+
+.star-rating__star:not(:disabled):hover,
+.star-rating__star:not(:disabled):focus-visible {
+  transform: scale(1.06);
+}
+
+.rating-page__thanks {
+  margin: 0;
+  font-family: "Pretendard", "Gowun Dodum", sans-serif;
+  font-size: 18px;
+  font-weight: 500;
+  color: #fd6d11;
+}
+
+.rating-page__error {
+  margin: 0;
+  font-family: "Pretendard", "Gowun Dodum", sans-serif;
+  font-size: 16px;
+  color: #fd9f7b;
+  text-align: center;
 }
 
 /* 003 Resultlist — 원하는 노래가 없어요 → OCR/ACR 선택 (Figma 161:1457) */

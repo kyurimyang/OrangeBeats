@@ -7,6 +7,7 @@ import PlaylistUrlPage from "./pages/PlaylistUrlPage.jsx";
 import ResultListPage from "./pages/ResultListPage.jsx";
 import ResultAnalysisModesPage from "./pages/ResultAnalysisModesPage.jsx";
 import PlaylistCreatedPage from "./pages/PlaylistCreatedPage.jsx";
+import RatingPage from "./pages/RatingPage.jsx";
 
 export default function App() {
   return (
@@ -16,6 +17,7 @@ export default function App() {
       <Route path="/result/analysis" element={<ResultAnalysisModesPage />} />
       <Route path="/result" element={<ResultListPage />} />
       <Route path="/result/created" element={<PlaylistCreatedPage />} />
+      <Route path="/result/rating" element={<RatingPage />} />
       <Route path="/help" element={<HelpPage />} />
       <Route path="/faq" element={<FaqPage />} />
       <Route path="/contact" element={<ContactPage />} />
