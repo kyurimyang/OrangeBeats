@@ -1,4 +1,5 @@
-﻿from typing import Any, Dict, List
+﻿import re
+from typing import Any, Dict, List
 
 from app.services.spotify_api import add_tracks_to_playlist, create_playlist, get_tracks_by_ids
 from app.services.spotify_common import _is_suspicious_song, build_match_cache_key
@@ -79,7 +80,14 @@ def _resolve_single_artist_context(
     artist_name = _single_artist_name_from_songs(songs)
     if not artist_name:
         return {}
-    resolved = resolve_spotify_artist_id(access_token, artist_name, market=market)
+    try:
+        resolved = resolve_spotify_artist_id(access_token, artist_name, market=market)
+    except SpotifyServiceError as exc:
+        print(
+            "[spotify] single_artist_context: artist resolve failed, continuing without filter:",
+            str(exc),
+        )
+        return {}
     if not resolved.get("id"):
         return {}
     return {
@@ -130,6 +138,22 @@ def _confidence_label(match_status: str, score: float, has_uri: bool) -> str:
     return "low"
 
 
+def _spotify_track_uri_from_value(value: Any) -> str:
+    s = str(value or "").strip()
+    if not s:
+        return ""
+    if s.startswith("spotify:track:"):
+        return s
+    if "open.spotify.com" in s and "/track/" in s:
+        m = re.search(r"/(?:intl-[a-z]{2}/)?track/([a-zA-Z0-9]{22})", s)
+        if m:
+            return f"spotify:track:{m.group(1)}"
+    tid = _track_id_from_result_row({"spotify_track_id": s, "spotify_uri": s})
+    if tid:
+        return f"spotify:track:{tid}"
+    return s if s.startswith("spotify:") else ""
+
+
 def _track_id_from_result_row(row: Dict[str, Any]) -> str | None:
     tid = row.get("spotify_track_id")
     if tid:
@@ -140,6 +164,11 @@ def _track_id_from_result_row(row: Dict[str, Any]) -> str | None:
     if uri.startswith("spotify:track:"):
         tail = uri.split(":")[-1].strip()
         return tail or None
+    # 웹 공유 링크만 있는 경우(또는 intl-xx 경로) — 배치 트랙 조회로 커버를 채우려면 ID 추출 필요
+    if "open.spotify.com" in uri and "/track/" in uri:
+        m = re.search(r"/(?:intl-[a-z]{2}/)?track/([a-zA-Z0-9]+)", uri)
+        if m:
+            return m.group(1)
     return None
 
 
@@ -214,13 +243,16 @@ def enrich_results_album_images(access_token: str, results: List[Dict[str, Any]]
             )
             for i in id_to_indices.get(tid, []):
                 row = results[i]
-                img = row.get("album_image")
-                if url and not (isinstance(img, str) and img.strip().startswith(("http://", "https://"))):
+                # 검색 단계에서 앨범 이미지가 비어 있어도 /tracks 응답으로 항상 동기화
+                if url:
                     row["album_image"] = url
                 if display_name:
                     row["spotify_title"] = display_name
                 if display_artist:
                     row["spotify_artist"] = display_artist
+                track_uri = track.get("uri")
+                if isinstance(track_uri, str) and track_uri.strip():
+                    row["spotify_uri"] = track_uri.strip()
     finally:
         _stamp_ui_display_lines(results)
 
@@ -526,7 +558,7 @@ def create_playlist_from_track_uris(
     unique_uris: List[str] = []
     seen = set()
     for uri in track_uris:
-        normalized = (uri or "").strip()
+        normalized = _spotify_track_uri_from_value(uri)
         if not normalized or normalized in seen:
             continue
         seen.add(normalized)

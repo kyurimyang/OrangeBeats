@@ -67,6 +67,15 @@ async def spa_root() -> FileResponse:
     return FileResponse(index_file)
 
 
+@app.get("/result/analysis")
+async def spa_result_analysis() -> FileResponse:
+    """SPA 하위 경로 — React Router `/result/analysis` (OCR/ACR 선택)."""
+    index_file = DIST_DIR / "index.html"
+    if not index_file.is_file():
+        raise HTTPException(status_code=503, detail="Frontend build is missing. Run npm run build in frontend/site.")
+    return FileResponse(index_file)
+
+
 @app.get("/{page}")
 async def spa_page(page: str) -> FileResponse:
     static_file = _resolve_spa_file(page)

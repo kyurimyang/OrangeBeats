@@ -1,7 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import SiteHeader from "../components/SiteHeader.jsx";
+import { collectPlaylistTrackUris, normalizeTracks } from "../utils/resultTracks.js";
 import trashDefaultUrl from "../assets/figma/trash-default.svg?url";
+import trashHoverUrl from "../assets/figma/trash-hover.svg?url";
+import trashPressedUrl from "../assets/figma/trash-pressed.svg?url";
+
+const TRASH_ICON_URL = {
+  default: trashDefaultUrl,
+  hover: trashHoverUrl,
+  pressed: trashPressedUrl,
+};
 
 function ResultTrashButton({ ariaLabel, onRemove }) {
   const [hovered, setHovered] = useState(false);
@@ -22,12 +31,9 @@ function ResultTrashButton({ ariaLabel, onRemove }) {
       onMouseDown={() => setPressed(true)}
       onMouseUp={() => setPressed(false)}
     >
-      <span className="result-track-item__delete-label" aria-hidden="true">
-        삭제
-      </span>
       <img
         className={`figma-trash__icon figma-trash__icon--${phase}`}
-        src={trashDefaultUrl}
+        src={TRASH_ICON_URL[phase]}
         alt=""
         aria-hidden="true"
       />
@@ -43,72 +49,139 @@ const PREFILL_KEYS = {
   mode: "orangebeats.prefill.mode",
 };
 
-function normalizeTracks(data) {
-  const rows = Array.isArray(data?.results) ? data.results : [];
-  const songs = Array.isArray(data?.songs)
-    ? data.songs
-    : Array.isArray(data?.extracted_songs)
-      ? data.extracted_songs
-      : [];
-  return rows.map((item, index) => {
-    const uiTrack = String(item.ui_track_line ?? item.uiTrackLine ?? "").trim();
-    const uiArtist = String(item.ui_artist_line ?? item.uiArtistLine ?? "").trim();
-    const spotifyTitle =
-      uiTrack || String(item.spotify_title ?? item.spotifyTitle ?? "").trim();
-    const spotifyArtist =
-      uiArtist || String(item.spotify_artist ?? item.spotifyArtist ?? "").trim();
-    const songRow = songs[index] || {};
-    const corr = songRow.corrected_input && typeof songRow.corrected_input === "object" ? songRow.corrected_input : null;
-    const inputTitle = String(
-      (corr?.title != null && String(corr.title).trim() !== "" ? corr.title : null) ??
-        songRow.title ??
-        item.input_title ??
-        "",
-    ).trim();
-    const inputArtist = String(
-      (corr?.artist != null && String(corr.artist).trim() !== "" ? corr.artist : null) ??
-        songRow.artist ??
-        item.input_artist ??
-        "",
-    ).trim();
-    /** 위 줄 = 곡명(Spotify track name), 아래 줄 = 가수 — 스포티파이 앱과 동일 */
-    const trackName = spotifyTitle || inputTitle || "제목 없음";
-    const performerLine = spotifyArtist || inputArtist || "아티스트 미상";
-    return {
-      id: `${item.spotify_uri || item.spotify_track_id || "track"}-${index}`,
-      title: trackName,
-      artist: performerLine,
-      cover: item.album_image || "",
-      spotifyUri: item.spotify_uri || "",
-    };
-  });
-}
+const LAST_ANALYZED_KEYS = {
+  youtubeUrl: "orangebeats.lastAnalyzed.youtubeUrl",
+  titleMode: "orangebeats.lastAnalyzed.titleMode",
+  playlistName: "orangebeats.lastAnalyzed.playlistName",
+};
+
+const REMATCH_MODE_KEY = "orangebeats.rematch.mode";
+const SPA_ANALYZE_BUNDLE_KEY = "orangebeats.spaAnalyzeBundle";
+const SPA_ANALYZE_APPLIED_V_KEY = "orangebeats.spaAnalyzeAppliedV";
+const CREATED_PLAYLIST_KEY = "orangebeats.createdPlaylist";
 
 export default function ResultListPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  /** `navigate(..., { state })`로 분석 결과를 받은 뒤, replace로 state를 비울 때 한 번 POST를 건너뜀 */
+  const skipFetchOnceRef = useRef(false);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
   const [playlistName, setPlaylistName] = useState("YouTube 변환 플레이리스트");
   const [youtubeTitle, setYoutubeTitle] = useState("");
   const [tracks, setTracks] = useState([]);
+  const analyzeDataRef = useRef(null);
 
   useEffect(() => {
     const run = async () => {
       try {
-        const youtubeUrl = sessionStorage.getItem(PREFILL_KEYS.youtubeUrl)?.trim() || "";
-        const titleMode = sessionStorage.getItem(PREFILL_KEYS.titleMode) || "youtube";
-        const savedPlaylistName = sessionStorage.getItem(PREFILL_KEYS.playlistName) || "";
+        setError("");
+
+        const applyFromAnalyzeData = (data) => {
+          analyzeDataRef.current = data;
+          const normalized = normalizeTracks(data);
+          setTracks(normalized);
+          const savedPlaylistName =
+            sessionStorage.getItem(PREFILL_KEYS.playlistName) ||
+            sessionStorage.getItem(LAST_ANALYZED_KEYS.playlistName) ||
+            "";
+          const titleMode =
+            sessionStorage.getItem(PREFILL_KEYS.titleMode) ||
+            sessionStorage.getItem(LAST_ANALYZED_KEYS.titleMode) ||
+            "youtube";
+          setPlaylistName(data?.playlist_name || savedPlaylistName || "YouTube 변환 플레이리스트");
+          setYoutubeTitle(data?.youtube_title || "");
+          const youtubeUrl =
+            sessionStorage.getItem(PREFILL_KEYS.youtubeUrl)?.trim() ||
+            sessionStorage.getItem(LAST_ANALYZED_KEYS.youtubeUrl)?.trim() ||
+            "";
+          if (youtubeUrl) {
+            sessionStorage.setItem(LAST_ANALYZED_KEYS.youtubeUrl, youtubeUrl);
+            sessionStorage.setItem(LAST_ANALYZED_KEYS.titleMode, titleMode);
+            sessionStorage.setItem(LAST_ANALYZED_KEYS.playlistName, savedPlaylistName);
+          }
+          try {
+            sessionStorage.removeItem(REMATCH_MODE_KEY);
+          } catch {
+            // ignore
+          }
+          sessionStorage.removeItem(PREFILL_KEYS.youtubeUrl);
+          sessionStorage.removeItem(PREFILL_KEYS.titleMode);
+          sessionStorage.removeItem(PREFILL_KEYS.playlistName);
+          sessionStorage.removeItem(PREFILL_KEYS.autoAnalyze);
+          sessionStorage.removeItem(PREFILL_KEYS.mode);
+        };
+
+        const bundleRaw = sessionStorage.getItem(SPA_ANALYZE_BUNDLE_KEY);
+        if (bundleRaw) {
+          try {
+            const bundle = JSON.parse(bundleRaw);
+            const data = bundle?.data;
+            const v = bundle?.v != null ? String(bundle.v) : "";
+            if (data != null && typeof data === "object" && v) {
+              const appliedV = sessionStorage.getItem(SPA_ANALYZE_APPLIED_V_KEY);
+              if (appliedV === v) {
+                applyFromAnalyzeData(data);
+                sessionStorage.removeItem(SPA_ANALYZE_BUNDLE_KEY);
+                sessionStorage.removeItem(SPA_ANALYZE_APPLIED_V_KEY);
+                skipFetchOnceRef.current = true;
+                navigate(location.pathname, { replace: true, state: {} });
+                return;
+              }
+              applyFromAnalyzeData(data);
+              sessionStorage.setItem(SPA_ANALYZE_APPLIED_V_KEY, v);
+              skipFetchOnceRef.current = true;
+              navigate(location.pathname, { replace: true, state: {} });
+              return;
+            }
+          } catch {
+            sessionStorage.removeItem(SPA_ANALYZE_BUNDLE_KEY);
+            sessionStorage.removeItem(SPA_ANALYZE_APPLIED_V_KEY);
+          }
+        }
+
+        const direct =
+          location.state && typeof location.state === "object" ? location.state.analyzeResponse : undefined;
+        if (direct != null && typeof direct === "object") {
+          applyFromAnalyzeData(direct);
+          skipFetchOnceRef.current = true;
+          navigate(location.pathname, { replace: true, state: {} });
+          return;
+        }
+
+        if (skipFetchOnceRef.current) {
+          skipFetchOnceRef.current = false;
+          return;
+        }
+
+        const rematchStored = sessionStorage.getItem(REMATCH_MODE_KEY);
+        const rematchMode = rematchStored === "ocr" || rematchStored === "acr" ? rematchStored : null;
+
+        const youtubeUrl =
+          sessionStorage.getItem(PREFILL_KEYS.youtubeUrl)?.trim() ||
+          sessionStorage.getItem(LAST_ANALYZED_KEYS.youtubeUrl)?.trim() ||
+          "";
+        const titleMode =
+          sessionStorage.getItem(PREFILL_KEYS.titleMode) ||
+          sessionStorage.getItem(LAST_ANALYZED_KEYS.titleMode) ||
+          "youtube";
+        const savedPlaylistName =
+          sessionStorage.getItem(PREFILL_KEYS.playlistName) ||
+          sessionStorage.getItem(LAST_ANALYZED_KEYS.playlistName) ||
+          "";
         if (!youtubeUrl) {
           setError("YouTube URL 정보가 없어 다시 입력이 필요합니다.");
           setLoading(false);
           return;
         }
 
+        const extractionMode = rematchMode || "text";
+
         const payload = {
           youtube_url: youtubeUrl,
-          mode: "text",
-          extraction_mode: "text",
+          mode: extractionMode,
+          extraction_mode: extractionMode,
           title_mode: titleMode,
           playlist_name: savedPlaylistName,
           skip_spotify_matching: false,
@@ -129,6 +202,23 @@ export default function ResultListPage() {
         setPlaylistName(data?.playlist_name || savedPlaylistName || "YouTube 변환 플레이리스트");
         setYoutubeTitle(data?.youtube_title || "");
 
+        try {
+          if (youtubeUrl) {
+            sessionStorage.setItem(LAST_ANALYZED_KEYS.youtubeUrl, youtubeUrl);
+            sessionStorage.setItem(LAST_ANALYZED_KEYS.titleMode, titleMode);
+            sessionStorage.setItem(LAST_ANALYZED_KEYS.playlistName, savedPlaylistName);
+          }
+        } catch {
+          // ignore
+        }
+        if (rematchMode) {
+          try {
+            sessionStorage.removeItem(REMATCH_MODE_KEY);
+          } catch {
+            // ignore
+          }
+        }
+
         sessionStorage.removeItem(PREFILL_KEYS.youtubeUrl);
         sessionStorage.removeItem(PREFILL_KEYS.titleMode);
         sessionStorage.removeItem(PREFILL_KEYS.playlistName);
@@ -141,19 +231,29 @@ export default function ResultListPage() {
       }
     };
     run();
-  }, []);
-
-  const selectedUris = useMemo(() => tracks.map((track) => track.spotifyUri).filter(Boolean), [tracks]);
+  }, [location.key, location.pathname, navigate]);
 
   const handleCreatePlaylist = async () => {
     if (creating) return;
-    if (!selectedUris.length) {
-      setError("Spotify 후보가 없어 플레이리스트를 만들 수 없습니다.");
+
+    let urisToAdd = collectPlaylistTrackUris(tracks);
+    if (!urisToAdd.length && analyzeDataRef.current) {
+      urisToAdd = collectPlaylistTrackUris(normalizeTracks(analyzeDataRef.current));
+    }
+
+    if (!urisToAdd.length) {
+      setError(
+        "Spotify에 추가할 수 있는 곡이 없습니다. 매칭된 곡이 있는지 확인하거나, 다시 분석해 주세요.",
+      );
       return;
     }
     try {
       setCreating(true);
       setError("");
+      const youtubeUrl =
+        sessionStorage.getItem(LAST_ANALYZED_KEYS.youtubeUrl)?.trim() ||
+        sessionStorage.getItem(PREFILL_KEYS.youtubeUrl)?.trim() ||
+        String(analyzeDataRef.current?.youtube_url || "").trim();
       const response = await fetch("/playlist/create-selected", {
         method: "POST",
         credentials: "include",
@@ -161,16 +261,31 @@ export default function ResultListPage() {
         body: JSON.stringify({
           playlist_name: playlistName,
           description: `Created from YouTube: ${youtubeTitle || "playlist"}`,
-          track_uris: selectedUris,
+          track_uris: urisToAdd,
+          youtube_url: youtubeUrl,
+          youtube_title: youtubeTitle,
+          thumbnail_url: String(analyzeDataRef.current?.thumbnail_url || "").trim(),
         }),
       });
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data?.detail || "플레이리스트 생성 실패");
       }
-      if (data?.playlist_url) {
-        window.open(data.playlist_url, "_blank", "noopener,noreferrer");
+      const playlistUrl = String(data?.playlist_url || "").trim();
+      if (!playlistUrl) {
+        throw new Error("Spotify 플레이리스트 URL을 받지 못했습니다.");
       }
+      const createdPlaylist = {
+        playlistUrl,
+        playlistName: data?.playlist_name || playlistName,
+        tracks,
+      };
+      try {
+        sessionStorage.setItem(CREATED_PLAYLIST_KEY, JSON.stringify(createdPlaylist));
+      } catch {
+        // ignore
+      }
+      navigate("/result/created", { state: { createdPlaylist } });
     } catch (e) {
       setError(e instanceof Error ? e.message : "플레이리스트 생성 실패");
     } finally {
@@ -199,10 +314,18 @@ export default function ResultListPage() {
         <p className="result-list-page__heading">Youtube에서 음악을 가져왔어요.</p>
         <section className="result-list-panel">
           {tracks.map((track, index) => (
-            <article key={track.id} className="result-track-item">
+            <article
+              key={track.id}
+              className={`result-track-item${track.confidenceLabel === "low" ? " result-track-item--low-confidence" : ""}`}
+            >
               <span className="result-track-item__index">{index + 1}</span>
               {track.cover ? (
-                <img className="result-track-item__cover" src={track.cover} alt="" />
+                <img
+                  className="result-track-item__cover"
+                  src={track.cover}
+                  alt=""
+                  loading="lazy"
+                />
               ) : (
                 <div className="result-track-item__cover result-track-item__cover--placeholder" />
               )}
@@ -230,7 +353,7 @@ export default function ResultListPage() {
           <button
             type="button"
             className="figma-piece figma-rematch figma-rematch--pressed"
-            onClick={() => navigate("/create")}
+            onClick={() => navigate("/result/analysis")}
           >
             <span className="figma-piece__label figma-rematch__label">원하는 노래가 없어요</span>
           </button>
