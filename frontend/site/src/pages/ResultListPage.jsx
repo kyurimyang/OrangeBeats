@@ -1,6 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+﻿import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import SiteHeader from "../components/SiteHeader.jsx";
+import PlaylistCreateLoading, {
+  usePlaylistCreateProgress,
+} from "../components/PlaylistCreateLoading.jsx";
 import { collectPlaylistTrackUris, normalizeTracks } from "../utils/resultTracks.js";
 import trashDefaultUrl from "../assets/figma/trash-default.svg?url";
 import trashHoverUrl from "../assets/figma/trash-hover.svg?url";
@@ -67,6 +70,8 @@ export default function ResultListPage() {
   const skipFetchOnceRef = useRef(false);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [createTrackCount, setCreateTrackCount] = useState(0);
+  const { percent, secondsLeft, finish } = usePlaylistCreateProgress(creating, createTrackCount);
   const [error, setError] = useState("");
   const [playlistName, setPlaylistName] = useState("YouTube 변환 플레이리스트");
   const [youtubeTitle, setYoutubeTitle] = useState("");
@@ -248,6 +253,7 @@ export default function ResultListPage() {
       return;
     }
     try {
+      setCreateTrackCount(urisToAdd.length);
       setCreating(true);
       setError("");
       const youtubeUrl =
@@ -285,13 +291,27 @@ export default function ResultListPage() {
       } catch {
         // ignore
       }
+      finish();
+      await new Promise((resolve) => window.setTimeout(resolve, 480));
       navigate("/result/created", { state: { createdPlaylist } });
     } catch (e) {
       setError(e instanceof Error ? e.message : "플레이리스트 생성 실패");
-    } finally {
       setCreating(false);
     }
   };
+
+  if (creating) {
+    return (
+      <div className="result-list-page result-list-page--creating" data-node-id="playlist-create-loading">
+        <SiteHeader />
+        <PlaylistCreateLoading
+          percent={percent}
+          secondsLeft={secondsLeft}
+          playlistTitle={playlistName}
+        />
+      </div>
+    );
+  }
 
   if (loading) {
     return (

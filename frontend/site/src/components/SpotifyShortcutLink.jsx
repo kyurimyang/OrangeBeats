@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 /** Figma `Spotify 바로가기` — figma-spotify-shortcut 컴포넌트 */
-export default function SpotifyShortcutLink({ url, className = "" }) {
+export default function SpotifyShortcutLink({ url, className = "", onAfterOpen }) {
   const [hovered, setHovered] = useState(false);
   const phaseClass = hovered ? "figma-spotify-shortcut--hover" : "figma-spotify-shortcut--default";
 
@@ -9,6 +9,7 @@ export default function SpotifyShortcutLink({ url, className = "" }) {
     const target = (url || "").trim();
     if (!target) return;
     window.open(target, "_blank", "noopener,noreferrer");
+    onAfterOpen?.();
   };
 
   return (

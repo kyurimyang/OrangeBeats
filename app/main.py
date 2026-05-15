@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import get_allowed_frontend_origins
-from app.routers import playlist, qa, spotify, youtube
+from app.routers import feedback, playlist, qa, spotify, youtube
 from app.services.spotify_session_service import SpotifySessionService
 from app.sessions.file_store import FileOAuthStateStore, FileSpotifyTokenStore
 
@@ -32,6 +32,7 @@ app.include_router(youtube.router)
 app.include_router(spotify.router)
 app.include_router(playlist.router)
 app.include_router(qa.router)
+app.include_router(feedback.router)
 
 FRONTEND_DIR = Path("frontend")
 DIST_DIR = FRONTEND_DIR / "dist"
@@ -68,8 +69,10 @@ async def spa_root() -> FileResponse:
 
 
 @app.get("/result/analysis")
+@app.get("/result/created")
+@app.get("/result/rating")
 async def spa_result_analysis() -> FileResponse:
-    """SPA 하위 경로 — React Router `/result/analysis` (OCR/ACR 선택)."""
+    """SPA 하위 경로 — React Router `/result/*` 하위 페이지."""
     index_file = DIST_DIR / "index.html"
     if not index_file.is_file():
         raise HTTPException(status_code=503, detail="Frontend build is missing. Run npm run build in frontend/site.")
