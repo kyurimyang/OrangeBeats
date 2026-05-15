@@ -52,7 +52,7 @@ UPPER_ARTIST_TOKEN_REGEX = re.compile(r"^[A-Z0-9]{2,8}$")
 REPEATED_HANGUL_TITLE_REGEX = re.compile(r"^([\uAC00-\uD7A3]{1,2})\1{1,}$")
 
 SWAP_GUARD_PENALTY = 0.0
-DOMINANT_DIRECTION_RATIO = 0.7
+DOMINANT_DIRECTION_RATIO = 0.65
 SWAP_SCORE_MARGIN = 0.8
 GLOBAL_ARTIST_TITLE_SWAP_MARGIN = 1.2
 STRONG_GLOBAL_SWAP_MARGIN = 1.6
@@ -807,6 +807,17 @@ def _probable_title_artist_pair(left: str, right: str, global_direction: str = "
         or looks_like_title(left)
     )
 
+    # 단일 이름 아티스트(IU, 태연, 헤이즈 등)는 2단어 조건을 못 채워 right_artist_like가
+    # False로 떨어지는 문제 보완. 왼쪽에 강한 제목 근거(1.2+)가 있으면 단일 이름도 허용.
+    if (
+        not right_artist_like
+        and _looks_like_artist_name_phrase(right)
+        and _count_words(right) == 1
+        and not _contains_artist_hint(right)
+        and _title_evidence(left) >= 1.2
+    ):
+        right_artist_like = True
+
     return bool(right_artist_like and left_title_like)
 
 
@@ -1408,6 +1419,11 @@ def _append_song(results: list[dict], artist: str, title: str, meta: dict | None
         "title_metadata_hints",
         "title_feature_artists",
         "title_producer_artists",
+        "raw_line",
+        "line_index",
+        "confidence",
+        "evidence_type",
+        "reject_reason",
     ]:
         if key in meta:
             song[key] = meta.get(key)
@@ -1557,6 +1573,9 @@ def normalize_song_candidates(data: Any, inferred_artist: str = "") -> dict:
         for hint_key in ["title_metadata_hints", "title_feature_artists", "title_producer_artists"]:
             if item.get(hint_key):
                 meta[hint_key] = item.get(hint_key)
+        for evidence_key in ["raw_line", "line_index", "confidence", "evidence_type", "reject_reason"]:
+            if evidence_key in item:
+                meta[evidence_key] = item.get(evidence_key)
 
         if left and right:
             line_direction = "title_artist" if item.get("nested_pair_extracted") else global_direction
@@ -1666,6 +1685,11 @@ def deduplicate_songs(songs: list[dict]) -> list[dict]:
             "title_metadata_hints",
             "title_feature_artists",
             "title_producer_artists",
+            "raw_line",
+            "line_index",
+            "confidence",
+            "evidence_type",
+            "reject_reason",
         ]:
             if meta_key in song:
                 entry[meta_key] = song.get(meta_key)

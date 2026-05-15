@@ -126,6 +126,14 @@ def _dedupe_pipeline_songs(raw_songs: List[Dict]) -> List[Dict[str, str]]:
                 "title_metadata_hints": item.get("title_metadata_hints", []),
                 "title_feature_artists": item.get("title_feature_artists", []),
                 "title_producer_artists": item.get("title_producer_artists", []),
+                "raw_line": item.get("raw_line", ""),
+                "line_index": item.get("line_index", -1),
+                "evidence_type": item.get("evidence_type", ""),
+                "reject_reason": item.get("reject_reason", ""),
+                "acr_spotify_track_id": item.get("acr_spotify_track_id", ""),
+                "acr_spotify_artist_ids": item.get("acr_spotify_artist_ids", []),
+                "acr_evidence": item.get("acr_evidence", {}),
+                "ocr_evidence": item.get("ocr_evidence", {}),
             }
         )
     return songs
@@ -557,6 +565,7 @@ def create_playlist_from_youtube(
             songs=songs,
             playlist_description=f"Created from YouTube: {youtube_title or youtube_url}",
             public=True,
+            high_confidence_only=True,
         )
         spotify_elapsed_ms = int((time.perf_counter() - spotify_started_at) * 1000)
 

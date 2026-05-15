@@ -30,6 +30,11 @@ def _dedupe_songs(raw_songs: List[Dict[str, Any]], source: str) -> List[Dict[str
         item["title"] = title
         item["source"] = item.get("source") or source
         item["source_mode"] = item.get("source_mode") or source
+        item["raw_line"] = item.get("raw_line", "")
+        item["line_index"] = item.get("line_index", -1)
+        item["evidence_type"] = item.get("evidence_type", "")
+        item["acr_evidence"] = item.get("acr_evidence", {})
+        item["ocr_evidence"] = item.get("ocr_evidence", {})
         sources = item.get("sources") if isinstance(item.get("sources"), list) else []
         if source not in sources:
             sources = [*sources, source]
