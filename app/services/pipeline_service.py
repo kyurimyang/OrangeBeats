@@ -4,6 +4,7 @@ from collections import Counter
 
 from app.clients.youtube_client import collect_text_sources, get_video_music_section
 from app.acr.acr_pipeline import extract_songs_with_acr
+from app.services.analysis_flow import merge_song_sources
 from app.services.fallback_extraction import extract_songs_with_ocr
 from app.services.text_analysis import analyze_comments_prioritized, analyze_description
 
@@ -325,6 +326,48 @@ def _fallback_recommendation(description_result: dict, comments_result: dict) ->
     }
 
 
+def _combined_text_result(
+    description_result: dict,
+    comments_result: dict,
+) -> tuple[list[dict], dict]:
+    description_songs = description_result.get("songs", []) if isinstance(description_result, dict) else []
+    comment_songs = comments_result.get("songs", []) if isinstance(comments_result, dict) else []
+    songs = merge_song_sources(
+        description_songs,
+        comment_songs,
+        base_source="description",
+        fallback_source="comments",
+    )
+    successful_sources = [
+        name
+        for name, result in [("description", description_result), ("comments", comments_result)]
+        if result.get("success")
+    ]
+    partial_sources = [
+        name
+        for name, result in [("description", description_result), ("comments", comments_result)]
+        if (not result.get("success")) and result.get("songs")
+    ]
+    metrics = {
+        "description": description_result.get("metrics", {}),
+        "comments": comments_result.get("metrics", {}),
+        "merged": {
+            "song_count": len(songs),
+            "complete_song_count": sum(1 for song in songs if song.get("artist") and song.get("title")),
+        },
+    }
+    signals = {
+        "description": description_result.get("signals", {}),
+        "comments": comments_result.get("signals", {}),
+    }
+    return songs, {
+        "successful_sources": successful_sources,
+        "partial_sources": partial_sources,
+        "metrics": metrics,
+        "signals": signals,
+    }
+
+
 def _normalize_title_for_match(title: str) -> str:
     t = (title or "").lower()
     t = re.sub(r"[^\w\s가-힣]", " ", t)
@@ -474,75 +517,74 @@ def run_youtube_text_pipeline(url: str) -> dict:
         }
 
     description_result = analyze_description(description_text, inferred_artist=title_inferred_artist)
-    if description_result["success"]:
-        artist_detection = _merge_single_artist_detection(
-            title_artist_detection,
-            _detect_single_artist_from_songs(description_result.get("songs", [])),
-        )
-        description_result = _apply_single_artist_context(description_result, artist_detection)
-        description_result["songs"], music_extras = _enrich_songs_with_music_section(
-            description_result["songs"], source_data["video_id"]
-        )
-        artist_detection = _override_single_artist_detection_with_music_section(
-            artist_detection,
-            description_result["songs"],
-        )
-        return {
-            "input_url": source_data["input_url"],
-            "video_id": source_data["video_id"],
-            "youtube_title": source_data.get("youtube_title", ""),
-            "selected_stage": "text",
-            "text_stage": "description",
-            "success": True,
-            "songs": description_result["songs"],
-            "music_section_candidates": music_extras,
-            "ocr_used": False,
-            "acr_used": False,
-            "signals": description_result["signals"],
-            "metrics": description_result["metrics"],
-            "failure_reason": "",
-            "is_partial_but_valid": description_result.get("is_partial_but_valid", False),
-            "validity_reason": description_result.get("validity_reason", ""),
-            "debug": {
-                "description": description_result,
-            },
-            **_single_artist_payload(artist_detection),
+    comments_result = (
+        analyze_comments_prioritized(comments, inferred_artist=title_inferred_artist)
+        if comments
+        else {
+            "stage": "comments",
+            "success": False,
+            "method": "skipped",
+            "signals": {},
+            "metrics": {},
+            "failure_reason": "no_comments",
+            "songs": [],
+            "source_priority_used": "none",
         }
-
-    comments_result = analyze_comments_prioritized(comments, inferred_artist=title_inferred_artist)
-    if comments_result["success"]:
+    )
+    merged_songs, merge_meta = _combined_text_result(description_result, comments_result)
+    if merged_songs:
         artist_detection = _merge_single_artist_detection(
             title_artist_detection,
-            _detect_single_artist_from_songs(comments_result.get("songs", [])),
+            _detect_single_artist_from_songs(merged_songs),
         )
-        comments_result = _apply_single_artist_context(comments_result, artist_detection)
-        comments_result["songs"], music_extras = _enrich_songs_with_music_section(
-            comments_result["songs"], source_data["video_id"]
+        merged_result = {
+            "success": bool(description_result.get("success") or comments_result.get("success")),
+            "songs": merged_songs,
+            "metrics": merge_meta["metrics"].get("merged", {}),
+        }
+        merged_result = _apply_single_artist_context(merged_result, artist_detection)
+        merged_result["songs"], music_extras = _enrich_songs_with_music_section(
+            merged_result["songs"], source_data["video_id"]
         )
         artist_detection = _override_single_artist_detection_with_music_section(
             artist_detection,
-            comments_result["songs"],
+            merged_result["songs"],
         )
+        selected_text_stage = "+".join(merge_meta["successful_sources"] or merge_meta["partial_sources"] or ["merged"])
         return {
             "input_url": source_data["input_url"],
             "video_id": source_data["video_id"],
             "youtube_title": source_data.get("youtube_title", ""),
             "selected_stage": "text",
-            "text_stage": "comments",
+            "text_stage": selected_text_stage,
             "success": True,
-            "songs": comments_result["songs"],
+            "songs": merged_result["songs"],
             "music_section_candidates": music_extras,
             "ocr_used": False,
             "acr_used": False,
-            "signals": comments_result["signals"],
-            "metrics": comments_result["metrics"],
+            "signals": merge_meta["signals"],
+            "metrics": merge_meta["metrics"],
             "failure_reason": "",
-            "is_partial_but_valid": comments_result.get("is_partial_but_valid", False),
-            "validity_reason": comments_result.get("validity_reason", ""),
+            "partial_success": not bool(description_result.get("success") and comments_result.get("success")),
+            "is_partial_but_valid": bool(
+                description_result.get("is_partial_but_valid") or comments_result.get("is_partial_but_valid")
+            ),
+            "validity_reason": (
+                description_result.get("validity_reason")
+                or comments_result.get("validity_reason")
+                or "merged_text_candidates"
+            ),
             "source_priority_used": comments_result.get("source_priority_used", "expanded_comments"),
+            "source_merge": {
+                "description_count": len(description_result.get("songs", [])),
+                "comments_count": len(comments_result.get("songs", [])),
+                "merged_count": len(merged_result["songs"]),
+                **merge_meta,
+            },
             "debug": {
                 "description": description_result,
                 "comments": comments_result,
+                "source_merge": merge_meta,
             },
             **_single_artist_payload(artist_detection),
         }
