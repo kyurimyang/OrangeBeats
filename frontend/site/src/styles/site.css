@@ -655,6 +655,480 @@ a.figma-spotify-connect {
   text-decoration: underline;
 }
 
+/* Figma 001_1_QNA — node 245:338 */
+.help-page {
+  min-height: 100vh;
+  background: #000;
+  color: #fff;
+}
+
+.help-page__main {
+  box-sizing: border-box;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: clamp(72px, 8vw, 112px) clamp(20px, 4vw, 48px) 120px clamp(20px, 14.7vw, 212px);
+}
+
+.help-page__title {
+  margin: 0 0 clamp(40px, 5vw, 60px);
+  font-size: clamp(40px, 4.8vw, 55px);
+  font-weight: 700;
+  line-height: 1;
+  color: #fff;
+}
+
+.help-page__sections {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(40px, 4.5vw, 49px);
+  max-width: 1009px;
+}
+
+.help-page__section-title {
+  margin: 0 0 clamp(28px, 3.2vw, 42px);
+  font-size: clamp(22px, 2.4vw, 30px);
+  font-weight: 700;
+  line-height: 1.2;
+  color: #d5d5d5;
+}
+
+.help-page__card {
+  box-sizing: border-box;
+  width: 100%;
+  padding: clamp(24px, 2.8vw, 32px) clamp(24px, 3.2vw, 41px) clamp(22px, 2.6vw, 31px) clamp(20px, 2vw, 25px);
+  border-radius: 20px;
+  background: #191919;
+}
+
+.help-page__card-text {
+  margin: 0;
+  font-size: clamp(16px, 1.6vw, 20px);
+  font-weight: 400;
+  line-height: 27.2px;
+  letter-spacing: -0.6px;
+  color: #fff;
+  word-break: break-word;
+}
+
+.help-page__card-text + .help-page__card-text {
+  margin-top: 27.2px;
+}
+
+/* Figma 001_1_FAQ — nodes 241:199, 245:267 */
+.faq-page {
+  min-height: 100vh;
+  background: #000;
+  color: #fff;
+}
+
+.faq-page__main {
+  box-sizing: border-box;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: clamp(72px, 8vw, 112px) clamp(20px, 4vw, 48px) 120px clamp(20px, 14.7vw, 212px);
+}
+
+.faq-page__title {
+  margin: 0 0 clamp(40px, 5vw, 60px);
+  font-family: "Inter", sans-serif;
+  font-size: clamp(40px, 4.8vw, 55px);
+  font-weight: 700;
+  line-height: 1;
+  color: #fff;
+}
+
+.faq-page__list {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(28px, 3.2vw, 39px);
+  max-width: 1009px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.faq-page__item {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.faq-page__question {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 111px;
+  padding: clamp(24px, 2.8vw, 32px) clamp(24px, 3.2vw, 41px) clamp(22px, 2.6vw, 31px) clamp(20px, 3.6vw, 53px);
+  border-radius: 20px;
+  gap: clamp(24px, 8vw, 129px);
+  background: #191919;
+}
+
+.faq-page__answer {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 159px;
+  padding: clamp(28px, 3.2vw, 32px) clamp(24px, 3.2vw, 41px) clamp(28px, 3.2vw, 31px) clamp(20px, 3.6vw, 53px);
+  border-radius: 20px;
+  gap: clamp(24px, 7.5vw, 114px);
+  background: #2e2e2e;
+}
+
+.faq-page__answer-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.faq-page__number {
+  flex: 0 0 auto;
+  min-width: 37px;
+  font-family: "Inter", sans-serif;
+  font-size: clamp(22px, 2.4vw, 30px);
+  font-weight: 700;
+  line-height: 27.2px;
+  color: #d5d5d5;
+}
+
+.faq-page__question-text,
+.faq-page__answer-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-size: clamp(16px, 1.6vw, 20px);
+  line-height: 27.2px;
+  letter-spacing: -0.6px;
+  word-break: break-word;
+}
+
+.faq-page__question-text {
+  font-weight: 600;
+  color: #fff;
+}
+
+.faq-page__answer-text {
+  font-weight: 400;
+  color: #fff;
+}
+
+.faq-page__answer-text + .faq-page__answer-text {
+  margin-top: 27.2px;
+}
+
+.faq-page__toggle {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  margin-left: auto;
+  padding: 0;
+  border: none;
+  border-radius: 24px;
+  cursor: pointer;
+}
+
+.faq-page__toggle--expand {
+  background: #fff;
+}
+
+.faq-page__toggle--collapse {
+  background: #fd6d11;
+}
+
+.faq-page__toggle:focus-visible {
+  outline: 2px solid #fd6d11;
+  outline-offset: 2px;
+}
+
+.faq-page__toggle-icon {
+  position: relative;
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+
+.faq-page__toggle-icon::before,
+.faq-page__toggle-icon::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  background: #000;
+  transform: translate(-50%, -50%);
+}
+
+.faq-page__toggle-icon::before {
+  width: 2px;
+  height: 14px;
+}
+
+.faq-page__toggle-icon::after {
+  width: 14px;
+  height: 2px;
+}
+
+.faq-page__toggle-icon--close {
+  transform: rotate(45deg);
+}
+
+.faq-page__toggle--collapse .faq-page__toggle-icon::before,
+.faq-page__toggle--collapse .faq-page__toggle-icon::after {
+  background: #fff;
+}
+
+/* Figma 001_3_contactus — node 351:238 (reference) */
+.contact-page {
+  min-height: 100vh;
+  background: #000;
+  color: #fff;
+}
+
+.contact-page__main {
+  box-sizing: border-box;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: clamp(72px, 8vw, 112px) clamp(20px, 4vw, 48px) 120px clamp(20px, 14.7vw, 212px);
+}
+
+.contact-page__title {
+  margin: 0 0 clamp(40px, 5vw, 60px);
+  font-family: "Inter", sans-serif;
+  font-size: clamp(40px, 4.8vw, 55px);
+  font-weight: 700;
+  line-height: 1;
+  color: #fff;
+}
+
+.contact-page__intro {
+  max-width: 1009px;
+  margin-bottom: clamp(40px, 5vw, 56px);
+}
+
+.contact-page__lead {
+  margin: 0 0 20px;
+  font-size: clamp(17px, 1.8vw, 20px);
+  font-weight: 400;
+  line-height: 1.7;
+  letter-spacing: -0.4px;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.contact-page__tips {
+  margin: 0;
+  padding-left: 20px;
+  font-size: clamp(16px, 1.6vw, 18px);
+  font-weight: 400;
+  line-height: 1.8;
+  letter-spacing: -0.4px;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.contact-page__tips li + li {
+  margin-top: 8px;
+}
+
+.contact-page__section {
+  max-width: 1009px;
+}
+
+.contact-page__section-title {
+  margin: 0 0 clamp(24px, 3vw, 32px);
+  font-size: clamp(22px, 2.4vw, 30px);
+  font-weight: 700;
+  line-height: 1.2;
+  color: #d5d5d5;
+}
+
+.contact-page__form {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(20px, 2.4vw, 28px);
+}
+
+.contact-page__field {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.contact-page__label {
+  font-size: clamp(14px, 1.4vw, 16px);
+  font-weight: 600;
+  line-height: 1.4;
+  color: #d5d5d5;
+  letter-spacing: -0.4px;
+}
+
+.contact-page__input,
+.contact-page__select,
+.contact-page__textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  background: #2e2e2e;
+  color: #fff;
+  font-family: "Pretendard", "Gowun Dodum", sans-serif;
+  font-size: clamp(15px, 1.5vw, 18px);
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: -0.4px;
+}
+
+.contact-page__input,
+.contact-page__select {
+  min-height: 52px;
+  padding: 0 16px;
+}
+
+.contact-page__textarea {
+  min-height: 160px;
+  padding: 14px 16px;
+  resize: vertical;
+}
+
+.contact-page__input::placeholder,
+.contact-page__textarea::placeholder {
+  color: rgba(255, 255, 255, 0.42);
+}
+
+.contact-page__input:focus,
+.contact-page__select:focus,
+.contact-page__textarea:focus {
+  outline: none;
+  border-color: #fd6d11;
+  box-shadow: 0 0 0 1px #fd6d11;
+}
+
+.contact-page__input:disabled,
+.contact-page__select:disabled,
+.contact-page__textarea:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.contact-page__select {
+  appearance: none;
+  padding-right: 40px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='white' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 16px center;
+  cursor: pointer;
+}
+
+.contact-page__checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: clamp(15px, 1.5vw, 18px);
+  line-height: 27.2px;
+  letter-spacing: -0.4px;
+  color: rgba(255, 255, 255, 0.88);
+  cursor: pointer;
+}
+
+.contact-page__checkbox input {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin-top: 4px;
+  accent-color: #fd6d11;
+  cursor: pointer;
+}
+
+.contact-page__message {
+  margin: 0;
+  font-size: clamp(15px, 1.5vw, 18px);
+  line-height: 1.5;
+}
+
+.contact-page__message--error {
+  color: #ff8a65;
+}
+
+.contact-page__message--success {
+  color: #8fd99a;
+}
+
+.contact-page__submit {
+  align-self: flex-start;
+  min-width: 140px;
+  min-height: 52px;
+  margin-top: 4px;
+  padding: 0 28px;
+  border: none;
+  border-radius: 24px;
+  background: #fd6d11;
+  color: #fff;
+  font-family: "Pretendard", "Gowun Dodum", sans-serif;
+  font-size: clamp(16px, 1.6vw, 18px);
+  font-weight: 600;
+  letter-spacing: -0.4px;
+  cursor: pointer;
+  transition: background 0.15s ease, opacity 0.15s ease;
+}
+
+.contact-page__submit:hover:not(:disabled) {
+  background: #ff7f2a;
+}
+
+.contact-page__submit:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.contact-page__submit:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+.contact-page__footer {
+  max-width: 1009px;
+  margin-top: clamp(56px, 7vw, 80px);
+  padding-top: clamp(28px, 3.5vw, 40px);
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.contact-page__footer-line {
+  margin: 0;
+  font-size: clamp(14px, 1.4vw, 16px);
+  font-weight: 400;
+  line-height: 1.8;
+  letter-spacing: -0.3px;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.contact-page__footer-line + .contact-page__footer-line {
+  margin-top: 6px;
+}
+
+.contact-page__footer-sep {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.contact-page__footer-link {
+  color: rgba(255, 255, 255, 0.88);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.contact-page__footer-link:hover {
+  color: #fd6d11;
+}
+
+.contact-page__footer-link:focus-visible {
+  outline: 2px solid #fd6d11;
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
 @media (max-width: 1400px) {
   .home-hero__title {
     font-size: clamp(48px, 6.5vw, 97px);
@@ -941,6 +1415,15 @@ a.figma-spotify-connect {
   flex-direction: column;
   align-items: stretch;
   gap: calc(24px * var(--result-scale, 1));
+}
+
+/* 003 — 헤더와 제목만 더 아래로, 제목↔패널 gap은 __main gap 그대로 */
+.result-list-page:not(.playlist-created-page) .result-list-page__main {
+  padding-top: clamp(
+    calc(80px * var(--result-scale, 1)),
+    9vh,
+    calc(112px * var(--result-scale, 1))
+  );
 }
 
 .result-list-page__heading {
@@ -1273,8 +1756,8 @@ a.figma-spotify-connect {
   aspect-ratio: 1;
   display: grid;
   place-items: center;
-  perspective: 1100px;
-  animation: playlist-vinyl-float 4.8s ease-in-out infinite;
+  perspective: 1200px;
+  animation: playlist-vinyl-float 5.5s ease-in-out infinite;
 }
 
 .playlist-create-loading__disc-3d {
@@ -1283,104 +1766,195 @@ a.figma-spotify-connect {
   height: 100%;
   transform-style: preserve-3d;
   will-change: transform;
-  animation: playlist-vinyl-rock 7.2s ease-in-out infinite;
+  animation: playlist-vinyl-rock 7s ease-in-out infinite;
 }
 
 .playlist-create-loading__glow {
   position: absolute;
-  inset: -18%;
+  inset: -14%;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(253, 109, 17, 0.55) 0%, rgba(253, 109, 17, 0.12) 42%, transparent 72%);
-  filter: blur(18px);
+  background: radial-gradient(circle, rgba(253, 109, 17, 0.35) 0%, transparent 68%);
+  filter: blur(22px);
   pointer-events: none;
-  animation: playlist-glow-pulse 3.2s ease-in-out infinite;
+  animation: playlist-glow-pulse 3.6s ease-in-out infinite;
 }
 
 .playlist-create-loading__glow--secondary {
-  inset: -8%;
-  background: radial-gradient(circle, rgba(255, 178, 45, 0.28) 0%, transparent 62%);
-  filter: blur(28px);
-  animation-delay: -1.2s;
+  display: none;
 }
 
 .playlist-create-loading__vinyl {
+  --lp-label-stop: 33%;
+  --lp-runout-stop: 41%;
   position: relative;
   width: 100%;
   height: 100%;
   border-radius: 50%;
   transform-style: preserve-3d;
-  background:
-    radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.1) 0%, transparent 36%),
-    radial-gradient(circle at 50% 50%, #1c1c1c 0%, #080808 55%, #000000 100%);
+  animation: playlist-vinyl-spin 2.4s linear infinite;
+  background: radial-gradient(circle at 38% 32%, #1a1a1a 0%, #060606 52%, #000000 100%);
   box-shadow:
-    inset 0 3px 6px rgba(255, 255, 255, 0.1),
-    inset 0 -10px 18px rgba(0, 0, 0, 0.85),
-    0 0 0 1px rgba(255, 255, 255, 0.08),
-    0 18px 36px rgba(0, 0, 0, 0.72),
-    0 32px 64px rgba(253, 109, 17, 0.22);
-  animation: playlist-vinyl-spin 2.1s linear infinite;
+    inset 0 4px 10px rgba(255, 255, 255, 0.07),
+    inset 0 -14px 24px rgba(0, 0, 0, 0.92),
+    0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 22px 44px rgba(0, 0, 0, 0.78),
+    0 36px 72px rgba(253, 109, 17, 0.22);
 }
 
-.playlist-create-loading__rim {
+.playlist-create-loading__vinyl::after {
+  content: "";
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  box-shadow:
-    inset 0 0 0 4px rgba(40, 40, 40, 0.95),
-    inset 0 0 0 5px rgba(255, 255, 255, 0.05),
-    inset 0 0 22px rgba(0, 0, 0, 0.65);
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.55);
+  transform: translateZ(-2px);
   pointer-events: none;
 }
 
+/* 바깥 홈 영역 — 촘촘한 동심원 */
 .playlist-create-loading__grooves {
   position: absolute;
-  inset: 6%;
+  inset: 0;
   border-radius: 50%;
-  background: repeating-radial-gradient(
-    circle at center,
-    rgba(255, 255, 255, 0.05) 0 1px,
-    transparent 1px 3px
+  background:
+    repeating-radial-gradient(
+      circle at center,
+      #0a0a0a 0 0.35px,
+      #161616 0.35px 0.7px,
+      #060606 0.7px 1.05px,
+      #121212 1.05px 1.4px
+    );
+  -webkit-mask: radial-gradient(
+    circle,
+    transparent var(--lp-runout-stop),
+    #000 calc(var(--lp-runout-stop) + 0.8%),
+    #000 99.2%,
+    transparent 100%
   );
-  opacity: 0.9;
+  mask: radial-gradient(
+    circle,
+    transparent var(--lp-runout-stop),
+    #000 calc(var(--lp-runout-stop) + 0.8%),
+    #000 99.2%,
+    transparent 100%
+  );
+  opacity: 1;
 }
 
-.playlist-create-loading__shine {
+/* 런아웃 — 홈 없는 매끈한 검은 링 */
+.playlist-create-loading__runout {
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  background: conic-gradient(
-    from 200deg,
-    transparent 0deg,
-    rgba(255, 255, 255, 0.14) 28deg,
-    transparent 56deg,
-    transparent 210deg,
-    rgba(255, 255, 255, 0.06) 250deg,
-    transparent 300deg
+  background: linear-gradient(145deg, #1c1c1c 0%, #080808 55%, #111111 100%);
+  -webkit-mask: radial-gradient(
+    circle,
+    transparent var(--lp-label-stop),
+    #000 calc(var(--lp-label-stop) + 0.6%),
+    #000 var(--lp-runout-stop),
+    transparent calc(var(--lp-runout-stop) + 0.6%)
   );
-  mix-blend-mode: screen;
+  mask: radial-gradient(
+    circle,
+    transparent var(--lp-label-stop),
+    #000 calc(var(--lp-label-stop) + 0.6%),
+    #000 var(--lp-runout-stop),
+    transparent calc(var(--lp-runout-stop) + 0.6%)
+  );
   pointer-events: none;
 }
 
+/* 레코드면 반사 띠 — 참고 사진의 방사형 하이라이트 */
+.playlist-create-loading__reflection {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  transform: translateZ(2px);
+  background: conic-gradient(
+    from 18deg at 50% 50%,
+    transparent 0deg,
+    rgba(255, 255, 255, 0.04) 8deg,
+    rgba(255, 255, 255, 0.22) 22deg,
+    rgba(255, 255, 255, 0.06) 34deg,
+    transparent 48deg,
+    transparent 118deg,
+    rgba(255, 255, 255, 0.03) 132deg,
+    rgba(255, 255, 255, 0.2) 148deg,
+    rgba(255, 255, 255, 0.07) 162deg,
+    transparent 178deg,
+    transparent 248deg,
+    rgba(255, 255, 255, 0.12) 268deg,
+    transparent 286deg
+  );
+  mix-blend-mode: soft-light;
+  pointer-events: none;
+  -webkit-mask: radial-gradient(
+    circle,
+    transparent var(--lp-runout-stop),
+    #000 calc(var(--lp-runout-stop) + 1%),
+    #000 99%,
+    transparent 100%
+  );
+  mask: radial-gradient(
+    circle,
+    transparent var(--lp-runout-stop),
+    #000 calc(var(--lp-runout-stop) + 1%),
+    #000 99%,
+    transparent 100%
+  );
+}
+
+.playlist-create-loading__reflection--alt {
+  background: conic-gradient(
+    from -32deg at 50% 50%,
+    transparent 0deg,
+    rgba(255, 255, 255, 0.1) 12deg,
+    transparent 28deg,
+    transparent 200deg,
+    rgba(255, 255, 255, 0.07) 218deg,
+    transparent 236deg
+  );
+  mix-blend-mode: color-dodge;
+  opacity: 0.55;
+}
+
+/* 중앙 라벨 — #FD6D11 */
 .playlist-create-loading__label {
   position: absolute;
-  inset: 28%;
+  inset: var(--lp-label-stop);
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #ff8a3d 0%, #fd6d11 48%, #e85f0a 100%);
+  background: #fd6d11;
+  transform: translateZ(4px);
   box-shadow:
-    inset 0 5px 12px rgba(255, 255, 255, 0.28),
-    inset 0 -8px 16px rgba(0, 0, 0, 0.35),
-    0 4px 10px rgba(0, 0, 0, 0.45);
-  transform: translateZ(6px);
+    inset 0 0 0 1px rgba(0, 0, 0, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 2px 8px rgba(0, 0, 0, 0.45);
 }
 
-.playlist-create-loading__label-gloss {
+.playlist-create-loading__label::before {
+  content: "";
   position: absolute;
-  inset: 12% 18% auto;
-  height: 32%;
+  inset: 14%;
   border-radius: 50%;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.45) 0%, transparent 100%);
-  opacity: 0.7;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
   pointer-events: none;
+}
+
+.playlist-create-loading__spindle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 9%;
+  height: 9%;
+  min-width: 6px;
+  min-height: 6px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: #000000;
+  box-shadow:
+    inset 0 1px 2px rgba(255, 255, 255, 0.08),
+    0 0 0 1px rgba(0, 0, 0, 0.9);
 }
 
 .playlist-create-loading__footer {
@@ -1477,13 +2051,13 @@ a.figma-spotify-connect {
 
 @media (prefers-reduced-motion: reduce) {
   .playlist-create-loading__vinyl-scene,
-  .playlist-create-loading__disc-3d,
-  .playlist-create-loading__glow {
+  .playlist-create-loading__glow,
+  .playlist-create-loading__disc-3d {
     animation: none;
   }
 
   .playlist-create-loading__vinyl {
-    animation-duration: 6s;
+    animation-duration: 7s;
   }
 }
 
@@ -1576,6 +2150,7 @@ a.figma-spotify-connect {
   min-height: 100dvh;
   background: #000000;
   color: #ffffff;
+  overflow-x: clip;
 }
 
 .result-analysis-page__main {
@@ -1583,25 +2158,32 @@ a.figma-spotify-connect {
   width: 100%;
   max-width: 1440px;
   margin: 0 auto;
-  padding: 32px 24px 64px;
+  /* 헤더 배너와 인트로(두가지 방법이 있어요) 사이 여유 */
+  padding: clamp(72px, 10vh, 104px) 24px 64px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0;
 }
 
-/* 브라우저 75% 줌과 비슷한 비율 — Figma 수치·줄바꿈은 유지한 채 전체만 축소 */
+/* 브라우저 75% 줌 — zoom은 레이아웃 박스까지 줄여 탭 전환 시 vw 음수마진 깨짐 방지 */
 .result-analysis-page__scale-wrap {
   width: 100%;
   max-width: 1440px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 48px;
-  transform: scale(0.75);
-  transform-origin: top center;
-  /* scale 후 레이아웃에 남는 아래 빈 영역 당김 (대략 세로의 ~25%) */
-  margin-bottom: clamp(-240px, -22vw, -160px);
+  gap: 28px;
+  zoom: 0.75;
+}
+
+@supports not (zoom: 0.75) {
+  .result-analysis-page__scale-wrap {
+    zoom: 1;
+    transform: scale(0.75);
+    transform-origin: top center;
+    margin-bottom: -200px;
+  }
 }
 
 .result-analysis-page__intro {
@@ -1609,7 +2191,7 @@ a.figma-spotify-connect {
   width: max-content;
   max-width: none;
   margin-inline: auto;
-  margin-bottom: 72px;
+  margin-bottom: 24px;
   white-space: nowrap;
 }
 
@@ -1647,7 +2229,7 @@ a.figma-spotify-connect {
   gap: 65px;
   width: 100%;
   max-width: 1263px;
-  margin-top: 32px;
+  margin-top: 0;
 }
 
 .result-analysis-card {
@@ -1876,21 +2458,27 @@ a.figma-spotify-connect {
 
 @media (max-width: 840px) {
   .result-analysis-page__main {
-    padding: 20px 16px 40px;
+    padding: 52px 16px 40px;
   }
 
   .result-analysis-page__scale-wrap {
-    gap: 28px;
-    margin-bottom: clamp(-120px, -18vw, -72px);
+    gap: 20px;
+    zoom: 0.75;
+  }
+
+  @supports not (zoom: 0.75) {
+    .result-analysis-page__scale-wrap {
+      margin-bottom: -120px;
+    }
   }
 
   .result-analysis-page__intro {
-    margin-bottom: 40px;
+    margin-bottom: 16px;
   }
 
   .result-analysis-page__cards {
     gap: 32px;
-    margin-top: 20px;
+    margin-top: 0;
   }
 
   .result-analysis-card {
@@ -1956,6 +2544,10 @@ a.figma-spotify-connect {
   .result-list-page__main {
     padding: 52px 14px 36px;
     gap: 16px;
+  }
+
+  .result-list-page:not(.playlist-created-page) .result-list-page__main {
+    padding-top: 68px;
   }
 
   .result-list-page__heading {
