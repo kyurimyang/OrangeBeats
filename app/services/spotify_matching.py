@@ -77,7 +77,7 @@ EXACT_ARTIST_SCORE = 0.999
 EXACT_ARTIST_MIN_TITLE_SCORE = 0.50
 MAX_CACHE_SIZE = 300
 SEARCH_LIMIT = 5
-MAX_QUERY_COUNT = 2
+MAX_QUERY_COUNT = 3
 SWAP_GUARD_MARGIN = 0.05
 ARTIST_ID_RESOLVE_MIN_SCORE = 0.78
 
@@ -136,8 +136,8 @@ BLOCKING_VERSION_KEYWORDS = {
     "acoustic",
     "piano",
     "piano version",
-    "version",
-    "ver",
+    # "version"/"ver" 제거: Spotify 정식 발매 트랙에 "(Album Ver.)", "(Repackage Ver.)" 등이
+    # 흔히 붙어 있어 정상 트랙이 version_candidate_pattern 페널티를 받는 문제 방지.
 }
 
 # Phrases that survive bracket-stripping normalization must be checked on raw text.
@@ -638,10 +638,14 @@ def _is_short_title_false_positive(input_title: str, candidate_title: str, title
     candidate_tokens = normalize_title(candidate_title).split()
     if not input_tokens or len(input_tokens) > 2:
         return False
-    # 1토큰 = 충돌 위험 항상 high (하드코딩 목록 불필요)
-    risky = _title_collision_risk(input_title) in ("high", "medium")
+    collision_risk = _title_collision_risk(input_title)
     much_longer = len(candidate_tokens) >= len(input_tokens) + 3
-    return title_score >= 0.70 and (risky or much_longer)
+    if collision_risk == "high":
+        # 1토큰 단일 단어: 충돌 위험 높음. 임계값 0.80으로 소폭 강화
+        return title_score >= 0.80
+    # 2토큰 medium risk: 후보가 훨씬 길 때(+3 토큰 이상)만 적용.
+    # "봄 하루", "밤 바다" 같은 정상 2단어 제목이 과도하게 페널티를 받던 문제 수정.
+    return title_score >= 0.80 and much_longer
 
 
 def classify_candidate_patterns(
@@ -690,7 +694,14 @@ def classify_candidate_patterns(
     if input_artist and title_variant_score >= 0.85 and artist_variant_score < MIN_ARTIST_SCORE:
         tags.append("title_only_overconfidence_pattern")
 
-    if _is_short_title_false_positive(input_title, candidate_title, title_variant_score):
+    # 아티스트가 확인된 경우 짧은 제목 false-positive 패턴 면제.
+    # artist_score가 충분하거나 alias/romanization으로 확정되면 제목 길이 위험은 무시.
+    _artist_confirmed = (
+        artist_variant_score >= MIN_ARTIST_SCORE
+        or bool(detail.get("artist_alias_matched"))
+        or bool(detail.get("romanization_matched"))
+    )
+    if not _artist_confirmed and _is_short_title_false_positive(input_title, candidate_title, title_variant_score):
         tags.append("short_title_false_positive_pattern")
 
     if title_variant_score < 0.40 and (not input_artist or artist_variant_score < 0.40):
@@ -1574,16 +1585,17 @@ def _apply_ocr_matching_policy(candidate: Optional[Dict[str, Any]]) -> Optional[
     applied_pattern = str(score_detail.get("applied_pattern") or evidence_confidence.get("applied_pattern") or "")
 
     input_title_for_ocr = str(candidate.get("search_title", ""))
+    ocr_reasons: List[str] = []
+    should_review = False
     # 아티스트가 완전히 다른 이름 + 충돌 위험 높은 제목 → OCR에서는 후보 자체 제거
     if (
         _artist_mismatch_severity(artist_similarity) == "confirmed_wrong"
         and not artist_alias_matched
         and _title_collision_risk(input_title_for_ocr) in ("high", "medium")
     ):
-        return None
-
-    ocr_reasons: List[str] = []
-    should_review = False
+        if float(enriched.get("score") or 0.0) < 0.8:
+            return None
+        should_review = True
 
     if artist_similarity < 0.5 and not artist_alias_matched:
         should_review = True

@@ -62,7 +62,17 @@ def merge_song_sources(
                     existing_sources.append(item_source)
             existing["sources"] = existing_sources
             existing["source"] = existing.get("source") or song.get("source") or source
-            for meta_key in ["timestamp", "raw", "confidence", "score", "reason"]:
+            for meta_key in [
+                "timestamp",
+                "raw",
+                "raw_line",
+                "line_index",
+                "confidence",
+                "evidence_type",
+                "score",
+                "reason",
+                "reject_reason",
+            ]:
                 if not existing.get(meta_key) and song.get(meta_key):
                     existing[meta_key] = song.get(meta_key)
             continue
