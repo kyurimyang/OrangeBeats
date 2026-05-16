@@ -1,6 +1,4 @@
-import json
 import re
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.services.spotify_api import get_track, search_artists_query, search_track, search_tracks_query
@@ -28,46 +26,6 @@ from app.services.spotify_common import (
 _MATCH_CACHE: Dict[Tuple[str, str], Optional[Dict[str, Any]]] = {}
 _MATCH_DEBUG: Dict[Tuple[str, str], Dict[str, Any]] = {}
 
-# Persistent disk cache: survives server restarts so dev re-runs don't burn API quota.
-_DISK_CACHE_FILE = Path(__file__).resolve().parents[2] / ".spotify_match_disk_cache.json"
-_disk_cache: Dict[str, Optional[Dict[str, Any]]] = {}
-
-
-def _load_disk_cache() -> None:
-    if not _DISK_CACHE_FILE.exists():
-        return
-    try:
-        data = json.loads(_DISK_CACHE_FILE.read_text(encoding="utf-8"))
-        if isinstance(data, dict):
-            _disk_cache.update(data)
-    except Exception:
-        pass
-
-
-def _save_disk_cache_entry(key: str, value: Optional[Dict[str, Any]]) -> None:
-    _disk_cache[key] = value
-    if len(_disk_cache) % 5 != 0:
-        return
-    try:
-        _DISK_CACHE_FILE.write_text(
-            json.dumps(_disk_cache, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-    except Exception:
-        pass
-
-
-def flush_disk_cache() -> None:
-    try:
-        _DISK_CACHE_FILE.write_text(
-            json.dumps(_disk_cache, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-    except Exception:
-        pass
-
-
-_load_disk_cache()
 
 EARLY_RETURN_SCORE = 0.85
 DIRECT_ACCEPT_SCORE = 0.80
@@ -78,7 +36,7 @@ EXACT_ARTIST_SCORE = 0.999
 EXACT_ARTIST_MIN_TITLE_SCORE = 0.50
 MAX_CACHE_SIZE = 300
 SEARCH_LIMIT = 5
-MAX_QUERY_COUNT = 2
+MAX_QUERY_COUNT = 3
 SWAP_GUARD_MARGIN = 0.05
 ARTIST_ID_RESOLVE_MIN_SCORE = 0.78
 
@@ -137,8 +95,8 @@ BLOCKING_VERSION_KEYWORDS = {
     "acoustic",
     "piano",
     "piano version",
-    "version",
-    "ver",
+    # "version"/"ver" 제거: Spotify 정식 발매 트랙에 "(Album Ver.)", "(Repackage Ver.)" 등이
+    # 흔히 붙어 있어 정상 트랙이 version_candidate_pattern 페널티를 받는 문제 방지.
 }
 
 # Phrases that survive bracket-stripping normalization must be checked on raw text.
@@ -639,10 +597,14 @@ def _is_short_title_false_positive(input_title: str, candidate_title: str, title
     candidate_tokens = normalize_title(candidate_title).split()
     if not input_tokens or len(input_tokens) > 2:
         return False
-    # 1토큰 = 충돌 위험 항상 high (하드코딩 목록 불필요)
-    risky = _title_collision_risk(input_title) in ("high", "medium")
+    collision_risk = _title_collision_risk(input_title)
     much_longer = len(candidate_tokens) >= len(input_tokens) + 3
-    return title_score >= 0.70 and (risky or much_longer)
+    if collision_risk == "high":
+        # 1토큰 단일 단어: 충돌 위험 높음. 임계값 0.80으로 소폭 강화
+        return title_score >= 0.80
+    # 2토큰 medium risk: 후보가 훨씬 길 때(+3 토큰 이상)만 적용.
+    # "봄 하루", "밤 바다" 같은 정상 2단어 제목이 과도하게 페널티를 받던 문제 수정.
+    return title_score >= 0.80 and much_longer
 
 
 def classify_candidate_patterns(
@@ -691,7 +653,14 @@ def classify_candidate_patterns(
     if input_artist and title_variant_score >= 0.85 and artist_variant_score < MIN_ARTIST_SCORE:
         tags.append("title_only_overconfidence_pattern")
 
-    if _is_short_title_false_positive(input_title, candidate_title, title_variant_score):
+    # 아티스트가 확인된 경우 짧은 제목 false-positive 패턴 면제.
+    # artist_score가 충분하거나 alias/romanization으로 확정되면 제목 길이 위험은 무시.
+    _artist_confirmed = (
+        artist_variant_score >= MIN_ARTIST_SCORE
+        or bool(detail.get("artist_alias_matched"))
+        or bool(detail.get("romanization_matched"))
+    )
+    if not _artist_confirmed and _is_short_title_false_positive(input_title, candidate_title, title_variant_score):
         tags.append("short_title_false_positive_pattern")
 
     if title_variant_score < 0.40 and (not input_artist or artist_variant_score < 0.40):
@@ -1226,7 +1195,7 @@ def _collect_candidate_evidence(candidate: Dict[str, Any]) -> Dict[str, Any]:
     )
     official_metadata_signal = (
         api_rank == 1
-        and query_reliability == "high"
+        and (query_reliability == "high" or (query_reliability == "medium" and artist_alias_matched))
         and query_contains_title_and_artist
         and bool(candidate_artists)
         and korean_to_english_metadata
@@ -1268,7 +1237,10 @@ def _classify_evidence_pattern(evidence: Dict[str, Any]) -> Dict[str, Any]:
     artist_similarity = float(evidence["artist_similarity"])
     artist_alias_matched = bool(evidence["artist_alias_matched"])
     artist_strong = bool(evidence["artist_strong"])
-    high_query = evidence["query_reliability"] == "high"
+    query_reliability = evidence["query_reliability"]
+    high_query = query_reliability == "high"
+    # artist alias가 확인된 경우 medium 신뢰도 쿼리도 translated title 패턴 적용 허용
+    high_or_alias_medium = high_query or (query_reliability == "medium" and artist_alias_matched)
     rank1 = api_rank == 1
     album_image_exists = bool(evidence["album_image_exists"])
     query_has_both = bool(evidence["query_contains_title_and_artist"])
@@ -1309,7 +1281,7 @@ def _classify_evidence_pattern(evidence: Dict[str, Any]) -> Dict[str, Any]:
             "reason": ["artist alias matched and title evidence is strong"],
         }
 
-    if artist_strong and title_similarity < 0.75 and rank1 and high_query and query_has_both:
+    if artist_strong and title_similarity < 0.75 and rank1 and high_or_alias_medium and query_has_both:
         confident_metadata = bool(
             evidence["official_metadata_signal"]
             and (artist_alias_matched or artist_similarity >= 0.70 or bool(evidence.get("artist_romanization_matched")))
@@ -1575,16 +1547,17 @@ def _apply_ocr_matching_policy(candidate: Optional[Dict[str, Any]]) -> Optional[
     applied_pattern = str(score_detail.get("applied_pattern") or evidence_confidence.get("applied_pattern") or "")
 
     input_title_for_ocr = str(candidate.get("search_title", ""))
+    ocr_reasons: List[str] = []
+    should_review = False
     # 아티스트가 완전히 다른 이름 + 충돌 위험 높은 제목 → OCR에서는 후보 자체 제거
     if (
         _artist_mismatch_severity(artist_similarity) == "confirmed_wrong"
         and not artist_alias_matched
         and _title_collision_risk(input_title_for_ocr) in ("high", "medium")
     ):
-        return None
-
-    ocr_reasons: List[str] = []
-    should_review = False
+        if float(enriched.get("score") or 0.0) < 0.8:
+            return None
+        should_review = True
 
     if artist_similarity < 0.5 and not artist_alias_matched:
         should_review = True
@@ -2852,14 +2825,6 @@ def pick_best_track_match(
         )
         return _apply_ocr_matching_policy(cached) if source_mode == "ocr" else cached
 
-    # Disk cache: avoids re-querying Spotify across server restarts during development.
-    disk_cache_key = f"{input_title.lower()}::{(input_artist or '').lower()}"
-    if disk_cache_key in _disk_cache:
-        cached = _disk_cache[disk_cache_key]
-        _MATCH_CACHE[cache_key] = cached
-        print(f"[spotify-match] disk cache hit: '{input_artist} - {input_title}'")
-        return _apply_ocr_matching_policy(cached) if source_mode == "ocr" else cached
-
     # ACR direct path: ACR이 제공한 Spotify track ID가 있으면 검색 없이 직접 조회
     acr_spotify_track_id = str(song_meta.get("acr_spotify_track_id") or "").strip()
     if acr_spotify_track_id:
@@ -2956,7 +2921,6 @@ def pick_best_track_match(
             early_return=False,
         )
         _MATCH_CACHE[cache_key] = None
-        _save_disk_cache_entry(disk_cache_key, None)
         return None
 
     best_candidate = selected_case_result.get("best_candidate") or {}
@@ -2978,7 +2942,6 @@ def pick_best_track_match(
             case_results=case_results,
         )
         _MATCH_CACHE[cache_key] = None
-        _save_disk_cache_entry(disk_cache_key, None)
         _log_match(
             input_title=input_title,
             input_artist=input_artist,
@@ -3056,5 +3019,4 @@ def pick_best_track_match(
         _MATCH_CACHE.clear()
         _MATCH_DEBUG.clear()
     _MATCH_CACHE[cache_key] = best
-    _save_disk_cache_entry(disk_cache_key, best)
     return best

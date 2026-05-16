@@ -6,7 +6,7 @@ from typing import Dict, List
 
 from app.acr.acr_client import acr_credentials_available, recognize_acr_segment
 from app.acr.audio_extractor import download_youtube_audio
-from app.acr.segmenter import ACR_SEGMENT_SECONDS, create_audio_segments
+from app.acr.segmenter import ACR_MAX_SEGMENTS, ACR_SEGMENT_SECONDS, create_audio_segments, sample_interval
 
 
 def _safe_tmp_dir(prefix: str) -> Path:
@@ -60,8 +60,17 @@ def _deduplicate_acr_songs(songs: List[Dict]) -> List[Dict]:
             continue
 
         existing = merged[duplicate_index]
+        existing_segments = list(existing.get("acr_evidence", {}).get("segments", []))
+        song_segments = list(song.get("acr_evidence", {}).get("segments", []))
+        merged_segments = existing_segments + [segment for segment in song_segments if segment not in existing_segments]
         if int(song.get("score") or 0) > int(existing.get("score") or 0):
             merged[duplicate_index] = song
+            existing = merged[duplicate_index]
+        evidence = dict(existing.get("acr_evidence") or {})
+        evidence["segments"] = merged_segments
+        evidence["recognition_count"] = len(merged_segments)
+        evidence["max_score"] = max(int(existing.get("score") or 0), int(song.get("score") or 0))
+        existing["acr_evidence"] = evidence
 
     return merged
 
@@ -104,10 +113,22 @@ def extract_songs_with_acr(youtube_url: str) -> Dict:
         sampled_segments = len(segments)
 
         recognized: List[Dict] = []
-        for segment_path in segments:
+        interval_sec = sample_interval(info.get("duration"), ACR_MAX_SEGMENTS)
+
+        for segment_index, segment_path in enumerate(segments):
             song = recognize_acr_segment(segment_path)
             if song:
                 recognized_segments += 1
+                start_sec = segment_index * interval_sec
+                song["source"] = song.get("source") or "acr"
+                song["source_mode"] = song.get("source_mode") or "acr"
+                song["evidence_type"] = "acr_audio_fingerprint"
+                song["acr_evidence"] = {
+                    "segments": [{"index": segment_index, "start_sec": start_sec, "score": song.get("score", 0)}],
+                    "recognition_count": 1,
+                    "max_score": song.get("score", 0),
+                    "spotify_track_id_present": bool(song.get("acr_spotify_track_id")),
+                }
                 recognized.append(song)
         recognition_rate = recognized_segments / max(sampled_segments, 1)
         unrecognized_reason = ""

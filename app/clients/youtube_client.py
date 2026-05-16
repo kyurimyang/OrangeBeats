@@ -267,6 +267,35 @@ def get_playlist_title(playlist_id: str) -> str:
     return items[0]["snippet"].get("title", "").strip()
 
 
+_MUSIC_SECTION_SUBTITLES = {"곡", "song", "songs", "music", "음악", "노래", "트랙", "track", "tracks"}
+
+
+def _is_music_section_subtitle(subtitle: str) -> bool:
+    lowered = (subtitle or "").lower().strip()
+    return any(kw in lowered for kw in _MUSIC_SECTION_SUBTITLES)
+
+
+def _extract_cards_from_hcl(hcl: dict) -> list[dict]:
+    songs = []
+    for card in hcl.get("cards", []):
+        # 구조 1: videoAttributeViewModel (구버전)
+        vm = card.get("videoAttributeViewModel", {})
+        title = (vm.get("title") or "").strip()
+        artist = (vm.get("subtitle") or "").strip()
+        album = ((vm.get("secondarySubtitle") or {}).get("content") or "").strip()
+
+        # 구조 2: musicAttributeViewModel (신버전 대응)
+        if not title:
+            mv = card.get("musicAttributeViewModel") or card.get("musicCardAttributeViewModel", {})
+            title = (mv.get("title") or "").strip()
+            artist = (mv.get("artist") or mv.get("subtitle") or "").strip()
+            album = (mv.get("album") or "").strip()
+
+        if title and artist:
+            songs.append({"title": title, "artist": artist, "album": album})
+    return songs
+
+
 def get_video_music_section(video_id: str) -> list[dict]:
     """YouTube InnerTube API로 영상의 '음악' 섹션(Content ID 매칭) 추출.
     반환: [{"title": ..., "artist": ..., "album": ...}, ...]
@@ -287,32 +316,45 @@ def get_video_music_section(video_id: str) -> list[dict]:
     try:
         panels = data.get("engagementPanels", [])
         for panel in panels:
-            renderer = panel.get("engagementPanelSectionListRenderer", {})
+            renderer = (
+                panel.get("engagementPanelSectionListRenderer")
+                or panel.get("engagementPanelSectionListRendererV2")
+                or {}
+            )
             if renderer.get("panelIdentifier") != "engagement-panel-structured-description":
                 continue
-            items = renderer["content"]["structuredDescriptionContentRenderer"]["items"]
+
+            content = renderer.get("content", {})
+            # content 아래 structuredDescriptionContentRenderer 또는 직접 items
+            desc_renderer = (
+                content.get("structuredDescriptionContentRenderer")
+                or content.get("engagementPanelSectionListRenderer", {}).get("content", {}).get("structuredDescriptionContentRenderer")
+                or {}
+            )
+            items = desc_renderer.get("items") or []
+
             for item in items:
                 hcl = item.get("horizontalCardListRenderer", {})
                 if not hcl:
                     continue
+
+                # subtitle 추출: richListHeaderRenderer 또는 simpleText 직접
+                header = hcl.get("header", {})
+                rich_header = header.get("richListHeaderRenderer", {})
                 subtitle = (
-                    hcl.get("header", {})
-                    .get("richListHeaderRenderer", {})
-                    .get("subtitle", {})
-                    .get("simpleText", "")
+                    (rich_header.get("subtitle") or {}).get("simpleText")
+                    or (rich_header.get("title") or {}).get("simpleText")
+                    or (header.get("titleText") or {}).get("runs", [{}])[0].get("text")
+                    or ""
                 )
-                if "곡" not in subtitle and "song" not in subtitle.lower():
+
+                if not _is_music_section_subtitle(subtitle):
                     continue
-                songs = []
-                for card in hcl.get("cards", []):
-                    vm = card.get("videoAttributeViewModel", {})
-                    title = vm.get("title", "").strip()
-                    artist = vm.get("subtitle", "").strip()
-                    album = vm.get("secondarySubtitle", {}).get("content", "").strip()
-                    if title and artist:
-                        songs.append({"title": title, "artist": artist, "album": album})
-                return songs
-    except (KeyError, TypeError):
+
+                songs = _extract_cards_from_hcl(hcl)
+                if songs:
+                    return songs
+    except (KeyError, TypeError, IndexError):
         pass
 
     return []

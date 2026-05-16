@@ -19,7 +19,13 @@ SYSTEM_PROMPT = """
 
 {
   "songs": [
-    {"artist": "가수명", "title": "곡명"}
+    {
+      "artist": "artist name",
+      "title": "song title",
+      "raw_line": "exact source line from the input",
+      "confidence": "high",
+      "evidence_type": "timestamp_pair"
+    }
   ]
 }
 
@@ -36,8 +42,12 @@ SYSTEM_PROMPT = """
 10. JSON의 title 필드에는 반드시 곡 제목만 넣는다.
 11. "로꼬 & 펀치", "HIGH4, 아이유"처럼 여러 아티스트가 함께 적혀 있으면 하나의 artist 문자열로 유지한다. 분리하지 않는다.
 12. artist와 title의 위치가 불명확하면 더 자연스러운 쪽을 택하되, 확신이 없으면 제외한다.
-13. 설명, 마크다운, 코드블록 없이 JSON 객체만 반환한다.
-14. 추출 결과가 없으면 아래처럼 반환한다.
+13. Include raw_line for every extracted song. raw_line must be an exact line or sentence that appears in the input.
+14. Include confidence as high, medium, or low. Use high only when the source line directly contains the track evidence.
+15. Include evidence_type as timestamp_pair, delimiter_pair, title_only_timestamp, explicit_tracklist, or other.
+16. If there is no exact raw_line evidence, do not extract the song.
+17. Return only the JSON object, without markdown, comments, or code fences.
+18. If there are no extraction results, return this:
 
 {
   "songs": []
@@ -354,3 +364,4 @@ def rerank_spotify_candidates_with_llm(
     except Exception as e:
         print("Spotify rerank LLM 오류 =", str(e))
         return None
+

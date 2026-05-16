@@ -12,6 +12,7 @@ from app.services.spotify_matching import (
 )
 
 LOW_CONF_MIN_SCORE = 0.60
+HIGH_CONF_AUTO_CREATE_SCORE = 0.85
 ALLOWED_LOW_CONF_REASONS = {
     "probable_match",
     "review_needed",
@@ -98,22 +99,29 @@ def _resolve_single_artist_context(
 
 
 def _single_artist_filter_decision(song: Dict[str, Any], single_artist_context: Dict[str, Any]) -> Dict[str, Any]:
-    if not single_artist_context:
-        return {
-            "applied": False,
-            "reason": "no_single_artist_context",
-            "context": {},
-        }
     if song.get("music_section_confirmed"):
         return {
             "applied": False,
             "reason": "music_section_confirmed",
             "context": {},
         }
+    if not single_artist_context:
+        return {
+            "applied": False,
+            "reason": "no_single_artist_context",
+            "context": {},
+        }
     if not song.get("artist_inferred"):
         return {
             "applied": False,
             "reason": "artist_not_inferred",
+            "context": {},
+        }
+    inferred_source = str(song.get("inferred_artist_source") or "").strip()
+    if inferred_source and inferred_source in {"description_hashtag", "title_description", "single_artist_context"}:
+        return {
+            "applied": False,
+            "reason": f"weak_inferred_artist_source:{inferred_source or 'unknown'}",
             "context": {},
         }
 
@@ -504,6 +512,10 @@ def analyze_spotify_candidates(
             "title_metadata_hints": song.get("title_metadata_hints", []),
             "title_feature_artists": song.get("title_feature_artists", []),
             "title_producer_artists": song.get("title_producer_artists", []),
+            "raw_line": song.get("raw_line", ""),
+            "evidence_type": song.get("evidence_type", ""),
+            "ocr_evidence": song.get("ocr_evidence", {}),
+            "acr_evidence": song.get("acr_evidence", {}),
             **song_single_artist_context,
         }
         # artist_inferred + music_section 미확인 → single artist filter로만 제한하고 title-only 검색
@@ -635,6 +647,7 @@ def create_playlist_from_songs(
     songs: List[Dict[str, str]],
     playlist_description: str = '',
     public: bool = True,
+    high_confidence_only: bool = False,
 ) -> Dict[str, Any]:
     if not songs:
         raise SpotifyServiceError('생성할 곡 목록이 없습니다.')
@@ -672,6 +685,10 @@ def create_playlist_from_songs(
             'title_metadata_hints': song.get('title_metadata_hints', []),
             'title_feature_artists': song.get('title_feature_artists', []),
             'title_producer_artists': song.get('title_producer_artists', []),
+            'raw_line': song.get('raw_line', ''),
+            'evidence_type': song.get('evidence_type', ''),
+            'ocr_evidence': song.get('ocr_evidence', {}),
+            'acr_evidence': song.get('acr_evidence', {}),
             **song_single_artist_context,
         }
 
@@ -721,6 +738,51 @@ def create_playlist_from_songs(
             continue
 
         match_status = match.get('match_status', 'matched')
+        if (
+            high_confidence_only
+            and match_status == 'matched'
+            and float(match.get('score') or 0.0) < HIGH_CONF_AUTO_CREATE_SCORE
+        ):
+            low_confidence.append({
+                'input': {
+                    'artist': input_artist,
+                    'title': title,
+                },
+                'matched_name': match.get('name', ''),
+                'matched_title': match.get('name', ''),
+                'matched_artists': match.get('artists', []),
+                'score': match.get('score', 0.0),
+                'match_status': 'review_needed',
+                'reason': 'high_confidence_only_gate',
+                'low_confidence_reason': 'high_confidence_only_gate',
+                'user_message': '자동 생성에서는 high-confidence 곡만 추가합니다. 이 후보는 사용자 확인이 필요합니다.',
+                'score_detail': match.get('score_detail', {}),
+                'search_title': match.get('search_title', ''),
+                'search_artist': match.get('search_artist', ''),
+                'chosen_case': match.get('chosen_case', song_meta['chosen_case']),
+                'swap_applied': song_meta['swap_applied'],
+                'global_direction': song_meta['global_direction'],
+                'parse_reason': song_meta['reason'],
+                'parse_score': song_meta['score'],
+                'single_artist_filter_applied': bool(filter_decision['applied']),
+                'single_artist_filter_reason': str(filter_decision['reason']),
+                'spotify_artist_id_filter': song_single_artist_context.get('spotify_artist_id', ''),
+                'top_candidates': [
+                    _candidate_summary(candidate, match.get('chosen_case', song_meta['chosen_case']))
+                    for candidate in match.get('top_candidates', [])
+                ],
+            })
+            skipped_low_confidence.append({
+                'input': {
+                    'artist': input_artist,
+                    'title': title,
+                },
+                'matched_name': match.get('name', ''),
+                'score': match.get('score', 0.0),
+                'skip_reason': 'high_confidence_only_gate',
+                'user_message': '자동 생성에서는 high-confidence 곡만 추가합니다.',
+            })
+            continue
         if not _is_successful_match(match):
             low_conf_reason = match.get('low_confidence_reason', '') or match.get('reason', '')
             low_confidence_item = {

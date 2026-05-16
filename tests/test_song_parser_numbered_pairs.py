@@ -34,6 +34,30 @@ class SongParserNumberedPairsTests(unittest.TestCase):
         self.assertTrue(all(song.get("nested_pair_extracted") for song in songs))
         self.assertEqual([song.get("track_number_prefix") for song in songs], ["1.", "2.", "5.", "6."])
 
+    @patch(
+        "app.parsers.song_parser._detect_llm_global_direction",
+        return_value={"global_direction": "mixed", "confidence": "low", "reason": ""},
+    )
+    def test_timestamp_title_only_lines_drop_title_number_prefix(self, _llm_mock):
+        result = parse_unstructured_lines_to_json(
+            "\n".join(
+                [
+                    "00:53 01. Supernatural",
+                    "04:01 02. How Sweet",
+                ]
+            )
+        )
+
+        songs = result["songs"]
+        self.assertEqual(
+            [song["title"] for song in songs],
+            ["Supernatural", "How Sweet"],
+        )
+        self.assertEqual(
+            [song.get("timestamp") for song in songs],
+            ["00:53", "04:01"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

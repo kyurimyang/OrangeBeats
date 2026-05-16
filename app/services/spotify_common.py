@@ -88,6 +88,8 @@ ARTIST_ALIAS_MAP: Dict[str, List[str]] = {
     '이무진': ['LEE MU JIN', 'Lee Mujin', 'Lee Mu Jin'],
     '도영': ['DOYOUNG', 'Doyoung'],
     '유다빈 밴드': ['YdBB', 'Yudabinband'],
+    '성시경': ['Sung Si Kyung', 'sung si kyung'],
+    '정준일': ['JOONIL JUNG', 'Joonil Jung', 'joonil jung'],
 }
 
 ARTIST_ALIAS_MAP.update(CORE_ARTIST_ALIAS_MAP)

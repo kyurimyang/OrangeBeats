@@ -22,7 +22,9 @@ TIME_PREFIX_REGEX = re.compile(r"^\s*(?:\d{1,2}:\d{2}(?::\d{2})?)\s*[-|~>*]*\s*"
 TIMESTAMP_TOKEN_REGEX = re.compile(r"(?<!\d)(?:\d{1,2}:\d{2}(?::\d{2})?)(?!\d)")
 TIMESTAMP_LINE_REGEX = re.compile(r"^(?P<ts>\d{1,2}:\d{2}(?::\d{2})?)\s+(?P<body>.+)$")
 TIMESTAMP_PREFIX_ONLY_REGEX = re.compile(r"^\d{1,2}:\d{2}(?::\d{2})?\s+")
+NUMBERED_HYPHEN_TRACK_REGEX = re.compile(r"^\d{1,3}-(.+?)-(.+)$")
 TRACK_NUMBER_ONLY_REGEX = re.compile(r"^\s*(?:\d{1,3}|[A-Za-z])[\.)]?\s*$")
+TITLE_TRACK_NUMBER_PREFIX_REGEX = re.compile(r"^\s*(?:\d{1,3}|[A-Za-z])\s*[\.)]\s+")
 MULTISPACE_REGEX = re.compile(r"\s+")
 BRACKET_REGEX = re.compile(r"[\[\(\{].*?[\]\)\}]")
 PARENTHETICAL_REGEX = re.compile(r"[\(\[\{]([^\)\]\}]{1,12})[\)\]\}]")
@@ -30,7 +32,7 @@ TITLE_METADATA_HINT_REGEX = re.compile(
     r"[\(\[\{]?\s*(?P<kind>feat|ft|featuring|with|prod(?:uced)?\s+by)\.?\s+(?P<value>[^\)\]\}\-_/|]{1,80})[\)\]\}]?",
     re.IGNORECASE,
 )
-PAIR_REGEX = re.compile(r".+\s[-–—|/:~]\s.+")
+PAIR_REGEX = re.compile(r".+\s[-–—|/:~_]\s.+")
 PURE_PUNCT_REGEX = re.compile(r"^[^\w\uAC00-\uD7A3]+$")
 LEADING_DECORATION_REGEX = re.compile(r"^[~*#>+\-\s]+")
 TRAILING_DECORATION_REGEX = re.compile(r"[~*#<>\-\s]+$")
@@ -44,7 +46,7 @@ UPPER_ARTIST_TOKEN_REGEX = re.compile(r"^[A-Z0-9]{2,8}$")
 REPEATED_HANGUL_TITLE_REGEX = re.compile(r"^([\uAC00-\uD7A3]{1,2})\1{1,}$")
 
 SWAP_GUARD_PENALTY = 0.0
-DOMINANT_DIRECTION_RATIO = 0.7
+DOMINANT_DIRECTION_RATIO = 0.65
 SWAP_SCORE_MARGIN = 0.8
 GLOBAL_ARTIST_TITLE_SWAP_MARGIN = 1.2
 STRONG_GLOBAL_SWAP_MARGIN = 1.6
@@ -66,6 +68,29 @@ TITLE_HINT_KO = [
     "\ubd88\ud3b8\ud574",
 ]
 ARTIST_CONNECTORS = ["feat", "ft", "&", ",", " x ", " X "]
+LOCAL_SECTION_KEYWORDS = [
+    "\uc378\ub124\uc77c",
+    "\uc12c\ub124\uc77c",
+    "\ub178\ub798 \ubaa8\uc74c",
+    "\ub178\ub798\ubaa8\uc74c",
+    "\ud50c\ub808\uc774\ub9ac\uc2a4\ud2b8",
+    "\ucf00\uc774\ud31d",
+    "\uac78\uadf8\ub8f9",
+    "\uc5ec\ub3cc",
+    "\ub178\ub3d9\uc694",
+    "\ub9e4\uc7a5\uc5d0\uc11c \ud2c0\uae30 \uc88b\uc740",
+]
+PLAYLIST_TITLE_METADATA_KEYWORDS = [
+    "playlist",
+    "kpop",
+    "\ub178\ub798 \ubaa8\uc74c",
+    "\ub178\ub798\ubaa8\uc74c",
+    "\ud50c\ub808\uc774\ub9ac\uc2a4\ud2b8",
+    "\ucf00\uc774\ud31d",
+    "\uac78\uadf8\ub8f9",
+    "\uc5ec\ub3cc",
+    "\ub178\ub3d9\uc694",
+]
 TITLE_LEADING_WORDS_EN = {"the", "a", "an", "my", "your", "our", "this", "that"}
 TITLE_VERB_HINTS_EN = {"is", "are", "was", "were", "be", "build", "love", "hate", "need", "want"}
 TITLE_TRAILING_WORDS_EN = {"mine", "more", "sick", "dance", "umbrella", "vida"}
@@ -240,7 +265,21 @@ def _contains_non_music_pattern(line: str) -> bool:
 
 def _contains_section_keyword(line: str) -> bool:
     lower = line.lower()
-    return any(keyword.lower() in lower for keyword in SECTION_KEYWORDS)
+    return any(keyword.lower() in lower for keyword in [*SECTION_KEYWORDS, *LOCAL_SECTION_KEYWORDS])
+
+
+def _looks_like_playlist_title_metadata(line: str) -> bool:
+    lower = line.lower()
+    keyword_count = sum(1 for keyword in PLAYLIST_TITLE_METADATA_KEYWORDS if keyword in lower)
+    slash_count = lower.count("/")
+    word_count = len(lower.split())
+    bracket_wrapped = bool(re.match(r"^[\[\(\{].{12,}[\]\)\}]?$", line.strip()))
+
+    if keyword_count >= 2 and (bracket_wrapped or slash_count >= 2 or word_count >= 10):
+        return True
+    if bracket_wrapped and keyword_count >= 1 and word_count >= 8:
+        return True
+    return False
 
 
 def _left_part_is_metadata(normalized: str) -> bool:
@@ -276,7 +315,7 @@ def _looks_like_natural_sentence(line: str) -> bool:
 
 
 def _is_valid_music_line(line: str) -> bool:
-    if not line or len(line.strip()) < 3:
+    if not line or len(line.strip()) < 2:
         return False
 
     normalized = _normalize_line(line)
@@ -284,6 +323,9 @@ def _is_valid_music_line(line: str) -> bool:
         return False
 
     if _contains_non_music_pattern(line) or _contains_non_music_pattern(normalized):
+        return False
+
+    if _looks_like_playlist_title_metadata(normalized):
         return False
 
     has_delimiter = any(delimiter in normalized for delimiter in TITLE_DELIMITERS)
@@ -519,6 +561,40 @@ def score_title_like(text: str) -> float:
     return round(score, 4)
 
 
+def _strip_underscore_annotation(text: str) -> str:
+    """'제목 _ 아티스트' 복합 라인에서 primary separator로 분리된 후 right에 남은 '_ annotation' 제거.
+    annotation이 2단어 이하이고 artist-like하며 title-like하지 않을 때만 적용."""
+    if " _ " not in text:
+        return text
+    left_part, annotation = text.split(" _ ", 1)
+    annotation = _clean_text(annotation)
+    if not annotation:
+        return text
+    if _count_words(annotation) <= 2 and looks_like_artist(annotation) and not looks_like_title(annotation):
+        return _clean_text(left_part)
+    return text
+
+
+def _mask_bracket_spans(text: str) -> tuple[str, dict]:
+    """괄호 범위를 placeholder 토큰으로 치환해 split 시 중간 분리를 방지한다."""
+    masks: dict[str, str] = {}
+    idx = [0]
+
+    def sub(m: re.Match) -> str:
+        key = f"\x00M{idx[0]}\x00"
+        masks[key] = m.group(0)
+        idx[0] += 1
+        return key
+
+    return re.sub(r"[\[\(\{][^\]\)\}]*[\]\)\}]", sub, text), masks
+
+
+def _unmask_bracket_spans(text: str, masks: dict) -> str:
+    for key, val in masks.items():
+        text = text.replace(key, val)
+    return text
+
+
 def _extract_pair_parts(text: str) -> dict | None:
     cleaned = _clean_text(text)
     if not cleaned:
@@ -534,6 +610,55 @@ def _extract_pair_parts(text: str) -> dict | None:
         left, right = raw_left, raw_right
         left = _clean_text(left)
         right = _clean_text(right)
+        # '<' 구분자 처리: '[현재아티스트] - [다음아티스트] <[다음곡제목]>' 형식
+        # 예: 'BTS - BIGBANG <뱅뱅뱅>' → left='BIGBANG', right='뱅뱅뱅'
+        if " <" in right:
+            sub_left, sub_right = right.split(" <", 1)
+            sub_left = _clean_text(sub_left)
+            sub_right = _clean_text(sub_right).rstrip(">").strip()
+            if sub_left and sub_right and looks_like_artist(sub_left):
+                left = sub_left
+                right = sub_right
+        # 컴필레이션 포맷: '[이전아티스트] - [다음아티스트] [제목]' (꺽쇠 없이)
+        # 예: '베리베리 (VERIVERY) - NCT 127 영웅 (英雄; Kick It)' → artist='NCT 127', title='영웅 (英雄; Kick It)'
+        # 오탐 방지: left가 artist로 확정된 경우 right를 재분리하려면
+        #   (1) cand_artist가 알려진 아티스트(strong evidence ≥ 2.5), 또는
+        #   (2) cand_artist가 2개 이상의 대문자/숫자 토큰 AND cand_title이 CJK 시작이거나 2단어 이상
+        # 이 조건 없이 재분리하면 'TREASURE - KING KONG' → artist=KING, title=KONG 같은 오탐 발생.
+        elif looks_like_artist(left):
+            masked_right, _masks = _mask_bracket_spans(right)
+            tokens = masked_right.split()
+            for end in range(min(len(tokens) - 1, 4), 0, -1):
+                cand_artist = _unmask_bracket_spans(" ".join(tokens[:end]), _masks)
+                cand_title = _unmask_bracket_spans(" ".join(tokens[end:]), _masks)
+                cand_artist_clean = _clean_text(cand_artist)
+                cand_title_clean = _clean_text(cand_title)
+
+                cand_artist_known = _known_artist_evidence(cand_artist_clean) >= 2.5
+                cand_artist_multi_caps = (
+                    _count_words(cand_artist_clean) >= 2
+                    and all(t.isupper() or t.isdigit() for t in cand_artist_clean.split()[:2])
+                )
+                cand_title_strong = bool(
+                    cand_title_clean
+                    and re.match(r"[가-힣一-鿿぀-ヿ]", cand_title_clean)
+                ) or _count_words(cand_title_clean) >= 2
+
+                if not (cand_artist_known or (cand_artist_multi_caps and cand_title_strong)):
+                    continue
+
+                if (cand_title
+                        and looks_like_artist(cand_artist)
+                        and cand_artist[0].isascii()
+                        and cand_artist[0].isalpha()
+                        and looks_like_title(cand_title)):
+                    left = cand_artist
+                    right = cand_title
+                    break
+        # 복합 라인 처리: primary separator가 '_' 아닌데 right에 '_ annotation'이 남은 경우 제거
+        # 예: '아티스트 - 제목 _ 원곡아티스트' → right='제목'
+        if sep != " _ ":
+            right = _strip_underscore_annotation(right)
         nested = _extract_numbered_nested_pair(left, right)
         if nested:
             nested_left, nested_right, nested_sep = nested
@@ -556,12 +681,53 @@ def _extract_pair_parts(text: str) -> dict | None:
                 "left_title_metadata": _extract_title_metadata_hints(original_left),
                 "right_title_metadata": _extract_title_metadata_hints(original_right),
             }
+    # 폴백: '[아티스트] <[제목]>' 형식 (primary separator 없이 '<'만 있는 경우)
+    # 예: '샤이니 (SHINee) <Don't Call Me>' → artist='샤이니 (SHINee)', title='Don't Call Me'
+    if " <" in cleaned:
+        sub_left, sub_right = cleaned.split(" <", 1)
+        sub_left = _clean_text(sub_left)
+        sub_right = _clean_text(sub_right).rstrip(">").strip()
+        # 한글 아티스트 판별: '블락비 (Block B)' 같이 영문 병기가 붙은 경우도 처리
+        compact_base = re.sub(r"\s*\([^)]*\)\s*", "", sub_left).replace(" ", "")
+        is_hangul_artist = bool(re.fullmatch(r"[가-힣]+", compact_base)) and 2 <= len(compact_base) <= 15
+        if sub_left and sub_right and (looks_like_artist(sub_left) or is_hangul_artist):
+            return {
+                "raw": text,
+                "separator": " <",
+                "left": sub_left,
+                "right": sub_right,
+                "artist_parentheses_preserved": _has_preserved_parenthetical_identifier(sub_left),
+                "left_title_metadata": {},
+                "right_title_metadata": {},
+            }
     return None
 
 
 def _looks_like_track_number_prefix(text: str) -> bool:
     cleaned = _clean_text(text)
     return bool(cleaned and TRACK_NUMBER_ONLY_REGEX.fullmatch(cleaned))
+
+
+def _extract_numbered_hyphen_track(text: str) -> dict | None:
+    """01-KiiiKiii-404, 13-NewJeans-Super Shy 같이 NN-Artist-Title 형식을 처리한다."""
+    cleaned = _clean_text(text)
+    if not cleaned:
+        return None
+    match = NUMBERED_HYPHEN_TRACK_REGEX.match(cleaned)
+    if not match:
+        return None
+    artist = _clean_text(match.group(1))
+    title = _clean_text(match.group(2))
+    if not artist or not title:
+        return None
+    return {
+        "raw": text,
+        "left": artist,
+        "right": title,
+        "artist": artist,
+        "title": title,
+        "_numbered_track": True,
+    }
 
 
 def _extract_numbered_nested_pair(left: str, right: str) -> tuple[str, str, str] | None:
@@ -713,6 +879,17 @@ def _probable_title_artist_pair(left: str, right: str, global_direction: str = "
         or _looks_like_title_with_feature_artist(left)
         or looks_like_title(left)
     )
+
+    # 단일 이름 아티스트(IU, 태연, 헤이즈 등)는 2단어 조건을 못 채워 right_artist_like가
+    # False로 떨어지는 문제 보완. 왼쪽에 강한 제목 근거(1.2+)가 있으면 단일 이름도 허용.
+    if (
+        not right_artist_like
+        and _looks_like_artist_name_phrase(right)
+        and _count_words(right) == 1
+        and not _contains_artist_hint(right)
+        and _title_evidence(left) >= 1.2
+    ):
+        right_artist_like = True
 
     return bool(right_artist_like and left_title_like)
 
@@ -1231,6 +1408,7 @@ def _reuse_existing_direction_meta(songs: list[dict]) -> tuple[str, dict] | None
 def _append_song(results: list[dict], artist: str, title: str, meta: dict | None = None) -> None:
     artist = _clean_text(artist)
     title = _clean_text(title)
+    title = TITLE_TRACK_NUMBER_PREFIX_REGEX.sub("", title).strip()
     meta = meta or {}
 
     if not _is_meaningful_text(title):
@@ -1308,6 +1486,11 @@ def _append_song(results: list[dict], artist: str, title: str, meta: dict | None
         "title_metadata_hints",
         "title_feature_artists",
         "title_producer_artists",
+        "raw_line",
+        "line_index",
+        "confidence",
+        "evidence_type",
+        "reject_reason",
     ]:
         if key in meta:
             song[key] = meta.get(key)
@@ -1334,6 +1517,8 @@ def parse_unstructured_lines_to_json(text: str) -> dict:
 
         parts = _extract_pair_parts(raw_target)
         if not parts:
+            parts = _extract_numbered_hyphen_track(raw_target)
+        if not parts:
             # 타임스탬프가 있는데 구분자가 없으면 body 전체를 title-only로 보관
             if ts_match:
                 parts = {"raw": raw_target, "left": "", "right": "", "_title_only": True}
@@ -1344,7 +1529,10 @@ def parse_unstructured_lines_to_json(text: str) -> dict:
             parts["_timestamp"] = ts_match.group("ts")
         pair_candidates.append(parts)
 
-    pair_candidates_with_sep = [p for p in pair_candidates if not p.get("_title_only")]
+    pair_candidates_with_sep = [
+        p for p in pair_candidates
+        if not p.get("_title_only") and not p.get("_numbered_track")
+    ]
     global_direction, direction_meta = _resolve_global_direction(pair_candidates_with_sep)
     results = []
     for parts in pair_candidates:
@@ -1356,6 +1544,27 @@ def parse_unstructured_lines_to_json(text: str) -> dict:
                 if parts.get("_timestamp"):
                     meta["timestamp"] = parts["_timestamp"]
                 _append_song(results, artist="", title=title, meta=meta)
+            continue
+
+        # NN-Artist-Title 형식: 방향이 확정되어 있으므로 orientation 로직 건너뜀
+        # "404" 같은 숫자 제목도 유효하므로 _is_meaningful_text 필터를 우회해 직접 추가
+        if parts.get("_numbered_track"):
+            artist = parts.get("artist", "")
+            title = parts.get("title", "")
+            if artist and title:
+                entry: dict = {
+                    "artist": artist,
+                    "title": title,
+                    "artist_exists": True,
+                    "title_exists": True,
+                    "is_complete": True,
+                    "completeness_score": 1.0,
+                    "_numbered_track": True,
+                    "raw": parts.get("raw", ""),
+                }
+                if parts.get("_timestamp"):
+                    entry["timestamp"] = parts["_timestamp"]
+                results.append(entry)
             continue
 
         line_direction = "title_artist" if parts.get("nested_pair_extracted") else global_direction
@@ -1431,6 +1640,9 @@ def normalize_song_candidates(data: Any, inferred_artist: str = "") -> dict:
         for hint_key in ["title_metadata_hints", "title_feature_artists", "title_producer_artists"]:
             if item.get(hint_key):
                 meta[hint_key] = item.get(hint_key)
+        for evidence_key in ["raw_line", "line_index", "confidence", "evidence_type", "reject_reason"]:
+            if evidence_key in item:
+                meta[evidence_key] = item.get(evidence_key)
 
         if left and right:
             line_direction = "title_artist" if item.get("nested_pair_extracted") else global_direction
@@ -1540,6 +1752,11 @@ def deduplicate_songs(songs: list[dict]) -> list[dict]:
             "title_metadata_hints",
             "title_feature_artists",
             "title_producer_artists",
+            "raw_line",
+            "line_index",
+            "confidence",
+            "evidence_type",
+            "reject_reason",
         ]:
             if meta_key in song:
                 entry[meta_key] = song.get(meta_key)
