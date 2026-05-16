@@ -51,6 +51,16 @@ if FRONTEND_DIR.is_dir():
     app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="frontend_static")
 
 
+_NO_CACHE_HEADERS = {"Cache-Control": "no-store"}
+
+
+def _spa_index_response() -> FileResponse:
+    index_file = DIST_DIR / "index.html"
+    if not index_file.is_file():
+        raise HTTPException(status_code=503, detail="Frontend build is missing. Run npm run build in frontend/site.")
+    return FileResponse(index_file, headers=_NO_CACHE_HEADERS)
+
+
 def _resolve_spa_file(path: str) -> Path | None:
     if not path or path.endswith("/"):
         return None
@@ -62,21 +72,14 @@ def _resolve_spa_file(path: str) -> Path | None:
 
 @app.get("/")
 async def spa_root() -> FileResponse:
-    index_file = DIST_DIR / "index.html"
-    if not index_file.is_file():
-        raise HTTPException(status_code=503, detail="Frontend build is missing. Run npm run build in frontend/site.")
-    return FileResponse(index_file)
+    return _spa_index_response()
 
 
 @app.get("/result/analysis")
 @app.get("/result/created")
 @app.get("/result/rating")
 async def spa_result_analysis() -> FileResponse:
-    """SPA 하위 경로 — React Router `/result/*` 하위 페이지."""
-    index_file = DIST_DIR / "index.html"
-    if not index_file.is_file():
-        raise HTTPException(status_code=503, detail="Frontend build is missing. Run npm run build in frontend/site.")
-    return FileResponse(index_file)
+    return _spa_index_response()
 
 
 @app.get("/{page}")
@@ -86,8 +89,6 @@ async def spa_page(page: str) -> FileResponse:
         return FileResponse(static_file)
 
     if page in {"help", "faq", "contact", "create", "result"}:
-        index_file = DIST_DIR / "index.html"
-        if index_file.is_file():
-            return FileResponse(index_file)
+        return _spa_index_response()
 
     raise HTTPException(status_code=404, detail="Not Found")
