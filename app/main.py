@@ -86,9 +86,11 @@ async def spa_result_analysis() -> FileResponse:
 async def spa_page(page: str) -> FileResponse:
     static_file = _resolve_spa_file(page)
     if static_file is not None:
-        return FileResponse(static_file)
+        return FileResponse(static_file, headers=_NO_CACHE_HEADERS)
 
-    if page in {"help", "faq", "contact", "create", "result"}:
-        return _spa_index_response()
+    return _spa_index_response()
 
-    raise HTTPException(status_code=404, detail="Not Found")
+
+@app.get("/result/{rest:path}")
+async def spa_result_subpaths(rest: str) -> FileResponse:
+    return _spa_index_response()

@@ -655,6 +655,60 @@ a.figma-spotify-connect {
   text-decoration: underline;
 }
 
+.not-found-page {
+  min-height: 100vh;
+  background: #000;
+  color: #fff;
+}
+
+.not-found-page__main {
+  padding-top: clamp(72px, 8vw, 112px);
+}
+
+.not-found-page__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 24px;
+  margin-top: 8px;
+}
+
+.not-found-page__link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0 20px;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  color: #fff;
+  font-family: "Pretendard", "Gowun Dodum", sans-serif;
+  font-size: 16px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.not-found-page__link:hover {
+  border-color: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.not-found-page__link--primary {
+  border-color: transparent;
+  background: var(--figma-orange);
+  color: #000;
+}
+
+.not-found-page__link--primary:hover {
+  background: #ff7f2a;
+  color: #000;
+}
+
+.not-found-page__link:focus-visible {
+  outline: 2px solid var(--figma-orange);
+  outline-offset: 2px;
+}
+
 /* Figma 001_1_QNA — node 245:338 */
 .help-page {
   min-height: 100vh;
