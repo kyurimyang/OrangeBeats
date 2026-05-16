@@ -1,5 +1,80 @@
 const SPOTIFY_TRACK_ID_RE = /^[0-9A-Za-z]{22}$/;
 
+/** YouTube 텍스트 분석(설명·댓글 등) 결과일 때만 input from 줄 표시 */
+export function isYoutubeTextExtraction(data) {
+  if (!data || typeof data !== "object") return false;
+  const mode = String(data.mode ?? data.extraction_mode ?? "text")
+    .trim()
+    .toLowerCase();
+  if (mode === "ocr" || mode === "acr") return false;
+  if (data.ocr_used === true || data.acr_used === true) return false;
+  const stage = String(data.selected_stage ?? "")
+    .trim()
+    .toLowerCase();
+  if (stage === "ocr" || stage === "acr") return false;
+  return true;
+}
+
+/** YouTube에서 추출한 `from Title — Artist` (input이 있으면 항상 표시) */
+export function buildInputFromParts(inputTitle, inputArtist) {
+  const title = String(inputTitle || "").trim();
+  const artist = String(inputArtist || "").trim();
+  if (!title && !artist) return null;
+  return { title, artist };
+}
+
+function pickDirectionalLeftRight(songRow) {
+  const left = String(songRow?.left ?? "").trim();
+  const right = String(songRow?.right ?? "").trim();
+  if (!left && !right) return null;
+  const dir = String(songRow?.global_direction ?? songRow?.line_direction ?? "").trim();
+  if (dir === "artist_title") {
+    return { title: right, artist: left };
+  }
+  return { title: left, artist: right };
+}
+
+/** YouTube 원문 표기 — 스왑·보정 전 텍스트 우선 */
+export function pickYoutubeInputFields(item, songRow = {}) {
+  const orig = songRow?.original_input;
+  if (orig && typeof orig === "object") {
+    const title = String(orig.title ?? "").trim();
+    const artist = String(orig.artist ?? "").trim();
+    if (title || artist) return { title, artist };
+  }
+
+  if (songRow?.swap_applied) {
+    const directional = pickDirectionalLeftRight(songRow);
+    if (directional && (directional.title || directional.artist)) {
+      return directional;
+    }
+  }
+
+  const itemTitle = String(item?.input_title ?? item?.inputTitle ?? "").trim();
+  const itemArtist = String(item?.input_artist ?? item?.inputArtist ?? "").trim();
+  if (itemTitle || itemArtist) {
+    return { title: itemTitle, artist: itemArtist };
+  }
+
+  const directional = pickDirectionalLeftRight(songRow);
+  if (directional && (directional.title || directional.artist)) {
+    return directional;
+  }
+
+  const rowTitle = String(songRow?.title ?? "").trim();
+  const rowArtist = String(songRow?.artist ?? "").trim();
+  if (rowTitle || rowArtist) {
+    return { title: rowTitle, artist: rowArtist };
+  }
+
+  const raw = String(songRow?.raw ?? "").trim();
+  if (raw) {
+    return { title: raw, artist: "" };
+  }
+
+  return { title: "", artist: "" };
+}
+
 function firstHttpImageUrl(value) {
   if (typeof value !== "string") return "";
   const u = value.trim();
@@ -74,7 +149,8 @@ export function pickCoverFromResultRow(item) {
   return "";
 }
 
-export function normalizeTracks(data) {
+export function normalizeTracks(data, options = {}) {
+  const showInputFrom = options.showInputFrom === true;
   const rows = Array.isArray(data?.results) ? data.results : [];
   const songs = Array.isArray(data?.songs)
     ? data.songs
@@ -89,24 +165,12 @@ export function normalizeTracks(data) {
     const spotifyArtist =
       uiArtist || String(item.spotify_artist ?? item.spotifyArtist ?? "").trim();
     const songRow = songs[index] || {};
-    const corr =
-      songRow.corrected_input && typeof songRow.corrected_input === "object"
-        ? songRow.corrected_input
-        : null;
-    const inputTitle = String(
-      (corr?.title != null && String(corr.title).trim() !== "" ? corr.title : null) ??
-        songRow.title ??
-        item.input_title ??
-        "",
-    ).trim();
-    const inputArtist = String(
-      (corr?.artist != null && String(corr.artist).trim() !== "" ? corr.artist : null) ??
-        songRow.artist ??
-        item.input_artist ??
-        "",
-    ).trim();
+    const youtubeInput = pickYoutubeInputFields(item, songRow);
+    const inputTitle = youtubeInput.title;
+    const inputArtist = youtubeInput.artist;
     const trackName = spotifyTitle || inputTitle || "제목 없음";
     const performerLine = spotifyArtist || inputArtist || "아티스트 미상";
+    const inputFrom = showInputFrom ? buildInputFromParts(inputTitle, inputArtist) : null;
     const confidenceLabel = String(item.confidence_label ?? item.confidenceLabel ?? "")
       .trim()
       .toLowerCase();
@@ -115,6 +179,7 @@ export function normalizeTracks(data) {
       id: `${spotifyUri || item.spotify_track_id || "track"}-${index}`,
       title: trackName,
       artist: performerLine,
+      inputFrom,
       cover: pickCoverFromResultRow(item),
       spotifyUri,
       confidenceLabel,

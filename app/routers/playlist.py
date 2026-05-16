@@ -1,4 +1,4 @@
-﻿import time
+import time
 import math
 import json
 import re
@@ -111,6 +111,8 @@ def _dedupe_pipeline_songs(raw_songs: List[Dict]) -> List[Dict[str, str]]:
                 "source_mode": item.get("source_mode", ""),
                 "timestamp": item.get("timestamp", ""),
                 "raw": item.get("raw", ""),
+                "original_input": item.get("original_input", {}),
+                "corrected_input": item.get("corrected_input", {}),
                 "left": item.get("left", ""),
                 "right": item.get("right", ""),
                 "swap_applied": item.get("swap_applied", False),

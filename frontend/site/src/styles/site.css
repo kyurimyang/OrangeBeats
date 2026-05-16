@@ -741,6 +741,7 @@ a.figma-spotify-connect {
   display: flex;
   flex-direction: column;
   gap: clamp(28px, 3.2vw, 39px);
+  width: min(100%, 1009px);
   max-width: 1009px;
   margin: 0;
   padding: 0;
@@ -759,9 +760,9 @@ a.figma-spotify-connect {
   align-items: center;
   width: 100%;
   min-height: 111px;
-  padding: clamp(24px, 2.8vw, 32px) clamp(24px, 3.2vw, 41px) clamp(22px, 2.6vw, 31px) clamp(20px, 3.6vw, 53px);
+  padding: 32px 41px 31px 53px;
   border-radius: 20px;
-  gap: clamp(24px, 8vw, 129px);
+  gap: clamp(24px, 8.5vw, 129px);
   background: #191919;
 }
 
@@ -771,10 +772,19 @@ a.figma-spotify-connect {
   align-items: center;
   width: 100%;
   min-height: 159px;
-  padding: clamp(28px, 3.2vw, 32px) clamp(24px, 3.2vw, 41px) clamp(28px, 3.2vw, 31px) clamp(20px, 3.6vw, 53px);
+  padding: 32px 41px 31px 53px;
   border-radius: 20px;
-  gap: clamp(24px, 7.5vw, 114px);
+  gap: 114px;
   background: #2e2e2e;
+}
+
+.faq-page__number {
+  flex: 0 0 auto;
+}
+
+.faq-page__question-text {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .faq-page__answer-body {
@@ -783,10 +793,31 @@ a.figma-spotify-connect {
   display: flex;
   flex-direction: column;
   justify-content: center;
+  gap: 0;
+}
+
+.faq-page__answer-body--single .faq-page__answer-line {
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .faq-page__question,
+  .faq-page__answer {
+    padding: clamp(26px, 4vw, 32px) clamp(20px, 4vw, 41px) clamp(24px, 3.8vw, 31px)
+      clamp(20px, 5vw, 53px);
+  }
+
+  .faq-page__answer {
+    min-height: clamp(132px, 28vw, 159px);
+    gap: clamp(20px, 6vw, 114px);
+  }
+
+  .faq-page__answer-body--single .faq-page__answer-line {
+    white-space: normal;
+  }
 }
 
 .faq-page__number {
-  flex: 0 0 auto;
   min-width: 37px;
   font-family: "Inter", sans-serif;
   font-size: clamp(22px, 2.4vw, 30px);
@@ -795,29 +826,48 @@ a.figma-spotify-connect {
   color: #d5d5d5;
 }
 
-.faq-page__question-text,
-.faq-page__answer-text {
-  flex: 1 1 auto;
-  min-width: 0;
+.faq-page__question-text {
   margin: 0;
   font-size: clamp(16px, 1.6vw, 20px);
   line-height: 27.2px;
   letter-spacing: -0.6px;
-  word-break: break-word;
-}
-
-.faq-page__question-text {
+  word-break: keep-all;
+  overflow-wrap: break-word;
   font-weight: 600;
   color: #fff;
 }
 
-.faq-page__answer-text {
+.faq-page__answer-line {
+  margin: 0;
+  font-family: "Pretendard", "Gowun Dodum", sans-serif;
+  font-size: clamp(16px, 1.6vw, 20px);
   font-weight: 400;
+  line-height: 27.2px;
+  letter-spacing: -0.6px;
+  color: #fff;
+  text-align: left;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+.faq-page__answer-hang {
+  display: grid;
+  grid-template-columns: min-content minmax(0, 1fr);
+  column-gap: 0.35em;
+  width: 100%;
+}
+
+.faq-page__answer-marker {
+  font-family: "Pretendard", "Gowun Dodum", sans-serif;
+  font-size: clamp(16px, 1.6vw, 20px);
+  font-weight: 400;
+  line-height: 27.2px;
+  letter-spacing: -0.6px;
   color: #fff;
 }
 
-.faq-page__answer-text + .faq-page__answer-text {
-  margin-top: 27.2px;
+.faq-page__answer-marker-spacer {
+  visibility: hidden;
 }
 
 .faq-page__toggle {
@@ -832,6 +882,11 @@ a.figma-spotify-connect {
   border: none;
   border-radius: 24px;
   cursor: pointer;
+}
+
+.faq-page__answer .faq-page__toggle--collapse {
+  margin-left: 0;
+  flex-shrink: 0;
 }
 
 .faq-page__toggle--expand {
@@ -1525,6 +1580,25 @@ a.figma-spotify-connect {
   text-overflow: ellipsis;
 }
 
+.result-track-item__input-from {
+  margin: calc(2px * var(--result-scale, 1)) 0 0;
+  font-family: "Pretendard", "Gowun Dodum", sans-serif;
+  font-size: calc(16px * var(--result-scale, 1));
+  font-style: normal;
+  font-weight: 300;
+  line-height: calc(22px * var(--result-scale, 1));
+  color: #fff;
+  opacity: 0.45;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.result-track-item__input-from em {
+  font-style: italic;
+  font-weight: 400;
+}
+
 .result-track-item__remove {
   justify-self: start;
 }
@@ -1689,6 +1763,14 @@ a.figma-spotify-connect {
   cursor: not-allowed;
 }
 
+.result-list-loading__stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 24px;
+}
+
 .result-list-loading__title {
   margin: 0;
   font-family: "Pretendard", "Gowun Dodum", sans-serif;
@@ -1697,6 +1779,17 @@ a.figma-spotify-connect {
   line-height: 20px;
   letter-spacing: -0.5px;
   color: #ffffff;
+}
+
+.result-list-loading__hint {
+  margin: 0;
+  font-family: "Pretendard", "Gowun Dodum", sans-serif;
+  font-size: 18px;
+  font-weight: 300;
+  line-height: 1.35;
+  letter-spacing: -0.4px;
+  color: #fff;
+  opacity: 0.55;
 }
 
 .result-list-loading__dots::after {
@@ -2590,6 +2683,11 @@ a.figma-spotify-connect {
     margin-top: 4px;
     font-size: clamp(12px, 2.6vw, calc(var(--result-track-artist-px) * 1px * var(--result-scale, 1)));
     line-height: clamp(16px, 3.4vw, calc(var(--result-track-artist-line-px) * 1px * var(--result-scale, 1)));
+  }
+
+  .result-track-item__input-from {
+    font-size: clamp(11px, 2.2vw, calc(16px * var(--result-scale, 1)));
+    line-height: clamp(14px, 3vw, calc(22px * var(--result-scale, 1)));
   }
 
   .result-track-item .figma-trash {
