@@ -1,8 +1,17 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import SiteHeader from "../components/SiteHeader.jsx";
+
+const SESSION_KEY = "ob_admin_key";
 
 export default function HomePage() {
   const [isConnecting, setIsConnecting] = useState(false);
+  const navigate = useNavigate();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [adminKey, setAdminKey] = useState("");
+  const [keyError, setKeyError] = useState("");
+  const [checking, setChecking] = useState(false);
+  const inputRef = useRef(null);
 
   const handleSpotifyConnect = async () => {
     if (isConnecting) return;
@@ -43,6 +52,46 @@ export default function HomePage() {
       setIsConnecting(false);
       window.alert("Spotify 로그인 연결에 실패했습니다. 잠시 후 다시 시도해주세요.");
     }
+  };
+
+  const openModal = () => {
+    setAdminKey("");
+    setKeyError("");
+    setModalOpen(true);
+    setTimeout(() => inputRef.current?.focus(), 50);
+  };
+
+  const closeModal = () => {
+    setModalOpen(false);
+    setAdminKey("");
+    setKeyError("");
+  };
+
+  const submitKey = async () => {
+    if (checking || !adminKey.trim()) return;
+    setChecking(true);
+    setKeyError("");
+    try {
+      const res = await fetch(`/feedback/admin?key=${encodeURIComponent(adminKey.trim())}`, {
+        credentials: "include",
+      });
+      if (res.status === 401) {
+        setKeyError("잘못된 키입니다.");
+        return;
+      }
+      if (!res.ok) throw new Error();
+      sessionStorage.setItem(SESSION_KEY, adminKey.trim());
+      navigate("/admin");
+    } catch {
+      setKeyError("오류가 발생했습니다. 다시 시도해주세요.");
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter") submitKey();
+    if (e.key === "Escape") closeModal();
   };
 
   return (
@@ -168,7 +217,43 @@ export default function HomePage() {
         </div>
 
         <div className="home-placeholder home-placeholder--bottom" aria-hidden="true" data-node-id="357:284" />
+
+        <button
+          className="admin-hidden-tab"
+          type="button"
+          onClick={openModal}
+          aria-label="관리자"
+          tabIndex={-1}
+        >
+          ···
+        </button>
       </main>
+
+      {modalOpen && (
+        <div className="admin-key-overlay" onClick={(e) => e.target === e.currentTarget && closeModal()}>
+          <div className="admin-key-modal" role="dialog" aria-modal="true" aria-label="관리자 인증">
+            <p className="admin-key-modal__title">관리자 키를 입력하세요</p>
+            <input
+              ref={inputRef}
+              className="admin-key-modal__input"
+              type="password"
+              placeholder="admin key"
+              value={adminKey}
+              onChange={(e) => setAdminKey(e.target.value)}
+              onKeyDown={handleKeyDown}
+              disabled={checking}
+              autoComplete="off"
+            />
+            {keyError && <p className="admin-key-modal__error">{keyError}</p>}
+            <div className="admin-key-modal__actions">
+              <button className="admin-key-modal__cancel" type="button" onClick={closeModal}>취소</button>
+              <button className="admin-key-modal__submit" type="button" onClick={submitKey} disabled={checking || !adminKey.trim()}>
+                {checking ? "확인 중…" : "확인"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

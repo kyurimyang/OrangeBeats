@@ -149,6 +149,9 @@ export function pickCoverFromResultRow(item) {
   return "";
 }
 
+const NON_SONG_RE = /^(intro|outro|skit|interlude)$/i;
+const NON_SONG_CONTAINS_RE = /광고\s*제거|ad\s*remove[d]?|sponsor/i;
+
 export function normalizeTracks(data, options = {}) {
   const showInputFrom = options.showInputFrom === true;
   const rows = Array.isArray(data?.results) ? data.results : [];
@@ -185,5 +188,23 @@ export function normalizeTracks(data, options = {}) {
       confidenceLabel,
       sourceRow: item,
     };
+  }).filter((track) => {
+    if (track.artist !== "아티스트 미상") return true;
+    if (NON_SONG_RE.test(track.title)) return false;
+    if (NON_SONG_CONTAINS_RE.test(track.title)) return false;
+    return true;
   });
+}
+
+export function fillMissingArtists(tracks) {
+  const UNKNOWN = "아티스트 미상";
+  const knownArtists = tracks.map((t) => t.artist).filter((a) => a && a !== UNKNOWN);
+  if (!knownArtists.length) return tracks;
+
+  const freq = {};
+  for (const a of knownArtists) freq[a] = (freq[a] || 0) + 1;
+  const top = Object.entries(freq).sort((a, b) => b[1] - a[1])[0];
+  if (top[1] / knownArtists.length < 0.5) return tracks;
+
+  return tracks.map((t) => t.artist === UNKNOWN ? { ...t, artist: top[0] } : t);
 }

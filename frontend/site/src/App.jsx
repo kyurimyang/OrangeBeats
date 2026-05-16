@@ -8,6 +8,7 @@ import ResultListPage from "./pages/ResultListPage.jsx";
 import ResultAnalysisModesPage from "./pages/ResultAnalysisModesPage.jsx";
 import PlaylistCreatedPage from "./pages/PlaylistCreatedPage.jsx";
 import RatingPage from "./pages/RatingPage.jsx";
+import AdminPage from "./pages/AdminPage.jsx";
 import NotFoundPage from "./pages/NotFoundPage.jsx";
 
 export default function App() {
@@ -22,6 +23,7 @@ export default function App() {
       <Route path="/help" element={<HelpPage />} />
       <Route path="/faq" element={<FaqPage />} />
       <Route path="/contact" element={<ContactPage />} />
+      <Route path="/admin" element={<AdminPage />} />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
   );
