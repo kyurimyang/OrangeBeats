@@ -1591,9 +1591,78 @@ a.figma-spotify-connect {
   background: #c8c8c8;
 }
 
-/* 신뢰도 low — 행 전체(숫자·커버·곡명·가수·휴지통) 동일 투명도 */
+/* 신뢰도 low */
 .result-track-item--low-confidence {
   opacity: 0.55;
+}
+
+/* 선택 해제된 트랙 */
+.result-track-item--deselected {
+  opacity: 0.35;
+}
+
+/* 패널 헤더 (전체 선택 / 곡 수) */
+.result-list-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: calc(12px * var(--result-scale, 1));
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  margin-bottom: calc(4px * var(--result-scale, 1));
+}
+
+.result-list-panel__count {
+  font-family: "Pretendard", "Gowun Dodum", sans-serif;
+  font-size: calc(13px * var(--result-scale, 1));
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.result-list-panel__select-all {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 20px;
+  color: rgba(255, 255, 255, 0.6);
+  font-family: "Pretendard", "Gowun Dodum", sans-serif;
+  font-size: calc(12px * var(--result-scale, 1));
+  padding: 4px 14px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.result-list-panel__select-all:hover {
+  border-color: #fd6d11;
+  color: #fd6d11;
+}
+
+/* 원형 체크박스 */
+.result-track-checkbox {
+  width: calc(26px * var(--result-scale, 1));
+  height: calc(26px * var(--result-scale, 1));
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  align-self: center;
+  transition: border-color 0.15s, background 0.15s;
+  padding: 0;
+}
+
+.result-track-checkbox:hover {
+  border-color: #fd6d11;
+}
+
+.result-track-checkbox--selected {
+  background: #fd6d11;
+  border-color: #fd6d11;
+}
+
+.result-track-checkbox__check {
+  width: 55%;
+  height: 55%;
 }
 
 /* 트랙 행 × --result-scale */

@@ -11,41 +11,27 @@ import {
   isYoutubeTextExtraction,
   normalizeTracks,
 } from "../utils/resultTracks.js";
-import trashDefaultUrl from "../assets/figma/trash-default.svg?url";
-import trashHoverUrl from "../assets/figma/trash-hover.svg?url";
-import trashPressedUrl from "../assets/figma/trash-pressed.svg?url";
 
-const TRASH_ICON_URL = {
-  default: trashDefaultUrl,
-  hover: trashHoverUrl,
-  pressed: trashPressedUrl,
-};
-
-function ResultTrashButton({ ariaLabel, onRemove }) {
-  const [hovered, setHovered] = useState(false);
-  const [pressed, setPressed] = useState(false);
-  const phase = pressed ? "pressed" : hovered ? "hover" : "default";
-
+function TrackCheckbox({ selected, ariaLabel, onToggle }) {
   return (
     <button
       type="button"
-      className={`figma-piece figma-trash figma-trash--${phase} result-track-item__remove`}
-      onClick={onRemove}
+      className={`result-track-checkbox${selected ? " result-track-checkbox--selected" : ""}`}
+      onClick={onToggle}
       aria-label={ariaLabel}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => {
-        setHovered(false);
-        setPressed(false);
-      }}
-      onMouseDown={() => setPressed(true)}
-      onMouseUp={() => setPressed(false)}
+      aria-pressed={selected}
     >
-      <img
-        className={`figma-trash__icon figma-trash__icon--${phase}`}
-        src={TRASH_ICON_URL[phase]}
-        alt=""
-        aria-hidden="true"
-      />
+      {selected && (
+        <svg className="result-track-checkbox__check" viewBox="0 0 12 10" fill="none" aria-hidden="true">
+          <polyline
+            points="1.5,5 4.5,8 10.5,1.5"
+            stroke="#fff"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      )}
     </button>
   );
 }
@@ -82,13 +68,30 @@ export default function ResultListPage() {
   const [playlistName, setPlaylistName] = useState("YouTube 변환 플레이리스트");
   const [youtubeTitle, setYoutubeTitle] = useState("");
   const [tracks, setTracks] = useState([]);
+  const [selectedIds, setSelectedIds] = useState(new Set());
   const [showYoutubeInputFrom, setShowYoutubeInputFrom] = useState(false);
   const analyzeDataRef = useRef(null);
 
   const applyTracksFromAnalyzeData = (data) => {
     const fromYoutubeText = isYoutubeTextExtraction(data);
     setShowYoutubeInputFrom(fromYoutubeText);
-    setTracks(fillMissingArtists(normalizeTracks(data, { showInputFrom: fromYoutubeText })));
+    const normalized = fillMissingArtists(normalizeTracks(data, { showInputFrom: fromYoutubeText }));
+    setTracks(normalized);
+    setSelectedIds(new Set(normalized.map((t) => t.id)));
+  };
+
+  const toggleTrack = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    setSelectedIds((prev) =>
+      prev.size === tracks.length ? new Set() : new Set(tracks.map((t) => t.id))
+    );
   };
 
   useEffect(() => {
@@ -201,7 +204,7 @@ export default function ResultListPage() {
           extraction_mode: extractionMode,
           title_mode: titleMode,
           playlist_name: savedPlaylistName,
-          skip_spotify_matching: true,
+          skip_spotify_matching: false,
         };
         const response = await fetch("/playlist/analyze-youtube", {
           method: "POST",
@@ -252,7 +255,8 @@ export default function ResultListPage() {
   const handleCreatePlaylist = async () => {
     if (creating) return;
 
-    let urisToAdd = collectPlaylistTrackUris(tracks);
+    const selectedTracks = tracks.filter((t) => selectedIds.has(t.id));
+    let urisToAdd = collectPlaylistTrackUris(selectedTracks);
     if (!urisToAdd.length && analyzeDataRef.current) {
       urisToAdd = collectPlaylistTrackUris(normalizeTracks(analyzeDataRef.current));
     }
@@ -334,39 +338,49 @@ export default function ResultListPage() {
       <main className="result-list-page__main">
         <p className="result-list-page__heading">Youtube에서 음악을 가져왔어요.</p>
         <section className={`result-list-panel${tracks.length > 10 ? " result-list-panel--scrollable" : ""}`}>
-          {tracks.map((track, index) => (
-            <article
-              key={track.id}
-              className={`result-track-item${track.confidenceLabel === "low" ? " result-track-item--low-confidence" : ""}`}
-            >
-              <span className="result-track-item__index">{index + 1}</span>
-              {track.cover ? (
-                <img
-                  className="result-track-item__cover"
-                  src={track.cover}
-                  alt=""
-                  loading="lazy"
+          <div className="result-list-panel__header">
+            <span className="result-list-panel__count">{selectedIds.size}곡 선택됨</span>
+            <button type="button" className="result-list-panel__select-all" onClick={toggleAll}>
+              {selectedIds.size === tracks.length ? "전체 해제" : "전체 선택"}
+            </button>
+          </div>
+          {tracks.map((track, index) => {
+            const selected = selectedIds.has(track.id);
+            return (
+              <article
+                key={track.id}
+                className={`result-track-item${track.confidenceLabel === "low" ? " result-track-item--low-confidence" : ""}${!selected ? " result-track-item--deselected" : ""}`}
+              >
+                <span className="result-track-item__index">{index + 1}</span>
+                {track.cover ? (
+                  <img
+                    className="result-track-item__cover"
+                    src={track.cover}
+                    alt=""
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="result-track-item__cover result-track-item__cover--placeholder" />
+                )}
+                <div className="result-track-item__meta">
+                  <p className="result-track-item__title">{track.title}</p>
+                  <p className="result-track-item__artist">{track.artist}</p>
+                  {showYoutubeInputFrom && track.inputFrom ? (
+                    <p className="result-track-item__input-from">
+                      <em>from</em>{" "}
+                      {track.inputFrom.title}
+                      {track.inputFrom.artist ? ` — ${track.inputFrom.artist}` : ""}
+                    </p>
+                  ) : null}
+                </div>
+                <TrackCheckbox
+                  selected={selected}
+                  ariaLabel={selected ? `${track.title} 선택 해제` : `${track.title} 선택`}
+                  onToggle={() => toggleTrack(track.id)}
                 />
-              ) : (
-                <div className="result-track-item__cover result-track-item__cover--placeholder" />
-              )}
-              <div className="result-track-item__meta">
-                <p className="result-track-item__title">{track.title}</p>
-                <p className="result-track-item__artist">{track.artist}</p>
-                {showYoutubeInputFrom && track.inputFrom ? (
-                  <p className="result-track-item__input-from">
-                    <em>from</em>{" "}
-                    {track.inputFrom.title}
-                    {track.inputFrom.artist ? ` — ${track.inputFrom.artist}` : ""}
-                  </p>
-                ) : null}
-              </div>
-              <ResultTrashButton
-                ariaLabel={`${track.title} 삭제`}
-                onRemove={() => setTracks((prev) => prev.filter((_, i) => i !== index))}
-              />
-            </article>
-          ))}
+              </article>
+            );
+          })}
         </section>
 
         <div className="result-list-page__actions">
@@ -374,7 +388,7 @@ export default function ResultListPage() {
             type="button"
             className={`figma-piece figma-playlist-create ${creating ? "figma-playlist-create--pressed" : "figma-playlist-create--default"}`}
             onClick={handleCreatePlaylist}
-            disabled={creating}
+            disabled={creating || selectedIds.size === 0}
           >
             <span className="figma-piece__label figma-playlist-create__label">이대로 Playlist 만들기</span>
           </button>
