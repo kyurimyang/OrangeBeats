@@ -7,6 +7,7 @@ import PlaylistCreateLoading, {
 } from "../components/PlaylistCreateLoading.jsx";
 import {
   collectPlaylistTrackUris,
+  fillMissingArtists,
   isYoutubeTextExtraction,
   normalizeTracks,
 } from "../utils/resultTracks.js";
@@ -87,7 +88,7 @@ export default function ResultListPage() {
   const applyTracksFromAnalyzeData = (data) => {
     const fromYoutubeText = isYoutubeTextExtraction(data);
     setShowYoutubeInputFrom(fromYoutubeText);
-    setTracks(normalizeTracks(data, { showInputFrom: fromYoutubeText }));
+    setTracks(fillMissingArtists(normalizeTracks(data, { showInputFrom: fromYoutubeText })));
   };
 
   useEffect(() => {
@@ -200,7 +201,7 @@ export default function ResultListPage() {
           extraction_mode: extractionMode,
           title_mode: titleMode,
           playlist_name: savedPlaylistName,
-          skip_spotify_matching: false,
+          skip_spotify_matching: true,
         };
         const response = await fetch("/playlist/analyze-youtube", {
           method: "POST",
@@ -332,7 +333,7 @@ export default function ResultListPage() {
       <SiteHeader />
       <main className="result-list-page__main">
         <p className="result-list-page__heading">Youtube에서 음악을 가져왔어요.</p>
-        <section className="result-list-panel">
+        <section className={`result-list-panel${tracks.length > 10 ? " result-list-panel--scrollable" : ""}`}>
           {tracks.map((track, index) => (
             <article
               key={track.id}

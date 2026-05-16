@@ -33,5 +33,20 @@
     "playlist_url": "https://open.spotify.com/playlist/0NKjLyVflQmt26swL9cVpy",
     "playlist_name": "[playlist] 그때 그 시절 우리가 좋아했던 빈지노",
     "created_at": "2026-05-16T03:29:40"
+  },
+  {
+    "id": 6,
+    "score": 5,
+    "playlist_url": "https://open.spotify.com/playlist/7E5vadDdyjWQXTBLS7Rax0",
+    "playlist_name": "미안하지도 고맙지도 않아",
+    "created_at": "2026-05-16T22:47:40"
+  },
+  {
+    "id": 7,
+    "score": 5,
+    "playlist_url": "https://open.spotify.com/playlist/0yUcSHg4gGnRVVAWtAd7wY",
+    "playlist_name": "𝙋𝙡𝙖𝙮𝙡𝙞𝙨𝙩 오빠가 무리할게",
+    "comment": "빠르고좋았어용",
+    "created_at": "2026-05-16T23:33:08"
   }
 ]

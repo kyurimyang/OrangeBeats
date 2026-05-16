@@ -1564,6 +1564,33 @@ a.figma-spotify-connect {
   gap: calc(29px * var(--result-scale, 1));
 }
 
+/* 10곡 초과 시 스크롤 패널 */
+.result-list-panel--scrollable {
+  max-height: 56vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* 커스텀 스크롤바 */
+.result-list-panel--scrollable::-webkit-scrollbar {
+  width: 8px;
+}
+
+.result-list-panel--scrollable::-webkit-scrollbar-track {
+  background: transparent;
+  margin-top: calc(18px * var(--result-scale, 1));
+  margin-bottom: calc(20px * var(--result-scale, 1));
+}
+
+.result-list-panel--scrollable::-webkit-scrollbar-thumb {
+  background: #a6a6a6;
+  border-radius: 4px;
+}
+
+.result-list-panel--scrollable::-webkit-scrollbar-thumb:hover {
+  background: #c8c8c8;
+}
+
 /* 신뢰도 low — 행 전체(숫자·커버·곡명·가수·휴지통) 동일 투명도 */
 .result-track-item--low-confidence {
   opacity: 0.55;
@@ -1711,14 +1738,18 @@ a.figma-spotify-connect {
   gap: calc(10px * var(--result-scale, 1));
   border-radius: calc(20px * var(--result-scale, 1));
   border: 0;
-  /* Figma Group 18: 두 CTA 동일 배경 (주황 그라데이션 미적용) */
-  background: rgba(217, 217, 217, 0.6);
-  background-image: none;
+  background: #fd6d11;
+  background-image: linear-gradient(81.99deg, #ffb22d 4.72%, #fd6d11 70.27%);
   box-shadow: none;
 }
 
 .result-list-page__actions .figma-playlist-create--default,
-.result-list-page__actions .figma-playlist-create--hover,
+.result-list-page__actions .figma-playlist-create--hover {
+  background: #fd6d11;
+  background-image: none;
+  box-shadow: none;
+}
+
 .result-list-page__actions .figma-playlist-create--pressed {
   background: rgba(217, 217, 217, 0.6);
   background-image: none;
@@ -1750,13 +1781,13 @@ a.figma-spotify-connect {
   gap: calc(10px * var(--result-scale, 1));
   border-radius: calc(20px * var(--result-scale, 1));
   border: 0;
-  background: rgba(217, 217, 217, 0.6);
+  background: #fd6d11;
 }
 
 .result-list-page__actions .figma-rematch--pressed {
   width: auto;
   max-width: 100%;
-  background: rgba(217, 217, 217, 0.6);
+  background: #fd6d11;
   background-image: none;
   box-shadow: none;
 }
@@ -1765,6 +1796,8 @@ a.figma-spotify-connect {
   margin: 0;
   color: #fd9f7b;
   font-size: 18px;
+  text-align: center;
+  width: 100%;
 }
 
 /* 004_Playlist — 생성 완료 (Figma 328:249), 003과 동일 Frame·--result-scale */
@@ -2289,6 +2322,81 @@ a.figma-spotify-connect {
   text-align: center;
 }
 
+.rating-page__feedback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 400px;
+  margin-top: 8px;
+}
+
+.rating-page__feedback-label {
+  font-family: "Pretendard", "Gowun Dodum", sans-serif;
+  font-size: 14px;
+  color: #e0e0e0;
+  align-self: flex-start;
+}
+
+.rating-page__feedback-optional {
+  color: #888;
+  font-size: 12px;
+}
+
+.rating-page__comment {
+  width: 100%;
+  background: #1e1e1e;
+  border: 1px solid #444;
+  border-radius: 8px;
+  color: #f0f0f0;
+  font-family: "Pretendard", "Gowun Dodum", sans-serif;
+  font-size: 14px;
+  padding: 10px 12px;
+  resize: vertical;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.rating-page__comment:focus {
+  border-color: #fd6d11;
+}
+
+.rating-page__comment::placeholder {
+  color: #666;
+}
+
+.rating-page__char-count {
+  align-self: flex-end;
+  font-size: 11px;
+  color: #666;
+  font-family: "Pretendard", "Gowun Dodum", sans-serif;
+}
+
+.rating-page__submit {
+  margin-top: 4px;
+  padding: 10px 32px;
+  background: #fd6d11;
+  color: #fff;
+  border: none;
+  border-radius: 20px;
+  font-family: "Pretendard", "Gowun Dodum", sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.rating-page__submit:hover:not(:disabled) {
+  background: #e55e00;
+}
+
+.rating-page__submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* 003 Resultlist — 원하는 노래가 없어요 → OCR/ACR 선택 (Figma 161:1457) */
 .result-analysis-page {
   display: flex;
@@ -2708,6 +2816,12 @@ a.figma-spotify-connect {
     border-radius: 18px;
   }
 
+  .result-list-panel--scrollable {
+    max-height: 52vh;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
   .result-track-item {
     min-height: 72px;
     grid-template-columns: 16px 56px minmax(0, 1fr) 44px;
@@ -2790,5 +2904,406 @@ a.figma-spotify-connect {
   .playlist-url-page .figma-playlist-create {
     transform: scale(0.88);
     transform-origin: right center;
+  }
+}
+
+/* ── Admin hidden tab ── */
+.admin-hidden-tab {
+  display: block;
+  margin: 0 auto 24px;
+  background: transparent;
+  border: none;
+  color: #2a2a2a;
+  font-size: 18px;
+  letter-spacing: 4px;
+  cursor: pointer;
+  padding: 8px 16px;
+  border-radius: 20px;
+  transition: color 0.2s, background 0.2s;
+  user-select: none;
+}
+
+.admin-hidden-tab:hover {
+  color: #444;
+  background: rgba(255,255,255,0.04);
+}
+
+/* ── Admin key modal ── */
+.admin-key-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  backdrop-filter: blur(4px);
+}
+
+.admin-key-modal {
+  background: #111;
+  border: 1px solid #2a2a2a;
+  border-radius: 16px;
+  padding: 32px 28px;
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.admin-key-modal__title {
+  margin: 0;
+  font-family: "Pretendard", sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: #e0e0e0;
+  text-align: center;
+}
+
+.admin-key-modal__input {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 8px;
+  color: #f0f0f0;
+  font-family: "Pretendard", monospace, sans-serif;
+  font-size: 14px;
+  padding: 10px 14px;
+  outline: none;
+  transition: border-color 0.15s;
+  letter-spacing: 2px;
+}
+
+.admin-key-modal__input:focus {
+  border-color: #fd6d11;
+}
+
+.admin-key-modal__error {
+  margin: 0;
+  font-family: "Pretendard", sans-serif;
+  font-size: 13px;
+  color: #fd9f7b;
+  text-align: center;
+}
+
+.admin-key-modal__actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.admin-key-modal__cancel {
+  background: transparent;
+  border: 1px solid #333;
+  border-radius: 8px;
+  color: #888;
+  font-family: "Pretendard", sans-serif;
+  font-size: 14px;
+  padding: 8px 18px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.admin-key-modal__cancel:hover {
+  border-color: #555;
+  color: #bbb;
+}
+
+.admin-key-modal__submit {
+  background: #fd6d11;
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-family: "Pretendard", sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 8px 22px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.admin-key-modal__submit:hover:not(:disabled) {
+  background: #e55e00;
+}
+
+.admin-key-modal__submit:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── Admin page ── */
+.admin-page {
+  min-height: 100vh;
+  background: #080808;
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-main {
+  flex: 1;
+  max-width: 900px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 40px 24px 80px;
+  display: flex;
+  flex-direction: column;
+  gap: 48px;
+}
+
+.admin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.admin-header__title {
+  margin: 0;
+  font-family: "Pretendard", sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  color: #f0f0f0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.admin-header__badge {
+  background: #fd6d11;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+.admin-header__logout {
+  background: transparent;
+  border: 1px solid #333;
+  border-radius: 8px;
+  color: #666;
+  font-family: "Pretendard", sans-serif;
+  font-size: 13px;
+  padding: 6px 16px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.admin-header__logout:hover {
+  color: #aaa;
+  border-color: #555;
+}
+
+.admin-loading,
+.admin-error,
+.admin-empty {
+  font-family: "Pretendard", sans-serif;
+  font-size: 15px;
+  color: #666;
+  text-align: center;
+  padding: 40px 0;
+}
+
+.admin-error {
+  color: #fd9f7b;
+}
+
+/* Stats */
+.admin-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.admin-section__title {
+  margin: 0;
+  font-family: "Pretendard", sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  border-bottom: 1px solid #1e1e1e;
+  padding-bottom: 10px;
+}
+
+.admin-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.admin-stat-card {
+  background: #111;
+  border: 1px solid #1e1e1e;
+  border-radius: 12px;
+  padding: 20px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.admin-stat-card__label {
+  font-family: "Pretendard", sans-serif;
+  font-size: 12px;
+  color: #555;
+}
+
+.admin-stat-card__value {
+  font-family: "Pretendard", sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+  color: #fd6d11;
+}
+
+.admin-stat-card__sub {
+  font-family: "Pretendard", sans-serif;
+  font-size: 11px;
+  color: #444;
+}
+
+/* Distribution */
+.admin-dist {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.admin-dist__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.admin-dist__star {
+  font-family: "Pretendard", sans-serif;
+  font-size: 13px;
+  color: #fd6d11;
+  width: 28px;
+  flex-shrink: 0;
+}
+
+.admin-dist__bar-wrap {
+  flex: 1;
+  height: 8px;
+  background: #1a1a1a;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.admin-dist__bar {
+  height: 100%;
+  background: #fd6d11;
+  border-radius: 4px;
+  transition: width 0.4s ease;
+  min-width: 0;
+}
+
+.admin-dist__count {
+  font-family: "Pretendard", sans-serif;
+  font-size: 12px;
+  color: #555;
+  width: 32px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* Table */
+.admin-table-wrap {
+  overflow-x: auto;
+  border-radius: 12px;
+  border: 1px solid #1e1e1e;
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: "Pretendard", sans-serif;
+  font-size: 13px;
+}
+
+.admin-table thead tr {
+  background: #111;
+  border-bottom: 1px solid #1e1e1e;
+}
+
+.admin-table th {
+  padding: 12px 14px;
+  text-align: left;
+  color: #555;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  white-space: nowrap;
+}
+
+.admin-table tbody tr {
+  border-bottom: 1px solid #131313;
+  transition: background 0.12s;
+}
+
+.admin-table tbody tr:last-child {
+  border-bottom: none;
+}
+
+.admin-table tbody tr:hover {
+  background: #0f0f0f;
+}
+
+.admin-table td {
+  padding: 12px 14px;
+  color: #c0c0c0;
+  vertical-align: top;
+}
+
+.admin-table__id {
+  color: #444;
+  font-size: 12px;
+  width: 36px;
+}
+
+.admin-table__score {
+  color: #fd6d11;
+  letter-spacing: 1px;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.admin-table__name a {
+  color: #c0c0c0;
+  text-decoration: none;
+  transition: color 0.15s;
+}
+
+.admin-table__name a:hover {
+  color: #fd6d11;
+}
+
+.admin-table__comment {
+  max-width: 260px;
+  color: #888;
+}
+
+.admin-table__no-comment {
+  color: #333;
+}
+
+.admin-table__date {
+  white-space: nowrap;
+  color: #444;
+  font-size: 12px;
+}
+
+@media (max-width: 640px) {
+  .admin-stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .admin-table th:nth-child(3),
+  .admin-table td:nth-child(3) {
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
