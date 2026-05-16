@@ -23,6 +23,9 @@ SECTION_KEYWORDS = [
     "축가", "행진", "입장", "퇴장", "bgm", "브금", "playlist", "setlist",
     "tracklist", "music", "song list", "추천곡", "문의", "contact", "timeline", "time line",
     "플레이리스트", "출처", "weibo", "사진 출처", "이미지 출처",
+    "pinterest", "comment", "comments",
+    "instagram", "twitter", "facebook", "tiktok", "tumblr",
+    "photo", "image", "cover", "artwork", "thumbnail",
 ]
 
 NATURAL_SENTENCE_HINTS = [
