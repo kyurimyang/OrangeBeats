@@ -1,0 +1,37 @@
+[
+  {
+    "id": 1,
+    "score": 5,
+    "playlist_url": "https://open.spotify.com/playlist/00SPK7y7LkhtoFXOn1rnH9",
+    "playlist_name": "[playlist] 환자분, 일단 진정하시고... 아니 제가 지금 진정하게 생겼냐고요",
+    "created_at": "2026-05-16T03:08:17"
+  },
+  {
+    "id": 2,
+    "score": 5,
+    "playlist_url": "https://open.spotify.com/playlist/58cFaIhn0tA76lEzgSac77",
+    "playlist_name": "𝐏𝐥𝐚𝐲𝐥𝐢𝐬𝐭 잘 지내니 보고 싶었어 나는...",
+    "created_at": "2026-05-16T03:10:41"
+  },
+  {
+    "id": 3,
+    "score": 5,
+    "playlist_url": "https://open.spotify.com/playlist/4imP1y49ufJWlehqLVVy7Z",
+    "playlist_name": "𝐏𝐥𝐚𝐲𝐥𝐢𝐬𝐭 • 요즘 뜨겁네 | 신나게 빡센 국힙",
+    "created_at": "2026-05-16T03:22:44"
+  },
+  {
+    "id": 4,
+    "score": 5,
+    "playlist_url": "https://open.spotify.com/playlist/0WajAe3PRqOHCqSBHezQQn",
+    "playlist_name": "playlist | 학교니가더미쳤을까내가더미쳤을까",
+    "created_at": "2026-05-16T03:24:45"
+  },
+  {
+    "id": 5,
+    "score": 5,
+    "playlist_url": "https://open.spotify.com/playlist/0NKjLyVflQmt26swL9cVpy",
+    "playlist_name": "[playlist] 그때 그 시절 우리가 좋아했던 빈지노",
+    "created_at": "2026-05-16T03:29:40"
+  }
+]
