@@ -10,6 +10,11 @@ def collect_text_final(url: str) -> dict:
     return {
         "input_url": url,
         "video_id": data["video_id"],
+        "channel_id": data.get("channel_id", ""),
+        "youtube_title": data.get("youtube_title", ""),
         "description": data["description"],
-        "comments": data["comments"][:COMMENT_LIMIT_DEFAULT],##댓글개수제한적용
+        "comments": data["comments"][:COMMENT_LIMIT_DEFAULT],
+        "comment_items": data.get("comment_items", [])[:COMMENT_LIMIT_DEFAULT],
+        "author_comment_items": data.get("author_comment_items", []),
+        "author_comments": data.get("author_comments", []),
     }
