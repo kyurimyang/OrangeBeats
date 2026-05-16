@@ -74,6 +74,7 @@ PAIR_SEPARATORS = [
     " : ",
     ": ",
     " _ ",
+    " _ ",
 ]
 
 GLOBAL_DIRECTION_SAMPLE_SIZE = 5

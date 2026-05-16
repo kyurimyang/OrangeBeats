@@ -617,6 +617,15 @@ def _extract_pair_parts(text: str) -> dict | None:
         right = _clean_text(right)
         if _is_metadata_pair(left, right):
             return None
+        # '<' 구분자 처리: '[현재아티스트] - [다음아티스트] <[다음곡제목]' 형식
+        # 예: 'BTS - BIGBANG <뱅뱅뱅' → left='BIGBANG', right='뱅뱅뱅'
+        if " <" in right:
+            sub_left, sub_right = right.split(" <", 1)
+            sub_left = _clean_text(sub_left)
+            sub_right = _clean_text(sub_right)
+            if sub_left and sub_right and looks_like_artist(sub_left):
+                left = sub_left
+                right = sub_right
         # 복합 라인 처리: primary separator가 '_' 아닌데 right에 '_ annotation'이 남은 경우 제거
         # 예: '아티스트 - 제목 _ 원곡아티스트' → right='제목'
         if sep != " _ ":
@@ -644,6 +653,24 @@ def _extract_pair_parts(text: str) -> dict | None:
                 "artist_parentheses_preserved": _has_preserved_parenthetical_identifier(raw_left),
                 "left_title_metadata": _extract_title_metadata_hints(original_left),
                 "right_title_metadata": _extract_title_metadata_hints(original_right),
+            }
+    # 폴백: '[아티스트] <[제목]' 형식 (primary separator 없이 '<'만 있는 경우)
+    # 예: '- 샤이니 <Don't Call Me' → 앞 장식 제거 후 '샤이니 <Don't Call Me'
+    if " <" in cleaned:
+        sub_left, sub_right = cleaned.split(" <", 1)
+        sub_left = _clean_text(sub_left)
+        sub_right = _clean_text(sub_right)
+        compact = sub_left.replace(" ", "")
+        is_hangul_artist = bool(re.fullmatch(r"[가-힣]+", compact)) and 2 <= len(compact) <= 15
+        if sub_left and sub_right and (looks_like_artist(sub_left) or is_hangul_artist) and not _is_metadata_pair(sub_left, sub_right):
+            return {
+                "raw": text,
+                "separator": " <",
+                "left": sub_left,
+                "right": sub_right,
+                "artist_parentheses_preserved": _has_preserved_parenthetical_identifier(sub_left),
+                "left_title_metadata": {},
+                "right_title_metadata": {},
             }
     return None
 
