@@ -2,11 +2,65 @@ from app.clients.openai_client import extract_songs_with_llm
 from app.parsers.song_parser import (
     assess_text_stage_validity,
     count_text_signals,
-    is_text_stage_success,
     normalize_song_candidates,
     parse_json_from_text,
     parse_unstructured_lines_to_json,
 )
+
+
+def _normalize_evidence_confidence(value: object, default: str = "medium") -> str:
+    confidence = str(value or default).strip().lower()
+    return confidence if confidence in {"high", "medium", "low"} else default
+
+
+def _infer_evidence_type(raw_line: str) -> str:
+    if _comment_has_timestamp(raw_line):
+        return "timestamp_pair" if _comment_has_track_pattern(raw_line) else "title_only_timestamp"
+    if _comment_has_track_pattern(raw_line):
+        return "delimiter_pair"
+    return "other"
+
+
+def _source_lines(text: str) -> list[str]:
+    return [line.strip() for line in (text or "").splitlines() if line.strip()]
+
+
+def _raw_line_in_source(raw_line: str, source_text: str) -> bool:
+    raw_line = str(raw_line or "").strip()
+    if not raw_line:
+        return False
+    return raw_line in (source_text or "")
+
+
+def _annotate_song_evidence(
+    songs: list[dict],
+    *,
+    source_text: str,
+    source_name: str,
+    method: str,
+    require_raw_line: bool = False,
+) -> list[dict]:
+    lines = _source_lines(source_text)
+    annotated: list[dict] = []
+    for song in songs or []:
+        item = dict(song)
+        raw_line = str(item.get("raw_line") or item.get("raw") or "").strip()
+        if require_raw_line and not _raw_line_in_source(raw_line, source_text):
+            continue
+        if not raw_line:
+            title = str(item.get("title") or "").strip()
+            raw_line = next((line for line in lines if title and title in line), "")
+        item["raw_line"] = raw_line
+        item["line_index"] = lines.index(raw_line) if raw_line in lines else item.get("line_index", -1)
+        item["source"] = item.get("source") or source_name
+        item["source_mode"] = item.get("source_mode") or source_name
+        item["evidence_type"] = item.get("evidence_type") or _infer_evidence_type(raw_line)
+        item["confidence"] = _normalize_evidence_confidence(
+            item.get("confidence"),
+            "high" if method == "rule_based" and raw_line else "medium",
+        )
+        annotated.append(item)
+    return annotated
 
 
 def _build_song_metrics(songs: list[dict]) -> dict:
@@ -34,6 +88,12 @@ def analyze_text_block(
     text = text or ""
     rule_based = parse_unstructured_lines_to_json(text)
     rule_based = normalize_song_candidates(rule_based, inferred_artist=inferred_artist)
+    rule_based['songs'] = _annotate_song_evidence(
+        rule_based['songs'],
+        source_text=text,
+        source_name=stage,
+        method='rule_based',
+    )
 
     rule_validity = assess_text_stage_validity(text, rule_based['songs'])
     rule_success = rule_validity["success"]
@@ -56,6 +116,13 @@ def analyze_text_block(
     llm_raw = extract_songs_with_llm(llm_blocks if llm_blocks is not None else [text])
     llm_json = parse_json_from_text(llm_raw)
     llm_result = normalize_song_candidates(llm_json, inferred_artist=inferred_artist)
+    llm_result['songs'] = _annotate_song_evidence(
+        llm_result['songs'],
+        source_text=text,
+        source_name=stage,
+        method='llm',
+        require_raw_line=False,
+    )
 
     llm_validity = assess_text_stage_validity(text, llm_result['songs'])
     llm_success = llm_validity["success"]

@@ -8,6 +8,8 @@ from fastapi.responses import RedirectResponse
 
 from app.config import (
     FRONTEND_URL,
+    SPOTIFY_REDIRECT_URI,
+    SPOTIFY_SESSION_MAX_AGE,
     SPOTIFY_SESSION_COOKIE_NAME,
     SPOTIFY_SESSION_COOKIE_SECURE,
     is_allowed_frontend_url,
@@ -45,6 +47,9 @@ def _resolve_frontend_origin(frontend_origin: str | None) -> str:
 
 
 def _resolve_callback_redirect_uri(request: Request) -> str:
+    configured = normalize_frontend_url(SPOTIFY_REDIRECT_URI)
+    if configured:
+        return configured
     return str(request.url_for("spotify_callback"))
 
 
@@ -127,10 +132,20 @@ def spotify_callback(
         print("granted scope =", token_data.get("scope"))
         session_service.save_token_data(auth_state.session_id, token_data)
 
-        return RedirectResponse(
+        response = RedirectResponse(
             url=_build_frontend_redirect(frontend_redirect, "success"),
             status_code=302,
         )
+        # Ensure browser has the same session id used for saved tokens.
+        response.set_cookie(
+            key=SPOTIFY_SESSION_COOKIE_NAME,
+            value=auth_state.session_id,
+            httponly=True,
+            samesite="lax",
+            secure=SPOTIFY_SESSION_COOKIE_SECURE,
+            max_age=SPOTIFY_SESSION_MAX_AGE,
+        )
+        return response
 
     except SpotifyServiceError as exc:
         print("SpotifyServiceError =", str(exc))

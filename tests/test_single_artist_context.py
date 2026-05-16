@@ -2,10 +2,66 @@ import unittest
 from unittest.mock import patch
 
 from app.parsers.song_parser import normalize_song_candidates
-from app.services.pipeline_service import run_youtube_text_pipeline
+from app.services.pipeline_service import _enrich_songs_with_music_section, run_youtube_text_pipeline
 
 
 class SingleArtistContextTests(unittest.TestCase):
+    @patch(
+        "app.services.pipeline_service.get_video_music_section",
+        return_value=[
+            {"artist": "IU", "title": "Good Day", "album": "Real"},
+        ],
+    )
+    def test_music_section_absence_does_not_downgrade_strong_text_evidence(self, _music_section_mock):
+        songs = [
+            {
+                "artist": "IU",
+                "title": "Good Day",
+                "confidence": "medium",
+                "raw_line": "00:00 IU - Good Day",
+                "evidence_type": "timestamp_pair",
+            },
+            {
+                "artist": "NewJeans",
+                "title": "Ditto",
+                "confidence": "high",
+                "raw_line": "03:30 NewJeans - Ditto",
+                "evidence_type": "timestamp_pair",
+            },
+        ]
+
+        enriched, extras = _enrich_songs_with_music_section(songs, "test")
+
+        self.assertEqual(extras, [])
+        self.assertTrue(enriched[0]["music_section_confirmed"])
+        self.assertFalse(enriched[1]["music_section_confirmed"])
+        self.assertEqual(enriched[1]["confidence"], "high")
+
+    @patch(
+        "app.services.pipeline_service.get_video_music_section",
+        return_value=[
+            {"artist": "IU", "title": "Good Day", "album": "Real"},
+        ],
+    )
+    def test_music_section_absence_only_lowers_weak_inferred_artist(self, _music_section_mock):
+        songs = [
+            {"artist": "IU", "title": "Good Day", "confidence": "medium"},
+            {
+                "artist": "IU",
+                "title": "Ditto",
+                "artist_inferred": True,
+                "confidence": "medium",
+                "raw_line": "03:30 Ditto",
+                "evidence_type": "title_only_timestamp",
+            },
+        ]
+
+        enriched, _extras = _enrich_songs_with_music_section(songs, "test")
+
+        self.assertTrue(enriched[0]["music_section_confirmed"])
+        self.assertFalse(enriched[1]["music_section_confirmed"])
+        self.assertEqual(enriched[1]["confidence"], "low")
+
     def test_normalize_song_candidates_fills_missing_artist_from_context(self):
         result = normalize_song_candidates(
             {"songs": [{"artist": "", "title": "Celebrity"}]},
