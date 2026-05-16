@@ -518,6 +518,35 @@ def _enrich_songs_with_music_section(
     return enriched, extras
 
 
+def _music_section_to_songs(music_section: list[dict]) -> list[dict]:
+    songs = []
+    for i, ms in enumerate(music_section):
+        title = (ms.get("title") or "").strip()
+        artist = (ms.get("artist") or "").strip()
+        if not title or not artist:
+            continue
+        songs.append({
+            "title": title,
+            "artist": artist,
+            "album": ms.get("album", ""),
+            "source": "music_section",
+            "source_mode": "music_section",
+            "raw_line": f"{artist} - {title}",
+            "line_index": i,
+            "evidence_type": "music_section",
+            "music_section_confirmed": True,
+            "confidence": "high",
+            "artist_exists": True,
+            "is_complete": True,
+            "completeness_score": 1.0,
+            "artist_inferred": False,
+            "acr_evidence": {},
+            "ocr_evidence": {},
+            "sources": ["music_section"],
+        })
+    return songs
+
+
 def run_youtube_text_pipeline(url: str) -> dict:
     source_data = collect_text_sources(url)
 
@@ -620,6 +649,54 @@ def run_youtube_text_pipeline(url: str) -> dict:
             },
             **_single_artist_payload(artist_detection),
         }
+
+    # 텍스트에서 곡을 못 찾으면 YouTube 음악 섹션(Content ID)으로 폴백
+    music_section = get_video_music_section(source_data["video_id"])
+    if music_section:
+        section_songs = _music_section_to_songs(music_section)
+        if section_songs:
+            artist_detection = _merge_single_artist_detection(
+                title_artist_detection,
+                _detect_single_artist_from_songs(section_songs),
+            )
+            artist_detection = _override_single_artist_detection_with_music_section(
+                artist_detection, section_songs
+            )
+            return {
+                "input_url": source_data["input_url"],
+                "video_id": source_data["video_id"],
+                "youtube_title": source_data.get("youtube_title", ""),
+                "selected_stage": "text",
+                "text_stage": "music_section",
+                "success": True,
+                "songs": section_songs,
+                "music_section_candidates": [],
+                "ocr_used": False,
+                "acr_used": False,
+                "signals": {},
+                "metrics": {
+                    "merged": {
+                        "song_count": len(section_songs),
+                        "complete_song_count": len(section_songs),
+                    }
+                },
+                "failure_reason": "",
+                "partial_success": False,
+                "is_partial_but_valid": True,
+                "validity_reason": "music_section_fallback",
+                "source_priority_used": "music_section",
+                "source_merge": {
+                    "description_count": 0,
+                    "comments_count": 0,
+                    "merged_count": len(section_songs),
+                },
+                "debug": {
+                    "description": description_result,
+                    "comments": comments_result,
+                    "music_section_fallback": True,
+                },
+                **_single_artist_payload(artist_detection),
+            }
 
     fallback_recommendation = _fallback_recommendation(description_result, comments_result)
     return {
