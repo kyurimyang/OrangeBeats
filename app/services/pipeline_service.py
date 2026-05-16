@@ -78,6 +78,16 @@ _ARTIST_CONTEXT_STOPWORDS = {
     "top",
     "study",
     "chill",
+    # \uD55C\uAD6D\uC5B4 \uD50C\uB808\uC774\uB9AC\uC2A4\uD2B8/\uC7A5\uB974 \uB808\uC774\uBE14 \u2014 artist\uB85C \uC624\uCD94\uB860 \uBC29\uC9C0
+    "\uB178\uB3D9\uC694",    # "work song" \uC18D\uC5B4 (\uBC30\uACBD\uC74C\uC545 \uBAA8\uC74C \uCC44\uB110 \uC81C\uBAA9\uC5D0 \uC790\uC8FC \uC4F0\uC784)
+    "\uBE44\uD2B8",      # "beat"
+    "\uB9DB\uC9D1",      # "great spot" \uC18D\uC5B4 (\uC608: "\uBE44\uD2B8 \uB9DB\uC9D1")
+    "\uAC10\uC131",      # "vibe/emotion"
+    "\uC778\uAE30",      # "popular"
+    "\uCD5C\uC2E0",      # "latest"
+    "\uC2E0\uACE1",      # "new release"
+    "\uBAA8\uC74C\uC9D1",    # "compilation"
+    "\uC120\uACE1",      # "track selection"
     "\uB178\uB798",
     "\uBAA8\uC74C",
     "\uD50C\uB808\uC774\uB9AC\uC2A4\uD2B8",
@@ -381,6 +391,28 @@ def _titles_match(text_title: str, section_title: str) -> bool:
     return t == s or s.startswith(t + " ") or t.startswith(s + " ")
 
 
+def _has_strong_text_evidence(song: dict) -> bool:
+    confidence = str(song.get("confidence") or "").strip().lower()
+    if confidence == "high":
+        return True
+
+    evidence_type = str(song.get("evidence_type") or "").strip().lower()
+    if evidence_type in {"timestamp_pair", "delimiter_pair"}:
+        return True
+
+    raw_line = str(song.get("raw_line") or song.get("raw") or "").strip()
+    return bool(raw_line and song.get("artist") and song.get("title") and not song.get("artist_inferred"))
+
+
+def _confidence_for_unmatched_music_section(song: dict) -> str:
+    existing = str(song.get("confidence") or "").strip().lower()
+    if existing in {"high", "medium", "low"} and _has_strong_text_evidence(song):
+        return existing
+    if song.get("artist_inferred") and not _has_strong_text_evidence(song):
+        return "low"
+    return existing if existing in {"high", "medium", "low"} else "medium"
+
+
 def _enrich_songs_with_music_section(
     songs: list[dict], video_id: str
 ) -> tuple[list[dict], list[dict]]:
@@ -421,7 +453,7 @@ def _enrich_songs_with_music_section(
             song["confidence"] = "high"
         else:
             song["music_section_confirmed"] = False
-            song["confidence"] = "low" if song.get("artist_inferred") else "medium"
+            song["confidence"] = _confidence_for_unmatched_music_section(song)
             if not song.get("artist_inferred"):
                 song["source_tag"] = "description_only"
 

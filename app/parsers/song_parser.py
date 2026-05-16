@@ -68,6 +68,29 @@ TITLE_HINT_KO = [
     "\ubd88\ud3b8\ud574",
 ]
 ARTIST_CONNECTORS = ["feat", "ft", "&", ",", " x ", " X "]
+LOCAL_SECTION_KEYWORDS = [
+    "\uc378\ub124\uc77c",
+    "\uc12c\ub124\uc77c",
+    "\ub178\ub798 \ubaa8\uc74c",
+    "\ub178\ub798\ubaa8\uc74c",
+    "\ud50c\ub808\uc774\ub9ac\uc2a4\ud2b8",
+    "\ucf00\uc774\ud31d",
+    "\uac78\uadf8\ub8f9",
+    "\uc5ec\ub3cc",
+    "\ub178\ub3d9\uc694",
+    "\ub9e4\uc7a5\uc5d0\uc11c \ud2c0\uae30 \uc88b\uc740",
+]
+PLAYLIST_TITLE_METADATA_KEYWORDS = [
+    "playlist",
+    "kpop",
+    "\ub178\ub798 \ubaa8\uc74c",
+    "\ub178\ub798\ubaa8\uc74c",
+    "\ud50c\ub808\uc774\ub9ac\uc2a4\ud2b8",
+    "\ucf00\uc774\ud31d",
+    "\uac78\uadf8\ub8f9",
+    "\uc5ec\ub3cc",
+    "\ub178\ub3d9\uc694",
+]
 TITLE_LEADING_WORDS_EN = {"the", "a", "an", "my", "your", "our", "this", "that"}
 TITLE_VERB_HINTS_EN = {"is", "are", "was", "were", "be", "build", "love", "hate", "need", "want"}
 TITLE_TRAILING_WORDS_EN = {"mine", "more", "sick", "dance", "umbrella", "vida"}
@@ -242,7 +265,21 @@ def _contains_non_music_pattern(line: str) -> bool:
 
 def _contains_section_keyword(line: str) -> bool:
     lower = line.lower()
-    return any(keyword.lower() in lower for keyword in SECTION_KEYWORDS)
+    return any(keyword.lower() in lower for keyword in [*SECTION_KEYWORDS, *LOCAL_SECTION_KEYWORDS])
+
+
+def _looks_like_playlist_title_metadata(line: str) -> bool:
+    lower = line.lower()
+    keyword_count = sum(1 for keyword in PLAYLIST_TITLE_METADATA_KEYWORDS if keyword in lower)
+    slash_count = lower.count("/")
+    word_count = len(lower.split())
+    bracket_wrapped = bool(re.match(r"^[\[\(\{].{12,}[\]\)\}]?$", line.strip()))
+
+    if keyword_count >= 2 and (bracket_wrapped or slash_count >= 2 or word_count >= 10):
+        return True
+    if bracket_wrapped and keyword_count >= 1 and word_count >= 8:
+        return True
+    return False
 
 
 def _left_part_is_metadata(normalized: str) -> bool:
@@ -286,6 +323,9 @@ def _is_valid_music_line(line: str) -> bool:
         return False
 
     if _contains_non_music_pattern(line) or _contains_non_music_pattern(normalized):
+        return False
+
+    if _looks_like_playlist_title_metadata(normalized):
         return False
 
     has_delimiter = any(delimiter in normalized for delimiter in TITLE_DELIMITERS)
@@ -535,6 +575,26 @@ def _strip_underscore_annotation(text: str) -> str:
     return text
 
 
+def _mask_bracket_spans(text: str) -> tuple[str, dict]:
+    """괄호 범위를 placeholder 토큰으로 치환해 split 시 중간 분리를 방지한다."""
+    masks: dict[str, str] = {}
+    idx = [0]
+
+    def sub(m: re.Match) -> str:
+        key = f"\x00M{idx[0]}\x00"
+        masks[key] = m.group(0)
+        idx[0] += 1
+        return key
+
+    return re.sub(r"[\[\(\{][^\]\)\}]*[\]\)\}]", sub, text), masks
+
+
+def _unmask_bracket_spans(text: str, masks: dict) -> str:
+    for key, val in masks.items():
+        text = text.replace(key, val)
+    return text
+
+
 def _extract_pair_parts(text: str) -> dict | None:
     cleaned = _clean_text(text)
     if not cleaned:
@@ -561,11 +621,32 @@ def _extract_pair_parts(text: str) -> dict | None:
                 right = sub_right
         # 컴필레이션 포맷: '[이전아티스트] - [다음아티스트] [제목]' (꺽쇠 없이)
         # 예: '베리베리 (VERIVERY) - NCT 127 영웅 (英雄; Kick It)' → artist='NCT 127', title='영웅 (英雄; Kick It)'
+        # 오탐 방지: left가 artist로 확정된 경우 right를 재분리하려면
+        #   (1) cand_artist가 알려진 아티스트(strong evidence ≥ 2.5), 또는
+        #   (2) cand_artist가 2개 이상의 대문자/숫자 토큰 AND cand_title이 CJK 시작이거나 2단어 이상
+        # 이 조건 없이 재분리하면 'TREASURE - KING KONG' → artist=KING, title=KONG 같은 오탐 발생.
         elif looks_like_artist(left):
-            tokens = right.split()
+            masked_right, _masks = _mask_bracket_spans(right)
+            tokens = masked_right.split()
             for end in range(min(len(tokens) - 1, 4), 0, -1):
-                cand_artist = " ".join(tokens[:end])
-                cand_title = " ".join(tokens[end:])
+                cand_artist = _unmask_bracket_spans(" ".join(tokens[:end]), _masks)
+                cand_title = _unmask_bracket_spans(" ".join(tokens[end:]), _masks)
+                cand_artist_clean = _clean_text(cand_artist)
+                cand_title_clean = _clean_text(cand_title)
+
+                cand_artist_known = _known_artist_evidence(cand_artist_clean) >= 2.5
+                cand_artist_multi_caps = (
+                    _count_words(cand_artist_clean) >= 2
+                    and all(t.isupper() or t.isdigit() for t in cand_artist_clean.split()[:2])
+                )
+                cand_title_strong = bool(
+                    cand_title_clean
+                    and re.match(r"[가-힣一-鿿぀-ヿ]", cand_title_clean)
+                ) or _count_words(cand_title_clean) >= 2
+
+                if not (cand_artist_known or (cand_artist_multi_caps and cand_title_strong)):
+                    continue
+
                 if (cand_title
                         and looks_like_artist(cand_artist)
                         and cand_artist[0].isascii()
