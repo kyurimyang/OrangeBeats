@@ -550,12 +550,12 @@ def _extract_pair_parts(text: str) -> dict | None:
         left, right = raw_left, raw_right
         left = _clean_text(left)
         right = _clean_text(right)
-        # '<' 구분자 처리: '[현재아티스트] - [다음아티스트] <[다음곡제목]' 형식
-        # 예: 'BTS - BIGBANG <뱅뱅뱅' → left='BIGBANG', right='뱅뱅뱅'
+        # '<' 구분자 처리: '[현재아티스트] - [다음아티스트] <[다음곡제목]>' 형식
+        # 예: 'BTS - BIGBANG <뱅뱅뱅>' → left='BIGBANG', right='뱅뱅뱅'
         if " <" in right:
             sub_left, sub_right = right.split(" <", 1)
             sub_left = _clean_text(sub_left)
-            sub_right = _clean_text(sub_right)
+            sub_right = _clean_text(sub_right).rstrip(">").strip()
             if sub_left and sub_right and looks_like_artist(sub_left):
                 left = sub_left
                 right = sub_right
@@ -585,14 +585,15 @@ def _extract_pair_parts(text: str) -> dict | None:
                 "left_title_metadata": _extract_title_metadata_hints(original_left),
                 "right_title_metadata": _extract_title_metadata_hints(original_right),
             }
-    # 폴백: '[아티스트] <[제목]' 형식 (primary separator 없이 '<'만 있는 경우)
-    # 예: '- 샤이니 <Don't Call Me' → 앞 장식 제거 후 '샤이니 <Don't Call Me'
+    # 폴백: '[아티스트] <[제목]>' 형식 (primary separator 없이 '<'만 있는 경우)
+    # 예: '샤이니 (SHINee) <Don't Call Me>' → artist='샤이니 (SHINee)', title='Don't Call Me'
     if " <" in cleaned:
         sub_left, sub_right = cleaned.split(" <", 1)
         sub_left = _clean_text(sub_left)
-        sub_right = _clean_text(sub_right)
-        compact = sub_left.replace(" ", "")
-        is_hangul_artist = bool(re.fullmatch(r"[가-힣]+", compact)) and 2 <= len(compact) <= 15
+        sub_right = _clean_text(sub_right).rstrip(">").strip()
+        # 한글 아티스트 판별: '블락비 (Block B)' 같이 영문 병기가 붙은 경우도 처리
+        compact_base = re.sub(r"\s*\([^)]*\)\s*", "", sub_left).replace(" ", "")
+        is_hangul_artist = bool(re.fullmatch(r"[가-힣]+", compact_base)) and 2 <= len(compact_base) <= 15
         if sub_left and sub_right and (looks_like_artist(sub_left) or is_hangul_artist):
             return {
                 "raw": text,
