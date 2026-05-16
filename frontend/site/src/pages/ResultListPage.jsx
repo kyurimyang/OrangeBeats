@@ -5,7 +5,11 @@ import UrlLoadingScreen from "../components/UrlLoadingScreen.jsx";
 import PlaylistCreateLoading, {
   usePlaylistCreateProgress,
 } from "../components/PlaylistCreateLoading.jsx";
-import { collectPlaylistTrackUris, normalizeTracks } from "../utils/resultTracks.js";
+import {
+  collectPlaylistTrackUris,
+  isYoutubeTextExtraction,
+  normalizeTracks,
+} from "../utils/resultTracks.js";
 import trashDefaultUrl from "../assets/figma/trash-default.svg?url";
 import trashHoverUrl from "../assets/figma/trash-hover.svg?url";
 import trashPressedUrl from "../assets/figma/trash-pressed.svg?url";
@@ -77,7 +81,14 @@ export default function ResultListPage() {
   const [playlistName, setPlaylistName] = useState("YouTube 변환 플레이리스트");
   const [youtubeTitle, setYoutubeTitle] = useState("");
   const [tracks, setTracks] = useState([]);
+  const [showYoutubeInputFrom, setShowYoutubeInputFrom] = useState(false);
   const analyzeDataRef = useRef(null);
+
+  const applyTracksFromAnalyzeData = (data) => {
+    const fromYoutubeText = isYoutubeTextExtraction(data);
+    setShowYoutubeInputFrom(fromYoutubeText);
+    setTracks(normalizeTracks(data, { showInputFrom: fromYoutubeText }));
+  };
 
   useEffect(() => {
     const run = async () => {
@@ -86,8 +97,7 @@ export default function ResultListPage() {
 
         const applyFromAnalyzeData = (data) => {
           analyzeDataRef.current = data;
-          const normalized = normalizeTracks(data);
-          setTracks(normalized);
+          applyTracksFromAnalyzeData(data);
           const savedPlaylistName =
             sessionStorage.getItem(PREFILL_KEYS.playlistName) ||
             sessionStorage.getItem(LAST_ANALYZED_KEYS.playlistName) ||
@@ -203,8 +213,7 @@ export default function ResultListPage() {
           throw new Error(data?.detail || "분석 요청에 실패했습니다.");
         }
 
-        const normalized = normalizeTracks(data);
-        setTracks(normalized);
+        applyTracksFromAnalyzeData(data);
         setPlaylistName(data?.playlist_name || savedPlaylistName || "YouTube 변환 플레이리스트");
         setYoutubeTitle(data?.youtube_title || "");
 
@@ -315,17 +324,7 @@ export default function ResultListPage() {
   }
 
   if (loading) {
-    return (
-      <div className="result-list-page result-list-page--loading" data-node-id="97:131">
-        <SiteHeader />
-        <main className="result-loading-main">
-          <p className="result-list-loading__title">
-            <span>Youtube에서 음원 가져오는 중</span>
-            <span className="result-list-loading__dots" aria-hidden="true"></span>
-          </p>
-        </main>
-      </div>
-    );
+    return <UrlLoadingScreen />;
   }
 
   return (
@@ -353,6 +352,13 @@ export default function ResultListPage() {
               <div className="result-track-item__meta">
                 <p className="result-track-item__title">{track.title}</p>
                 <p className="result-track-item__artist">{track.artist}</p>
+                {showYoutubeInputFrom && track.inputFrom ? (
+                  <p className="result-track-item__input-from">
+                    <em>from</em>{" "}
+                    {track.inputFrom.title}
+                    {track.inputFrom.artist ? ` — ${track.inputFrom.artist}` : ""}
+                  </p>
+                ) : null}
               </div>
               <ResultTrashButton
                 ariaLabel={`${track.title} 삭제`}

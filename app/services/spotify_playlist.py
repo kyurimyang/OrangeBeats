@@ -1,4 +1,4 @@
-﻿import re
+import re
 from typing import Any, Dict, List
 
 from app.services.spotify_api import add_tracks_to_playlist, create_playlist, get_tracks_by_ids
