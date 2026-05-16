@@ -559,6 +559,21 @@ def _extract_pair_parts(text: str) -> dict | None:
             if sub_left and sub_right and looks_like_artist(sub_left):
                 left = sub_left
                 right = sub_right
+        # 컴필레이션 포맷: '[이전아티스트] - [다음아티스트] [제목]' (꺽쇠 없이)
+        # 예: '베리베리 (VERIVERY) - NCT 127 영웅 (英雄; Kick It)' → artist='NCT 127', title='영웅 (英雄; Kick It)'
+        elif looks_like_artist(left):
+            tokens = right.split()
+            for end in range(min(len(tokens) - 1, 4), 0, -1):
+                cand_artist = " ".join(tokens[:end])
+                cand_title = " ".join(tokens[end:])
+                if (cand_title
+                        and looks_like_artist(cand_artist)
+                        and cand_artist[0].isascii()
+                        and cand_artist[0].isalpha()
+                        and looks_like_title(cand_title)):
+                    left = cand_artist
+                    right = cand_title
+                    break
         # 복합 라인 처리: primary separator가 '_' 아닌데 right에 '_ annotation'이 남은 경우 제거
         # 예: '아티스트 - 제목 _ 원곡아티스트' → right='제목'
         if sep != " _ ":
