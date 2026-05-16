@@ -30,7 +30,7 @@ TITLE_METADATA_HINT_REGEX = re.compile(
     r"[\(\[\{]?\s*(?P<kind>feat|ft|featuring|with|prod(?:uced)?\s+by)\.?\s+(?P<value>[^\)\]\}\-_/|]{1,80})[\)\]\}]?",
     re.IGNORECASE,
 )
-PAIR_REGEX = re.compile(r".+\s[-–—|/:~]\s.+")
+PAIR_REGEX = re.compile(r".+\s[-–—|/:~_]\s.+")
 PURE_PUNCT_REGEX = re.compile(r"^[^\w\uAC00-\uD7A3]+$")
 LEADING_DECORATION_REGEX = re.compile(r"^[~*#>+\-\s]+")
 TRAILING_DECORATION_REGEX = re.compile(r"[~*#<>\-\s]+$")
@@ -519,6 +519,20 @@ def score_title_like(text: str) -> float:
     return round(score, 4)
 
 
+def _strip_underscore_annotation(text: str) -> str:
+    """'제목 _ 아티스트' 복합 라인에서 primary separator로 분리된 후 right에 남은 '_ annotation' 제거.
+    annotation이 2단어 이하이고 artist-like하며 title-like하지 않을 때만 적용."""
+    if " _ " not in text:
+        return text
+    left_part, annotation = text.split(" _ ", 1)
+    annotation = _clean_text(annotation)
+    if not annotation:
+        return text
+    if _count_words(annotation) <= 2 and looks_like_artist(annotation) and not looks_like_title(annotation):
+        return _clean_text(left_part)
+    return text
+
+
 def _extract_pair_parts(text: str) -> dict | None:
     cleaned = _clean_text(text)
     if not cleaned:
@@ -534,6 +548,10 @@ def _extract_pair_parts(text: str) -> dict | None:
         left, right = raw_left, raw_right
         left = _clean_text(left)
         right = _clean_text(right)
+        # 복합 라인 처리: primary separator가 '_' 아닌데 right에 '_ annotation'이 남은 경우 제거
+        # 예: '아티스트 - 제목 _ 원곡아티스트' → right='제목'
+        if sep != " _ ":
+            right = _strip_underscore_annotation(right)
         nested = _extract_numbered_nested_pair(left, right)
         if nested:
             nested_left, nested_right, nested_sep = nested

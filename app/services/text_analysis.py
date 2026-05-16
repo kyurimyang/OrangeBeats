@@ -2,7 +2,6 @@ from app.clients.openai_client import extract_songs_with_llm
 from app.parsers.song_parser import (
     assess_text_stage_validity,
     count_text_signals,
-    is_text_stage_success,
     normalize_song_candidates,
     parse_json_from_text,
     parse_unstructured_lines_to_json,
@@ -122,7 +121,7 @@ def analyze_text_block(
         source_text=text,
         source_name=stage,
         method='llm',
-        require_raw_line=True,
+        require_raw_line=False,
     )
 
     llm_validity = assess_text_stage_validity(text, llm_result['songs'])
