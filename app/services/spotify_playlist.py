@@ -1,4 +1,6 @@
 import re
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List
 
 from app.services.spotify_api import add_tracks_to_playlist, create_playlist, get_tracks_by_ids
@@ -13,6 +15,7 @@ from app.services.spotify_matching import (
 
 LOW_CONF_MIN_SCORE = 0.60
 HIGH_CONF_AUTO_CREATE_SCORE = 0.85
+_MAX_MATCH_WORKERS = 8
 ALLOWED_LOW_CONF_REASONS = {
     "probable_match",
     "review_needed",
@@ -462,40 +465,25 @@ def analyze_spotify_candidates(
     market: str = "KR",
     source_mode: str = "",
 ) -> List[Dict[str, Any]]:
-    results: List[Dict[str, Any]] = []
     request_match_cache: Dict[tuple[str, str], Any] = {}
+    cache_lock = threading.Lock()
     single_artist_context = _resolve_single_artist_context(access_token, songs, market=market)
 
+    # Phase 1: 입력 준비 (I/O 없음, 순차 처리)
+    prepared: List[Dict[str, Any]] = []
     for song in songs:
         title = (song.get("title") or "").strip()
         artist = (song.get("artist") or "").strip()
         if not title:
-            results.append(_result_from_match(song, None))
+            prepared.append({"skip": "no_title", "song": song, "title": title, "artist": artist})
             continue
-
         if _is_suspicious_song(song):
-            results.append(
-                {
-                    "input_artist": artist,
-                    "input_title": title,
-                    "matched": False,
-                    "spotify_track_id": None,
-                    "spotify_uri": None,
-                    "spotify_title": None,
-                    "spotify_artist": None,
-                    "album_image": None,
-                    "confidence": 0,
-                    "confidence_label": "failed",
-                    "reason": "artist/title information is not reliable enough",
-                    "selected": False,
-                    "match_status": "unmatched",
-                    "top_candidates": [],
-                }
-            )
+            prepared.append({"skip": "suspicious", "song": song, "title": title, "artist": artist})
             continue
-
         filter_decision = _single_artist_filter_decision(song, single_artist_context)
         song_single_artist_context = filter_decision["context"]
+        # artist_inferred + music_section 미확인 → single artist filter로만 제한하고 title-only 검색
+        search_artist = None if filter_decision["applied"] else (artist or None)
         song_meta = {
             "raw": song.get("raw", ""),
             "left": song.get("left", ""),
@@ -518,26 +506,73 @@ def analyze_spotify_candidates(
             "acr_evidence": song.get("acr_evidence", {}),
             **song_single_artist_context,
         }
-        # artist_inferred + music_section 미확인 → single artist filter로만 제한하고 title-only 검색
-        artist_unreliable = bool(filter_decision["applied"])
-        search_artist = None if artist_unreliable else (artist or None)
-
         cache_key = build_match_cache_key(
             title,
             f"{search_artist or ''}|artist_id:{song_single_artist_context.get('spotify_artist_id', '')}",
         )
-        if cache_key in request_match_cache:
-            match = request_match_cache[cache_key]
-        else:
-            match = pick_best_track_match(
-                access_token=access_token,
-                title=title,
-                artist=search_artist,
-                market=market,
-                song_meta=song_meta,
-            )
-            request_match_cache[cache_key] = match
+        prepared.append({
+            "skip": None,
+            "song": song,
+            "title": title,
+            "artist": artist,
+            "search_artist": search_artist,
+            "song_meta": song_meta,
+            "filter_decision": filter_decision,
+            "song_single_artist_context": song_single_artist_context,
+            "cache_key": cache_key,
+        })
 
+    # Phase 2: 병렬 Spotify 검색 (I/O)
+    def _fetch_match(item: Dict[str, Any]) -> Any:
+        if item["skip"]:
+            return None
+        key = item["cache_key"]
+        with cache_lock:
+            if key in request_match_cache:
+                return request_match_cache[key]
+        match = pick_best_track_match(
+            access_token=access_token,
+            title=item["title"],
+            artist=item["search_artist"],
+            market=market,
+            song_meta=item["song_meta"],
+        )
+        with cache_lock:
+            request_match_cache[key] = match
+        return match
+
+    with ThreadPoolExecutor(max_workers=_MAX_MATCH_WORKERS) as executor:
+        matches = list(executor.map(_fetch_match, prepared))
+
+    # Phase 3: 결과 조립 (순서 보존, 순차 처리)
+    results: List[Dict[str, Any]] = []
+    for item, match in zip(prepared, matches):
+        song = item["song"]
+        if item["skip"] == "no_title":
+            results.append(_result_from_match(song, None))
+            continue
+        if item["skip"] == "suspicious":
+            results.append({
+                "input_artist": item["artist"],
+                "input_title": item["title"],
+                "matched": False,
+                "spotify_track_id": None,
+                "spotify_uri": None,
+                "spotify_title": None,
+                "spotify_artist": None,
+                "album_image": None,
+                "confidence": 0,
+                "confidence_label": "failed",
+                "reason": "artist/title information is not reliable enough",
+                "selected": False,
+                "match_status": "unmatched",
+                "top_candidates": [],
+            })
+            continue
+        title = item["title"]
+        search_artist = item["search_artist"]
+        filter_decision = item["filter_decision"]
+        song_single_artist_context = item["song_single_artist_context"]
         result = _result_from_match(song, match, source_mode=source_mode or str(song.get("source_mode") or ""))
         search_debug = get_match_debug(title, search_artist or "")
         result["single_artist_filter_applied"] = bool(filter_decision["applied"])
@@ -652,24 +687,24 @@ def create_playlist_from_songs(
     if not songs:
         raise SpotifyServiceError('생성할 곡 목록이 없습니다.')
 
-    matched_uris: List[str] = []
-    playlist_uris: List[str] = []
-    matched_debug: List[Dict[str, Any]] = []
-    low_confidence: List[Dict[str, Any]] = []
-    added_low_confidence: List[Dict[str, Any]] = []
-    skipped_low_confidence: List[Dict[str, Any]] = []
-    unmatched: List[Dict[str, Any]] = []
-    seen_uris = set()
     request_match_cache: Dict[tuple[str, str], Any] = {}
+    cache_lock = threading.Lock()
     single_artist_context = _resolve_single_artist_context(access_token, songs, market='KR')
 
+    # Phase 1: 입력 준비 (I/O 없음, 순차 처리)
+    prepared: List[Dict[str, Any]] = []
     for song in songs:
         title = (song.get('title') or '').strip()
         input_artist = (song.get('artist') or '').strip()
+        if not title:
+            prepared.append({'skip': 'no_title', 'song': song, 'title': title, 'artist': input_artist})
+            continue
+        if _is_suspicious_song(song):
+            prepared.append({'skip': 'suspicious', 'song': song, 'title': title, 'artist': input_artist})
+            continue
         filter_decision = _single_artist_filter_decision(song, single_artist_context)
         song_single_artist_context = filter_decision["context"]
-        artist_unreliable = bool(filter_decision["applied"])
-        search_artist = None if artist_unreliable else (input_artist or None)
+        search_artist = None if filter_decision["applied"] else (input_artist or None)
         song_meta = {
             'raw': song.get('raw', ''),
             'left': song.get('left', ''),
@@ -691,30 +726,68 @@ def create_playlist_from_songs(
             'acr_evidence': song.get('acr_evidence', {}),
             **song_single_artist_context,
         }
-
-        if not title:
-            unmatched.append({'song': song, 'reason': 'title 없음'})
-            continue
-
-        if _is_suspicious_song(song):
-            unmatched.append({'song': song, 'reason': 'artist/title 동일 또는 정보 부족'})
-            continue
-
         cache_key = build_match_cache_key(
             title,
             f"{search_artist or ''}|artist_id:{song_single_artist_context.get('spotify_artist_id', '')}",
         )
-        if cache_key in request_match_cache:
-            match = request_match_cache[cache_key]
-        else:
-            match = pick_best_track_match(
-                access_token=access_token,
-                title=title,
-                artist=search_artist,
-                market='KR',
-                song_meta=song_meta,
-            )
-            request_match_cache[cache_key] = match
+        prepared.append({
+            'skip': None,
+            'song': song,
+            'title': title,
+            'artist': input_artist,
+            'search_artist': search_artist,
+            'song_meta': song_meta,
+            'filter_decision': filter_decision,
+            'song_single_artist_context': song_single_artist_context,
+            'cache_key': cache_key,
+        })
+
+    # Phase 2: 병렬 Spotify 검색 (I/O)
+    def _fetch_match_create(item: Dict[str, Any]) -> Any:
+        if item['skip']:
+            return None
+        key = item['cache_key']
+        with cache_lock:
+            if key in request_match_cache:
+                return request_match_cache[key]
+        match = pick_best_track_match(
+            access_token=access_token,
+            title=item['title'],
+            artist=item['search_artist'],
+            market='KR',
+            song_meta=item['song_meta'],
+        )
+        with cache_lock:
+            request_match_cache[key] = match
+        return match
+
+    with ThreadPoolExecutor(max_workers=_MAX_MATCH_WORKERS) as executor:
+        matches = list(executor.map(_fetch_match_create, prepared))
+
+    # Phase 3: 결과 조립 (순서 보존, 순차 처리)
+    matched_uris: List[str] = []
+    playlist_uris: List[str] = []
+    matched_debug: List[Dict[str, Any]] = []
+    low_confidence: List[Dict[str, Any]] = []
+    added_low_confidence: List[Dict[str, Any]] = []
+    skipped_low_confidence: List[Dict[str, Any]] = []
+    unmatched: List[Dict[str, Any]] = []
+    seen_uris = set()
+
+    for item, match in zip(prepared, matches):
+        song = item['song']
+        title = item['title']
+        input_artist = item['artist']
+        if item['skip'] == 'no_title':
+            unmatched.append({'song': song, 'reason': 'title 없음'})
+            continue
+        if item['skip'] == 'suspicious':
+            unmatched.append({'song': song, 'reason': 'artist/title 동일 또는 정보 부족'})
+            continue
+        filter_decision = item['filter_decision']
+        song_single_artist_context = item['song_single_artist_context']
+        song_meta = item['song_meta']
+        search_artist = item['search_artist']
 
         if not match:
             debug = get_match_debug(title, search_artist or '')

@@ -204,7 +204,7 @@ export default function ResultListPage() {
           extraction_mode: extractionMode,
           title_mode: titleMode,
           playlist_name: savedPlaylistName,
-          skip_spotify_matching: true,
+          skip_spotify_matching: false,
         };
         const response = await fetch("/playlist/analyze-youtube", {
           method: "POST",
@@ -299,7 +299,8 @@ export default function ResultListPage() {
       const createdPlaylist = {
         playlistUrl,
         playlistName: data?.playlist_name || playlistName,
-        tracks,
+        tracks: selectedTracks,
+        thumbnailUrl: String(data?.thumbnail_url || "").trim(),
       };
       try {
         sessionStorage.setItem(CREATED_PLAYLIST_KEY, JSON.stringify(createdPlaylist));

@@ -19,6 +19,9 @@ from app.services.spotify_playlist import (
 from app.services.spotify_service import SpotifyServiceError, create_playlist_from_songs
 from app.services.spotify_session_service import SpotifySessionService
 from app.services.youtube_thumbnail import (
+    extract_playlist_id,
+    extract_video_id,
+    get_playlist_thumbnail_url,
     YouTubeThumbnailError,
     get_thumbnail_base64_from_image_url,
     get_thumbnail_base64_from_youtube_url,
@@ -212,9 +215,15 @@ def _playlist_name(title_mode: str, user_playlist_name: str, youtube_title: str)
 
 def _youtube_thumbnail_url(youtube_result: Dict) -> str:
     video_id = (youtube_result.get("video_id") or "").strip()
-    if not video_id:
-        return ""
-    return f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
+    if video_id:
+        return f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
+
+    input_url = (youtube_result.get("input_url") or "").strip()
+    playlist_id = extract_playlist_id(input_url)
+    if playlist_id:
+        return get_playlist_thumbnail_url(playlist_id)
+
+    return ""
 
 
 
@@ -851,6 +860,19 @@ def create_playlist_from_selected_tracks(
         )
         result["cover_upload_status"] = "not_attempted"
         result["cover_upload_error"] = None
+
+        # 프론트가 썸네일을 표시할 수 있도록 실제로 사용할 URL 계산
+        effective_thumbnail_url = thumbnail_url
+        if not effective_thumbnail_url and youtube_url:
+            try:
+                vid = extract_video_id(youtube_url)
+                effective_thumbnail_url = f"https://img.youtube.com/vi/{vid}/hqdefault.jpg"
+            except YouTubeThumbnailError:
+                pl_id = extract_playlist_id(youtube_url)
+                if pl_id:
+                    effective_thumbnail_url = get_playlist_thumbnail_url(pl_id) or ""
+        result["thumbnail_url"] = effective_thumbnail_url
+
         if result.get("playlist_id"):
             try:
                 if thumbnail_url:
