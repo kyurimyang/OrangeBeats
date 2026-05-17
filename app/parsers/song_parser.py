@@ -600,6 +600,9 @@ def _extract_pair_parts(text: str) -> dict | None:
     if not cleaned:
         return None
 
+    # Normalize "Artist- Title" (no space before hyphen) → "Artist - Title"
+    cleaned = re.sub(r"(\w)-\s", r"\1 - ", cleaned)
+
     for sep in SEPARATORS:
         if sep not in cleaned:
             continue

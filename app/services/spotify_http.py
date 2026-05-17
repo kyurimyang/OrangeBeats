@@ -1,4 +1,5 @@
 import json
+import threading
 import time
 from pathlib import Path
 from typing import Dict, Optional
@@ -15,6 +16,7 @@ _rate_limit_message: Optional[str] = None
 # Minimum interval between Spotify API calls (seconds). Prevents burst spikes.
 _MIN_REQUEST_INTERVAL = 0.05
 _last_request_time = 0.0
+_throttle_lock = threading.Lock()
 
 
 def _load_rate_limit_state() -> None:
@@ -101,11 +103,12 @@ def _auth_headers(access_token: str, content_type: str = "application/json") -> 
 
 def _throttle() -> None:
     global _last_request_time
-    now = time.time()
-    wait = _MIN_REQUEST_INTERVAL - (now - _last_request_time)
-    if wait > 0:
-        time.sleep(wait)
-    _last_request_time = time.time()
+    with _throttle_lock:
+        now = time.time()
+        wait = _MIN_REQUEST_INTERVAL - (now - _last_request_time)
+        if wait > 0:
+            time.sleep(wait)
+        _last_request_time = time.time()
 
 
 def spotify_request(

@@ -1916,20 +1916,41 @@ a.figma-spotify-connect {
 }
 
 .playlist-created-page__panel {
-  max-height: calc(1072px * var(--result-scale, 1));
   overflow-x: hidden;
-  overflow-y: auto;
-  padding: calc(34px * var(--result-scale, 1)) calc(30px * var(--result-scale, 1))
-    calc(164px * var(--result-scale, 1)) calc(29px * var(--result-scale, 1));
-  /* 스크롤바 UI 숨김 — 마우스 휠·키보드 스크롤은 유지 */
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  overflow-y: visible;
 }
 
 .playlist-created-page__panel::-webkit-scrollbar {
   display: none;
   width: 0;
   height: 0;
+}
+
+.playlist-created-page__panel.result-list-panel--scrollable {
+  max-height: 56vh;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  -ms-overflow-style: auto;
+}
+
+.playlist-created-page__panel.result-list-panel--scrollable::-webkit-scrollbar {
+  display: block;
+  width: 8px;
+}
+
+.playlist-created-page__panel.result-list-panel--scrollable::-webkit-scrollbar-track {
+  background: transparent;
+  margin-top: calc(18px * var(--result-scale, 1));
+  margin-bottom: calc(20px * var(--result-scale, 1));
+}
+
+.playlist-created-page__panel.result-list-panel--scrollable::-webkit-scrollbar-thumb {
+  background: #a6a6a6;
+  border-radius: 4px;
+}
+
+.playlist-created-page__panel.result-list-panel--scrollable::-webkit-scrollbar-thumb:hover {
+  background: #c8c8c8;
 }
 
 .result-track-item--readonly {
@@ -1956,6 +1977,483 @@ a.figma-spotify-connect {
   cursor: not-allowed;
 }
 
+/* ================================================================
+   004_Playlist Created — 신규 레이아웃 (.pcp-*)
+   ================================================================ */
+
+.pcp {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: #000;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  font-family: "Pretendard", "Gowun Dodum", sans-serif;
+}
+
+.pcp-main {
+  flex: 1;
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 40px 24px 80px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+  box-sizing: border-box;
+}
+
+/* 배지 */
+.pcp-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px 6px 10px;
+  border-radius: 999px;
+  border: 1.5px solid #22c55e;
+  color: #22c55e;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+}
+
+.pcp-badge__check {
+  width: 18px;
+  height: 18px;
+  background: #22c55e;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* 헤딩 */
+.pcp-heading {
+  margin: 0;
+  font-size: clamp(32px, 5vw, 54px);
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.15;
+  letter-spacing: -1.5px;
+}
+
+.pcp-subheading {
+  margin: 0;
+  color: #888;
+  font-size: 14px;
+  text-align: center;
+  letter-spacing: -0.2px;
+}
+
+/* 플레이리스트 카드 */
+.pcp-card {
+  width: 100%;
+  background: #0e0e0e;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  display: flex;
+  overflow: hidden;
+}
+
+.pcp-card__art {
+  width: 267px;
+  min-height: 200px;
+  flex-shrink: 0;
+  align-self: stretch;
+  background: linear-gradient(145deg, #c24a00 0%, #fd6d11 45%, #ffb22d 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.pcp-card__art-thumbnail {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  z-index: 0;
+}
+
+
+
+.pcp-card__info {
+  flex: 1;
+  padding: 28px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  justify-content: center;
+  min-width: 0;
+}
+
+.pcp-card__meta-label {
+  margin: 0;
+  font-size: 10px;
+  letter-spacing: 2.5px;
+  color: #666;
+  font-weight: 500;
+}
+
+.pcp-card__title {
+  margin: 0;
+  font-size: clamp(18px, 2.5vw, 26px);
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: -0.5px;
+  word-break: break-word;
+}
+
+.pcp-card__meta {
+  margin: 0;
+  color: #888;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pcp-card__meta-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #fd6d11;
+  flex-shrink: 0;
+}
+
+.pcp-card__actions {
+  margin-top: 4px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* Spotify 버튼 */
+.pcp-spotify-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: #fd6d11;
+  color: #fff;
+  border-radius: 999px;
+  font-family: "Pretendard", "Gowun Dodum", sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+
+.pcp-spotify-btn:hover {
+  background: #e55e00;
+}
+
+.pcp-spotify-btn__icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+/* 하단 2열 */
+.pcp-bottom {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  gap: 20px;
+  align-items: start;
+}
+
+/* 트랙리스트 */
+.pcp-tracklist {
+  background: #0e0e0e;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.pcp-tracklist__header {
+  padding: 14px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  font-size: 10px;
+  letter-spacing: 2.5px;
+  color: #666;
+  font-weight: 600;
+}
+
+.pcp-tracklist__body {
+  max-height: 520px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #333 transparent;
+}
+
+.pcp-tracklist__body::-webkit-scrollbar {
+  width: 4px;
+}
+
+.pcp-tracklist__body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.pcp-tracklist__body::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 2px;
+}
+
+.pcp-track {
+  display: grid;
+  grid-template-columns: 26px 40px 1fr;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  transition: background 0.1s;
+}
+
+.pcp-track:last-child {
+  border-bottom: none;
+}
+
+.pcp-track:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.pcp-track__num {
+  color: #555;
+  font-size: 12px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.pcp-track__cover {
+  width: 40px;
+  height: 40px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+.pcp-track__cover--placeholder {
+  background: #1e1e1e;
+}
+
+.pcp-track__meta {
+  min-width: 0;
+}
+
+.pcp-track__title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pcp-track__artist {
+  margin: 0;
+  font-size: 12px;
+  color: #666;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
+/* 사이드바 */
+.pcp-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 피드백 카드 */
+.pcp-feedback {
+  background: #0e0e0e;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 22px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pcp-feedback .star-rating {
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.pcp-feedback .figma-star {
+  width: 42px;
+  height: 40px;
+}
+
+.pcp-feedback__step-label {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  letter-spacing: 2.5px;
+  color: #fd6d11;
+  font-weight: 600;
+}
+
+.pcp-feedback__step-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #fd6d11;
+  flex-shrink: 0;
+}
+
+.pcp-feedback__heading {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: -0.5px;
+}
+
+.pcp-feedback__desc {
+  margin: 0;
+  font-size: 12px;
+  color: #666;
+  line-height: 1.55;
+}
+
+.pcp-feedback__textarea {
+  width: 100%;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 8px;
+  color: #fff;
+  font-family: "Pretendard", "Gowun Dodum", sans-serif;
+  font-size: 13px;
+  padding: 10px 12px;
+  resize: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.pcp-feedback__textarea:focus {
+  outline: none;
+  border-color: #fd6d11;
+}
+
+.pcp-feedback__textarea::placeholder {
+  color: #444;
+}
+
+.pcp-feedback__submit {
+  width: 100%;
+  padding: 10px;
+  background: #fd6d11;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-family: "Pretendard", "Gowun Dodum", sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.pcp-feedback__submit:hover:not(:disabled) {
+  background: #e55e00;
+}
+
+.pcp-feedback__submit:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.pcp-feedback__thanks {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fd6d11;
+  text-align: center;
+}
+
+.pcp-feedback__error {
+  margin: 0;
+  font-size: 12px;
+  color: #fd9f7b;
+  text-align: center;
+}
+
+/* 네비게이션 버튼 */
+.pcp-nav-btn {
+  width: 100%;
+  background: #0e0e0e;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 18px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.pcp-nav-btn:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: #141414;
+}
+
+.pcp-nav-btn__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  font-family: "Pretendard", "Gowun Dodum", sans-serif;
+}
+
+.pcp-nav-btn__desc {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: #555;
+  font-family: "Pretendard", "Gowun Dodum", sans-serif;
+}
+
+.pcp-nav-btn__arrow {
+  color: #555;
+  font-size: 16px;
+  flex-shrink: 0;
+  margin-left: 8px;
+  transition: color 0.15s;
+}
+
+.pcp-nav-btn:hover .pcp-nav-btn__arrow {
+  color: #aaa;
+}
+
+/* 반응형 */
+@media (max-width: 720px) {
+  .pcp-bottom {
+    grid-template-columns: 1fr;
+  }
+
+  .pcp-card {
+    flex-direction: column;
+  }
+
+  .pcp-card__art {
+    width: 100%;
+    min-height: 180px;
+  }
+
+  .pcp-card__info {
+    padding: 20px 24px;
+  }
+}
+
 .result-list-loading__stack {
   display: flex;
   flex-direction: column;
@@ -1974,15 +2472,26 @@ a.figma-spotify-connect {
   color: #ffffff;
 }
 
-.result-list-loading__hint {
-  margin: 0;
-  font-family: "Pretendard", "Gowun Dodum", sans-serif;
-  font-size: 18px;
-  font-weight: 300;
-  line-height: 1.35;
-  letter-spacing: -0.4px;
-  color: #fff;
-  opacity: 0.55;
+
+.url-loading-soundbar {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 32px;
+}
+
+.url-loading-soundbar__bar {
+  display: block;
+  width: 4px;
+  height: 5px;
+  background: #D4703A;
+  border-radius: 2px;
+  animation: barUp 1s ease-in-out infinite;
+}
+
+@keyframes barUp {
+  0%, 100% { height: 5px;  opacity: 0.25; }
+  50%       { height: 32px; opacity: 1;    }
 }
 
 .result-list-loading__dots::after {
@@ -2926,6 +3435,10 @@ a.figma-spotify-connect {
     max-height: 52vh;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
+  }
+
+  .playlist-created-page__panel.result-list-panel--scrollable {
+    max-height: 52vh;
   }
 
   .result-track-item {

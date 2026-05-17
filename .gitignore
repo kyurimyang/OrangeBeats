@@ -215,10 +215,8 @@ node_modules/
 .spotify_match_disk_cache.json
 
 # Runtime learning/cache data
-data/qa_posts.json
 data/match_overrides.json
 data/artist_aliases.json
 data/demo_cache.json
 data/sessions.json
-data/ratings.json
 credentials/
