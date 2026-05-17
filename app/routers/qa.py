@@ -13,7 +13,7 @@ router = APIRouter(prefix="/qa", tags=["QA"])
 QA_DATA_DIR = Path("data")
 QA_POSTS_FILE = QA_DATA_DIR / "qa_posts.json"
 QA_LOCK = Lock()
-ALLOWED_CATEGORIES = {"bug", "matching", "question", "suggestion"}
+ALLOWED_CATEGORIES = {"bug", "matching", "question", "suggestion", "etc"}
 
 
 def _now_iso() -> str:

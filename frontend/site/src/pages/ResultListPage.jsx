@@ -204,7 +204,7 @@ export default function ResultListPage() {
           extraction_mode: extractionMode,
           title_mode: titleMode,
           playlist_name: savedPlaylistName,
-          skip_spotify_matching: false,
+          skip_spotify_matching: true,
         };
         const response = await fetch("/playlist/analyze-youtube", {
           method: "POST",

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import SiteHeader from "../components/SiteHeader.jsx";
 
@@ -73,6 +73,129 @@ function RatingsTable({ ratings }) {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+const SESSION_KEY_INNER = "ob_admin_key";
+
+function QaItem({ post, onAnswered }) {
+  const [draft, setDraft] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  const isAnswered = post.status === "answered";
+  const showForm = !isAnswered || editing;
+
+  const handleSubmit = useCallback(async () => {
+    const answer = draft.trim();
+    if (!answer) return;
+    const adminKey = sessionStorage.getItem(SESSION_KEY_INNER) || "";
+    setSubmitting(true);
+    setError("");
+    try {
+      const res = await fetch(`/qa/${post.id}/answer`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ answer, admin_key: adminKey }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.detail || "답변 등록에 실패했습니다.");
+      setDraft("");
+      setEditing(false);
+      onAnswered(data);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }, [draft, post.id, onAnswered]);
+
+  return (
+    <div className={`admin-qa-item${isAnswered ? " admin-qa-item--answered" : ""}`}>
+      <div className="admin-qa-item__meta">
+        <span className={`admin-qa-item__badge${isAnswered ? " admin-qa-item__badge--answered" : " admin-qa-item__badge--waiting"}`}>
+          {isAnswered ? "답변 완료" : "답변 대기"}
+        </span>
+        <span className="admin-qa-item__id">#{post.id}</span>
+        <span className="admin-qa-item__date">{post.created_at?.slice(0, 16).replace("T", " ")}</span>
+      </div>
+      <p className="admin-qa-item__title">{post.title}</p>
+      <p className="admin-qa-item__content">{post.content}</p>
+
+      {isAnswered && !editing && (
+        <div className="admin-qa-item__answer-box">
+          <span className="admin-qa-item__answer-label">관리자 답변</span>
+          <p className="admin-qa-item__answer-text">{post.answer}</p>
+          <button
+            type="button"
+            className="admin-qa-item__edit-btn"
+            onClick={() => { setEditing(true); setDraft(post.answer); }}
+          >
+            수정
+          </button>
+        </div>
+      )}
+
+      {showForm && (
+        <div className="admin-qa-item__form">
+          <textarea
+            className="admin-qa-item__textarea"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="답변을 입력하세요…"
+            rows={3}
+            disabled={submitting}
+          />
+          {error && <p className="admin-qa-item__error">{error}</p>}
+          <div className="admin-qa-item__actions">
+            {editing && (
+              <button type="button" className="admin-qa-item__cancel" onClick={() => setEditing(false)}>
+                취소
+              </button>
+            )}
+            <button
+              type="button"
+              className="admin-qa-item__submit"
+              onClick={handleSubmit}
+              disabled={submitting || !draft.trim()}
+            >
+              {submitting ? "등록 중…" : editing ? "수정 완료" : "답변 등록"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function QaSection() {
+  const [posts, setPosts] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState("");
+
+  useEffect(() => {
+    fetch("/qa")
+      .then((res) => { if (!res.ok) throw new Error(); return res.json(); })
+      .then(setPosts)
+      .catch(() => setFetchError("문의 목록을 불러오지 못했습니다."))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleAnswered = useCallback((updatedPost) => {
+    setPosts((prev) => prev.map((p) => (p.id === updatedPost.id ? updatedPost : p)));
+  }, []);
+
+  if (loading) return <p className="admin-empty">문의 불러오는 중…</p>;
+  if (fetchError) return <p className="admin-error">{fetchError}</p>;
+  if (!posts?.length) return <p className="admin-empty">접수된 문의가 없습니다.</p>;
+
+  return (
+    <div className="admin-qa-list">
+      {posts.map((post) => (
+        <QaItem key={post.id} post={post} onAnswered={handleAnswered} />
+      ))}
     </div>
   );
 }
@@ -155,6 +278,11 @@ export default function AdminPage() {
             <section className="admin-section">
               <h2 className="admin-section__title">평점 목록</h2>
               <RatingsTable ratings={ratings} />
+            </section>
+
+            <section className="admin-section">
+              <h2 className="admin-section__title">문의 관리</h2>
+              <QaSection />
             </section>
           </>
         )}
