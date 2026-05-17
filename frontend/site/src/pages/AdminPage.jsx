@@ -79,14 +79,34 @@ function RatingsTable({ ratings }) {
 
 const SESSION_KEY_INNER = "ob_admin_key";
 
-function QaItem({ post, onAnswered }) {
+function QaItem({ post, onAnswered, onDeleted }) {
   const [draft, setDraft] = useState("");
   const [editing, setEditing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
 
   const isAnswered = post.status === "answered";
   const showForm = !isAnswered || editing;
+
+  const handleDelete = useCallback(async () => {
+    if (!window.confirm("이 문의를 삭제할까요?")) return;
+    const adminKey = sessionStorage.getItem(SESSION_KEY_INNER) || "";
+    setDeleting(true);
+    try {
+      const res = await fetch(`/qa/${post.id}?admin_key=${encodeURIComponent(adminKey)}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.detail || "삭제에 실패했습니다.");
+      }
+      onDeleted(post.id);
+    } catch (e) {
+      setError(e.message);
+      setDeleting(false);
+    }
+  }, [post.id, onDeleted]);
 
   const handleSubmit = useCallback(async () => {
     const answer = draft.trim();
@@ -120,6 +140,14 @@ function QaItem({ post, onAnswered }) {
         </span>
         <span className="admin-qa-item__id">#{post.id}</span>
         <span className="admin-qa-item__date">{post.created_at?.slice(0, 16).replace("T", " ")}</span>
+        <button
+          type="button"
+          className="admin-qa-item__delete-btn"
+          onClick={handleDelete}
+          disabled={deleting}
+        >
+          {deleting ? "삭제 중…" : "삭제"}
+        </button>
       </div>
       <p className="admin-qa-item__title">{post.title}</p>
       <p className="admin-qa-item__content">{post.content}</p>
@@ -187,6 +215,10 @@ function QaSection() {
     setPosts((prev) => prev.map((p) => (p.id === updatedPost.id ? updatedPost : p)));
   }, []);
 
+  const handleDeleted = useCallback((deletedId) => {
+    setPosts((prev) => prev.filter((p) => p.id !== deletedId));
+  }, []);
+
   if (loading) return <p className="admin-empty">문의 불러오는 중…</p>;
   if (fetchError) return <p className="admin-error">{fetchError}</p>;
   if (!posts?.length) return <p className="admin-empty">접수된 문의가 없습니다.</p>;
@@ -194,7 +226,7 @@ function QaSection() {
   return (
     <div className="admin-qa-list">
       {posts.map((post) => (
-        <QaItem key={post.id} post={post} onAnswered={handleAnswered} />
+        <QaItem key={post.id} post={post} onAnswered={handleAnswered} onDeleted={handleDeleted} />
       ))}
     </div>
   );

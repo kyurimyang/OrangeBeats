@@ -94,6 +94,19 @@ def get_qa_post(post_id: int):
     return post
 
 
+@router.delete("/{post_id}")
+def delete_qa_post(post_id: int, admin_key: str = ""):
+    if not ADMIN_KEY or admin_key != ADMIN_KEY:
+        raise HTTPException(status_code=403, detail="관리자 코드가 올바르지 않습니다.")
+    with QA_LOCK:
+        posts = _read_posts()
+        new_posts = [p for p in posts if p.get("id") != post_id]
+        if len(new_posts) == len(posts):
+            raise HTTPException(status_code=404, detail="QA 글을 찾을 수 없습니다.")
+        _write_posts(new_posts)
+    return {"ok": True}
+
+
 @router.post("/{post_id}/answer")
 def answer_qa_post(post_id: int, payload: Dict):
     answer = (payload.get("answer") or "").strip()
