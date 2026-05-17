@@ -3457,8 +3457,8 @@ a.figma-spotify-connect {
 }
 
 .admin-qa-item__badge--answered {
-  background: #1a3a1a;
-  color: #5ecb5e;
+  background: rgba(253, 109, 17, 0.12);
+  color: #fd6d11;
 }
 
 .admin-qa-item__id {
@@ -3517,6 +3517,29 @@ a.figma-spotify-connect {
   color: #c0d8c0;
   line-height: 1.7;
   white-space: pre-wrap;
+}
+
+.admin-qa-item__delete-btn {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid #4a1a1a;
+  border-radius: 6px;
+  color: #cc4444;
+  font-family: "Pretendard", sans-serif;
+  font-size: 12px;
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.admin-qa-item__delete-btn:hover:not(:disabled) {
+  background: #4a1a1a;
+  color: #ff6666;
+}
+
+.admin-qa-item__delete-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .admin-qa-item__edit-btn {
@@ -3849,8 +3872,8 @@ a.figma-spotify-connect {
 }
 
 .contact-qa-board__badge-status--answered {
-  background: rgba(94, 203, 94, 0.1);
-  color: #5ecb5e;
+  background: rgba(253, 109, 17, 0.1);
+  color: #fd6d11;
 }
 
 .contact-qa-board__badge-dot {
@@ -3862,7 +3885,7 @@ a.figma-spotify-connect {
 }
 
 .contact-qa-board__badge-status--answered .contact-qa-board__badge-dot {
-  background: #5ecb5e;
+  background: #fd6d11;
 }
 
 .contact-qa-board__badge-cat {

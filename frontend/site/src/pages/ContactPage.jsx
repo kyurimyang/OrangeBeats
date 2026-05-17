@@ -245,7 +245,7 @@ function QaBoard({ refreshTrigger }) {
           <strong className="contact-qa-board__faq-title">자주 묻는 질문에서 먼저 확인해 보세요</strong>
           <span className="contact-qa-board__faq-sub">결제·매칭 관련 답변은 대부분 FAQ에서 빠르게 찾을 수 있어요.</span>
         </div>
-        <a href="/help" className="contact-qa-board__faq-btn">FAQ 보러가기</a>
+        <a href="/faq" className="contact-qa-board__faq-btn">FAQ 보러가기</a>
       </div>
     </div>
   );
