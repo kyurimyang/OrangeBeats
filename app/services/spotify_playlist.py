@@ -15,7 +15,7 @@ from app.services.spotify_matching import (
 
 LOW_CONF_MIN_SCORE = 0.60
 HIGH_CONF_AUTO_CREATE_SCORE = 0.85
-_MAX_MATCH_WORKERS = 8
+_MAX_MATCH_WORKERS = 4
 ALLOWED_LOW_CONF_REASONS = {
     "probable_match",
     "review_needed",
