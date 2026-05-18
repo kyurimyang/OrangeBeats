@@ -2,6 +2,7 @@ import base64
 import re
 from io import BytesIO
 from typing import Optional
+from urllib.parse import parse_qs, urlparse
 
 import requests
 from PIL import Image
@@ -94,6 +95,40 @@ def _compress_to_spotify_jpeg(image_bytes: bytes, max_bytes: int = 256 * 1024) -
 
         if width < 200 or height < 200:
             raise YouTubeThumbnailError("이미지를 Spotify 업로드 크기 제한(256KB) 이하로 줄이지 못했습니다.")
+
+
+def extract_playlist_id(youtube_url: str) -> str:
+    url = (youtube_url or "").strip()
+    try:
+        parsed = urlparse(url)
+        qs = parse_qs(parsed.query)
+        return (qs.get("list") or [""])[0]
+    except Exception:
+        return ""
+
+
+def get_playlist_thumbnail_url(playlist_id: str) -> str:
+    api_key = YOUTUBE_API_KEY
+    if not api_key or not playlist_id:
+        return ""
+    try:
+        response = requests.get(
+            "https://www.googleapis.com/youtube/v3/playlists",
+            params={"part": "snippet", "id": playlist_id, "key": api_key},
+            timeout=10,
+        )
+        if response.status_code != 200:
+            return ""
+        items = response.json().get("items", [])
+        if not items:
+            return ""
+        thumbnails = items[0].get("snippet", {}).get("thumbnails", {})
+        for key in ["maxres", "standard", "high", "medium", "default"]:
+            if key in thumbnails and thumbnails[key].get("url"):
+                return thumbnails[key]["url"]
+    except Exception:
+        return ""
+    return ""
 
 
 def get_thumbnail_base64_from_youtube_url(youtube_url: str) -> str:

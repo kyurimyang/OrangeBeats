@@ -5,3 +5,4 @@ requests>=2.31.0
 opencv-python-headless>=4.9.0
 Pillow>=10.0.0
 python-multipart>=0.0.9
+openai>=1.0.0

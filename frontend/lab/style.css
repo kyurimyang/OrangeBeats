@@ -888,6 +888,97 @@ button {
   margin-top: 8px;
 }
 
+.analyze-loading-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: #000000;
+}
+
+.analyze-loading-title {
+  margin: 0;
+  font-family: "Pretendard", "Gowun Dodum", sans-serif;
+  font-size: 30px;
+  font-weight: 500;
+  line-height: 20px;
+  letter-spacing: -0.5px;
+  color: #ffffff;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.analyze-loading-center {
+  position: absolute;
+  inset: 68px 0 0;
+  display: grid;
+  place-items: center;
+}
+
+.analyze-loading-header {
+  width: 100%;
+  height: 68px;
+  background: rgba(0, 0, 0, 0.82);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.analyze-loading-header__inner {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding-left: 85px;
+}
+
+.analyze-loading-header__logo {
+  position: relative;
+  display: inline-flex;
+  width: 233px;
+  height: 42px;
+  overflow: hidden;
+}
+
+.analyze-loading-header__logo img {
+  position: absolute;
+  width: 124.61%;
+  height: 327.62%;
+  left: -13.94%;
+  top: -111.43%;
+  max-width: none;
+}
+
+.analyze-loading-header__nav {
+  display: flex;
+  align-items: flex-end;
+  gap: 52px;
+  padding: 20px 55px;
+}
+
+.analyze-loading-header__nav a {
+  color: #ffffff;
+  text-decoration: none;
+  font-family: "Pretendard", "Gowun Dodum", sans-serif;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 27.2px;
+}
+
+.analyze-loading-dots::after {
+  content: "...";
+  display: inline-block;
+  width: 1.2em;
+  overflow: hidden;
+  vertical-align: bottom;
+  animation: loading-dots 1.2s steps(4, end) infinite;
+}
+
+@keyframes loading-dots {
+  from {
+    width: 0;
+  }
+  to {
+    width: 1.2em;
+  }
+}
+
 @media (max-width: 768px) {
   .app-shell {
     padding: 12px;

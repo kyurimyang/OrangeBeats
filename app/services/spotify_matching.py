@@ -2,6 +2,7 @@ import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.services.spotify_api import get_track, search_artists_query, search_track, search_tracks_query
+from app.services.spotify_exceptions import SpotifyServiceError
 from app.services.spotify_common import (
     ARTIST_ALIAS_MAP,
     TITLE_ALIAS_MAP,
@@ -2535,7 +2536,13 @@ def _try_acr_direct_match(
     """ACR이 제공한 Spotify track ID로 직접 트랙을 조회하고 스코어링한다.
     검색 없이 1회 API 호출로 정확한 트랙을 가져오므로 동명곡 오매칭을 방지한다.
     """
-    track = get_track(access_token, acr_spotify_track_id, market=market)
+    try:
+        track = get_track(access_token, acr_spotify_track_id, market=market)
+    except SpotifyServiceError as exc:
+        print(
+            f"[spotify-match:acr-direct] get_track failed track_id={acr_spotify_track_id}: {exc}"
+        )
+        return None
     if not track:
         print(f"[spotify-match:acr-direct] track_id={acr_spotify_track_id} not_found")
         return None
