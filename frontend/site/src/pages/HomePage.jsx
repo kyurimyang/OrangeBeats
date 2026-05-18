@@ -5,8 +5,10 @@ import SiteHeader from "../components/SiteHeader.jsx";
 
 const SESSION_KEY = "ob_admin_key";
 /** How to use PNG 캐시 무효화 — 이미지 교체 시 값만 올리면 됨 */
-const HOWTO_IMG_V = "20260515figma5";
+const HOWTO_IMG_V = "20260515figma6";
 const howtoImg = (filename) => `/assets/home/${filename}?v=${HOWTO_IMG_V}`;
+const howtoImgSrcSet = (filename, filename2x) =>
+  `${howtoImg(filename)} 1x, ${howtoImg(filename2x)} 2x`;
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -145,7 +147,12 @@ export default function HomePage() {
         </div>
 
         <figure className="home-howto-shot home-howto-shot--ratings" data-node-id="333:244">
-          <img src={howtoImg("step-6-ratings.png")} alt="서비스 평점 남기기" />
+          <img
+            src={howtoImg("step-6-ratings.png")}
+            srcSet={howtoImgSrcSet("step-6-ratings.png", "step-6-ratings@2x.png")}
+            sizes="(max-width: 480px) 100vw, 324px"
+            alt="서비스 평점 남기기"
+          />
         </figure>
 
         <div className="home-copy home-copy--wide" data-node-id="341:240">
