@@ -1,0 +1,35 @@
+@font-face {
+  font-family: "Pretendard";
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url("../../node_modules/pretendard/dist/web/static/woff2-subset/Pretendard-Light.subset.woff2")
+    format("woff2");
+}
+
+@font-face {
+  font-family: "Pretendard";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../../node_modules/pretendard/dist/web/static/woff2-subset/Pretendard-Regular.subset.woff2")
+    format("woff2");
+}
+
+@font-face {
+  font-family: "Pretendard";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("../../node_modules/pretendard/dist/web/static/woff2-subset/Pretendard-Medium.subset.woff2")
+    format("woff2");
+}
+
+@font-face {
+  font-family: "Pretendard";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("../../node_modules/pretendard/dist/web/static/woff2-subset/Pretendard-SemiBold.subset.woff2")
+    format("woff2");
+}

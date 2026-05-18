@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Figma Pieces Catalog</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/static/pretendard-subset.css" crossorigin />
+  <link rel="stylesheet" href="components.css" />
+</head>
+<body class="figma-catalog">
+  <h1 class="figma-catalog__title">Figma Pieces Catalog</h1>
+  <p class="figma-catalog__intro">
+    `37:9553` 프레임에서 인식한 컴포넌트를 variant별로 분리했습니다. 실제 화면 조립 시 아래 마크업과 클래스를 그대로 복사해 사용하면 됩니다.
+  </p>
+
+  <section class="figma-catalog__section">
+    <h2>Spotify 연동하기</h2>
+    <div class="figma-catalog__grid">
+      <div class="figma-catalog__item">
+        <button class="figma-piece figma-spotify-connect figma-spotify-connect--default" type="button" data-node-id="97:157">
+          <span class="figma-piece__label figma-spotify-connect__label">Spotify 연동하기</span>
+        </button>
+        <span class="figma-catalog__meta">default · 97:157</span>
+      </div>
+      <div class="figma-catalog__item">
+        <button class="figma-piece figma-spotify-connect figma-spotify-connect--hover" type="button" data-node-id="99:279">
+          <span class="figma-piece__label figma-spotify-connect__label">Spotify 연동하기</span>
+        </button>
+        <span class="figma-catalog__meta">hover · 99:279</span>
+      </div>
+      <div class="figma-catalog__item">
+        <button class="figma-piece figma-spotify-connect figma-spotify-connect--pressed" type="button" data-node-id="100:320">
+          <span class="figma-piece__label figma-spotify-connect__label">Spotify 연동하기</span>
+        </button>
+        <span class="figma-catalog__meta">pressed · 100:320</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="figma-catalog__section">
+    <h2>Playlist 생성</h2>
+    <div class="figma-catalog__grid">
+      <div class="figma-catalog__item">
+        <button class="figma-piece figma-playlist-create figma-playlist-create--default" type="button" data-node-id="101:322">
+          <span class="figma-piece__label figma-playlist-create__label">Playlist 생성</span>
+        </button>
+        <span class="figma-catalog__meta">default · 101:322</span>
+      </div>
+      <div class="figma-catalog__item">
+        <button class="figma-piece figma-playlist-create figma-playlist-create--hover" type="button" data-node-id="103:22">
+          <span class="figma-piece__label figma-playlist-create__label">Playlist 생성</span>
+        </button>
+        <span class="figma-catalog__meta">hover · 103:22</span>
+      </div>
+      <div class="figma-catalog__item">
+        <button class="figma-piece figma-playlist-create figma-playlist-create--pressed" type="button" data-node-id="103:24">
+          <span class="figma-piece__label figma-playlist-create__label">Playlist 생성</span>
+        </button>
+        <span class="figma-catalog__meta">pressed · 103:24</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="figma-catalog__section">
+    <h2>URLinput</h2>
+    <div class="figma-catalog__grid">
+      <div class="figma-catalog__item">
+        <div class="figma-piece figma-url-input figma-url-input--default" data-node-id="241:156">
+          <div class="figma-url-input__shell">
+            <div class="figma-url-input__field">
+              <span class="figma-url-input__placeholder">Youtube URL 입력</span>
+              <span class="figma-url-input__glow" aria-hidden="true"></span>
+              <button class="figma-piece figma-playlist-create figma-playlist-create--default figma-url-input__action" type="button">
+                <span class="figma-piece__label figma-playlist-create__label">Playlist 생성</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <span class="figma-catalog__meta">default · 241:156</span>
+      </div>
+      <div class="figma-catalog__item">
+        <div class="figma-piece figma-url-input figma-url-input--error" data-node-id="241:158">
+          <div class="figma-url-input__shell">
+            <div class="figma-url-input__field">
+              <span class="figma-url-input__placeholder">Youtube URL 입력</span>
+              <span class="figma-url-input__glow" aria-hidden="true"></span>
+              <button class="figma-piece figma-playlist-create figma-playlist-create--default figma-url-input__action" type="button">
+                <span class="figma-piece__label figma-playlist-create__label">Playlist 생성</span>
+              </button>
+            </div>
+          </div>
+          <p class="figma-url-input__error">유효하지 않은 URL 입니다!</p>
+        </div>
+        <span class="figma-catalog__meta">error · 241:158</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="figma-catalog__section">
+    <h2>유튜브 제목 그대로 사용 radio</h2>
+    <div class="figma-catalog__grid">
+      <div class="figma-catalog__item">
+        <button class="figma-piece figma-radio figma-radio--youtube-default" type="button" data-node-id="157:85">
+          <svg class="figma-radio__dot" viewBox="0 0 18 18" aria-hidden="true">
+            <circle cx="9" cy="9" r="8.5" fill="#ffffff" stroke="#6b6b6b"></circle>
+            <circle cx="9" cy="9" r="6" fill="#afafaf"></circle>
+          </svg>
+          <span class="figma-piece__label figma-radio__label">유튜브 제목 그대로 사용</span>
+        </button>
+        <span class="figma-catalog__meta">default · 157:85</span>
+      </div>
+      <div class="figma-catalog__item">
+        <button class="figma-piece figma-radio figma-radio--youtube-pressed" type="button" data-node-id="157:93">
+          <svg class="figma-radio__dot" viewBox="0 0 18 18" aria-hidden="true">
+            <circle cx="9" cy="9" r="8.5" fill="#ffffff" stroke="#fd6d11"></circle>
+            <circle cx="9" cy="9" r="6" fill="#fd6d11"></circle>
+          </svg>
+          <span class="figma-piece__label figma-radio__label">유튜브 제목 그대로 사용</span>
+        </button>
+        <span class="figma-catalog__meta">pressed · 157:93</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="figma-catalog__section">
+    <h2>직접 제목 입력 radio</h2>
+    <div class="figma-catalog__grid">
+      <div class="figma-catalog__item">
+        <button class="figma-piece figma-radio figma-radio--self-default" type="button" data-node-id="157:99">
+          <svg class="figma-radio__dot" viewBox="0 0 18 18" aria-hidden="true">
+            <circle cx="9" cy="9" r="8.5" fill="#ffffff" stroke="#6b6b6b"></circle>
+            <circle cx="9" cy="9" r="6" fill="#afafaf"></circle>
+          </svg>
+          <span class="figma-piece__label figma-radio__label">직접 제목 입력</span>
+        </button>
+        <span class="figma-catalog__meta">default · 157:99</span>
+      </div>
+      <div class="figma-catalog__item">
+        <button class="figma-piece figma-radio figma-radio--self-pressed" type="button" data-node-id="157:104">
+          <svg class="figma-radio__dot" viewBox="0 0 18 18" aria-hidden="true">
+            <circle cx="9" cy="9" r="8.5" fill="#ffffff" stroke="#fd6d11"></circle>
+            <circle cx="9" cy="9" r="6" fill="#fd6d11"></circle>
+          </svg>
+          <span class="figma-piece__label figma-radio__label">직접 제목 입력</span>
+        </button>
+        <span class="figma-catalog__meta">pressed · 157:104</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="figma-catalog__section">
+    <h2>trashcan</h2>
+    <div class="figma-catalog__grid">
+      <div class="figma-catalog__item">
+        <button class="figma-piece figma-trash figma-trash--default" type="button" data-node-id="161:1094" aria-label="삭제">
+          <img class="figma-trash__icon" src="assets/trash-default.svg" alt="" />
+        </button>
+        <span class="figma-catalog__meta">default · 161:1094</span>
+      </div>
+      <div class="figma-catalog__item">
+        <button class="figma-piece figma-trash figma-trash--hover" type="button" data-node-id="161:1096" aria-label="삭제">
+          <img class="figma-trash__icon" src="assets/trash-hover.svg" alt="" />
+        </button>
+        <span class="figma-catalog__meta">hover · 161:1096</span>
+      </div>
+      <div class="figma-catalog__item">
+        <button class="figma-piece figma-trash figma-trash--pressed" type="button" data-node-id="161:1110" aria-label="삭제">
+          <img class="figma-trash__icon" src="assets/trash-pressed.svg" alt="" />
+        </button>
+        <span class="figma-catalog__meta">pressed · 161:1110</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="figma-catalog__section">
+    <h2>실행하기</h2>
+    <div class="figma-catalog__grid">
+      <div class="figma-catalog__item">
+        <button class="figma-piece figma-run-action figma-run-action--default" type="button" data-node-id="164:1711">
+          <span class="figma-piece__label figma-run-action__label">실행하기</span>
+        </button>
+        <span class="figma-catalog__meta">default · 164:1711</span>
+      </div>
+      <div class="figma-catalog__item">
+        <button class="figma-piece figma-run-action figma-run-action--hover" type="button" data-node-id="164:1713">
+          <span class="figma-piece__label figma-run-action__label">실행하기</span>
+        </button>
+        <span class="figma-catalog__meta">hover · 164:1713</span>
+      </div>
+      <div class="figma-catalog__item">
+        <button class="figma-piece figma-run-action figma-run-action--pressed" type="button" data-node-id="164:1716">
+          <span class="figma-piece__label figma-run-action__label">실행하기</span>
+        </button>
+        <span class="figma-catalog__meta">pressed · 164:1716</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="figma-catalog__section">
+    <h2>다시 매칭하기</h2>
+    <div class="figma-catalog__grid">
+      <div class="figma-catalog__item">
+        <button class="figma-piece figma-rematch figma-rematch--default" type="button" data-node-id="164:1884">
+          <span class="figma-piece__label figma-rematch__label">다시 매칭하기</span>
+        </button>
+        <span class="figma-catalog__meta">default · 164:1884</span>
+      </div>
+      <div class="figma-catalog__item">
+        <button class="figma-piece figma-rematch figma-rematch--hover" type="button" data-node-id="164:1881">
+          <span class="figma-piece__label figma-rematch__label">다시 매칭하기</span>
+        </button>
+        <span class="figma-catalog__meta">hover · 164:1881</span>
+      </div>
+      <div class="figma-catalog__item">
+        <button class="figma-piece figma-rematch figma-rematch--pressed" type="button" data-node-id="164:1878">
+          <span class="figma-piece__label figma-rematch__label">다시 매칭하기</span>
+        </button>
+        <span class="figma-catalog__meta">pressed · 164:1878</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="figma-catalog__section">
+    <h2>Star</h2>
+    <div class="figma-catalog__grid">
+      <div class="figma-catalog__item">
+        <button class="figma-piece figma-star figma-star--yes" type="button" data-node-id="245:919" aria-label="즐겨찾기 선택">
+          <img class="figma-star__icon" src="assets/star-yes.svg" alt="" />
+        </button>
+        <span class="figma-catalog__meta">yes · 245:919</span>
+      </div>
+      <div class="figma-catalog__item">
+        <button class="figma-piece figma-star figma-star--no" type="button" data-node-id="257:166" aria-label="즐겨찾기 해제">
+          <img class="figma-star__icon" src="assets/star-no.svg" alt="" />
+        </button>
+        <span class="figma-catalog__meta">no · 257:166</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="figma-catalog__section">
+    <h2>Footer Links</h2>
+    <div class="figma-catalog__grid">
+      <div class="figma-catalog__item">
+        <a class="figma-piece figma-footer-link figma-footer-link--help-default" href="#" data-node-id="341:252">Help</a>
+        <span class="figma-catalog__meta">default · 341:252</span>
+      </div>
+      <div class="figma-catalog__item">
+        <a class="figma-piece figma-footer-link figma-footer-link--help-pressed" href="#" data-node-id="341:262">Help</a>
+        <span class="figma-catalog__meta">pressed · 341:262</span>
+      </div>
+      <div class="figma-catalog__item">
+        <a class="figma-piece figma-footer-link figma-footer-link--faq-default" href="#" data-node-id="341:253">FAQ</a>
+        <span class="figma-catalog__meta">default · 341:253</span>
+      </div>
+      <div class="figma-catalog__item">
+        <a class="figma-piece figma-footer-link figma-footer-link--faq-pressed" href="#" data-node-id="341:259">FAQ</a>
+        <span class="figma-catalog__meta">pressed · 341:259</span>
+      </div>
+      <div class="figma-catalog__item">
+        <a class="figma-piece figma-footer-link figma-footer-link--contact-default" href="#" data-node-id="341:254">Contact us</a>
+        <span class="figma-catalog__meta">default · 341:254</span>
+      </div>
+      <div class="figma-catalog__item">
+        <a class="figma-piece figma-footer-link figma-footer-link--contact-pressed" href="#" data-node-id="341:256">Contact us</a>
+        <span class="figma-catalog__meta">pressed · 341:256</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="figma-catalog__section">
+    <h2>Spotify 바로가기</h2>
+    <div class="figma-catalog__grid">
+      <div class="figma-catalog__item">
+        <a class="figma-piece figma-spotify-shortcut figma-spotify-shortcut--default" href="#" data-node-id="164:1843">Spotify 바로가기</a>
+        <span class="figma-catalog__meta">default · 164:1843</span>
+      </div>
+      <div class="figma-catalog__item">
+        <a class="figma-piece figma-spotify-shortcut figma-spotify-shortcut--hover" href="#" data-node-id="164:1864">Spotify 바로가기</a>
+        <span class="figma-catalog__meta">hover · 164:1864</span>
+      </div>
+    </div>
+  </section>
+</body>
+</html>

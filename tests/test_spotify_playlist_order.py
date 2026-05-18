@@ -158,5 +158,35 @@ class SpotifyPlaylistOrderTests(unittest.TestCase):
         self.assertEqual(results[1]["single_artist_filter_reason"], "artist_not_inferred")
 
 
+class TrackIdFromResultRowTests(unittest.TestCase):
+    def test_track_id_from_spotify_uri(self):
+        from app.services.spotify_playlist import _track_id_from_result_row
+
+        self.assertEqual(
+            _track_id_from_result_row({"spotify_uri": "spotify:track:4iV5W9uYEdYUVa79Axb7Rh"}),
+            "4iV5W9uYEdYUVa79Axb7Rh",
+        )
+
+    def test_track_id_from_open_web_url(self):
+        from app.services.spotify_playlist import _track_id_from_result_row
+
+        self.assertEqual(
+            _track_id_from_result_row(
+                {"spotify_uri": "https://open.spotify.com/track/4iV5W9uYEdYUVa79Axb7Rh?si=abc"}
+            ),
+            "4iV5W9uYEdYUVa79Axb7Rh",
+        )
+
+    def test_track_id_from_intl_web_url(self):
+        from app.services.spotify_playlist import _track_id_from_result_row
+
+        self.assertEqual(
+            _track_id_from_result_row(
+                {"spotify_uri": "https://open.spotify.com/intl-ko/track/4iV5W9uYEdYUVa79Axb7Rh"}
+            ),
+            "4iV5W9uYEdYUVa79Axb7Rh",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

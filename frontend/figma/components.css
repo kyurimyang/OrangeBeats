@@ -1,0 +1,435 @@
+:root {
+  --figma-orange: #fd6d11;
+  --figma-orange-hover: #cc590f;
+  --figma-pressed: #6b6b6b;
+  --figma-white: #ffffff;
+  --figma-shadow-soft:
+    0 0.723px 0.723px -1.25px rgba(0, 0, 0, 0.18),
+    0 2.746px 2.746px -2.5px rgba(0, 0, 0, 0.16),
+    0 12px 12px -3.75px rgba(0, 0, 0, 0.06);
+  --figma-pressed-inset: inset 0 4px 4px rgba(0, 0, 0, 0.25);
+}
+
+.figma-piece {
+  box-sizing: border-box;
+  font-family: "Pretendard", "Gowun Dodum", sans-serif;
+  color: var(--figma-white);
+}
+
+.figma-piece *,
+.figma-piece *::before,
+.figma-piece *::after {
+  box-sizing: border-box;
+}
+
+.figma-piece__label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.figma-spotify-connect {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 319px;
+  height: 63px;
+  border: 0;
+  border-radius: 20px;
+  padding: 0;
+  cursor: pointer;
+}
+
+.figma-spotify-connect__label {
+  font-size: 25px;
+  font-weight: 300;
+  line-height: 28px;
+}
+
+.figma-spotify-connect--default {
+  background: var(--figma-orange);
+}
+
+.figma-spotify-connect--hover {
+  background: var(--figma-orange-hover);
+}
+
+.figma-spotify-connect--pressed {
+  background: var(--figma-pressed);
+  box-shadow: var(--figma-pressed-inset);
+}
+
+.figma-playlist-create {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 177.7px;
+  height: 50px;
+  border: 0;
+  border-radius: 14px;
+  padding: 11px 25px;
+  cursor: pointer;
+}
+
+.figma-playlist-create__label {
+  font-size: 20px;
+  font-weight: 300;
+  line-height: 28px;
+  letter-spacing: -0.1px;
+}
+
+.figma-playlist-create--default {
+  background-image: linear-gradient(81.99deg, #ffb22d 4.72%, #fd6d11 70.27%);
+  box-shadow: var(--figma-shadow-soft);
+}
+
+.figma-playlist-create--hover {
+  background-image: linear-gradient(
+    -85.51deg,
+    #cc590f 67.06%,
+    #f7d752 158.73%,
+    #ffec5e 176.55%
+  );
+  box-shadow: var(--figma-shadow-soft);
+}
+
+.figma-playlist-create--pressed {
+  background: var(--figma-pressed);
+  box-shadow: var(--figma-pressed-inset);
+}
+
+.figma-radio {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-height: 41px;
+  padding: 12px 22px 11px 18px;
+  border: 0;
+  border-radius: 13px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.figma-radio__dot {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+}
+
+.figma-radio__label {
+  font-size: 15px;
+  font-weight: 400;
+  line-height: normal;
+}
+
+.figma-radio--youtube-default {
+  width: 205px;
+}
+
+.figma-radio--youtube-pressed {
+  width: 205px;
+}
+
+.figma-radio--self-default,
+.figma-radio--self-pressed {
+  width: 150px;
+}
+
+.figma-run-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 141px;
+  height: 42px;
+  border: 0;
+  border-radius: 10px;
+  padding: 0;
+  cursor: pointer;
+}
+
+.figma-run-action__label {
+  font-size: 20px;
+  font-weight: 300;
+  line-height: normal;
+}
+
+.figma-run-action--default {
+  background: var(--figma-orange);
+}
+
+.figma-run-action--hover {
+  background: var(--figma-orange-hover);
+}
+
+.figma-run-action--pressed {
+  background: var(--figma-pressed);
+  box-shadow: var(--figma-pressed-inset);
+}
+
+.figma-rematch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 100px;
+  border: 0;
+  border-radius: 20px;
+  padding: 0 24px;
+  cursor: pointer;
+}
+
+.figma-rematch__label {
+  font-size: 40px;
+  font-weight: 300;
+  line-height: normal;
+}
+
+.figma-rematch--default {
+  width: 293px;
+  background: var(--figma-orange);
+}
+
+.figma-rematch--hover {
+  width: 293px;
+  background: var(--figma-orange-hover);
+}
+
+.figma-rematch--pressed {
+  width: 440px;
+  background: rgba(217, 217, 217, 0.6);
+}
+
+.figma-trash {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48.93px;
+  height: 76.88px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.figma-trash__icon {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.figma-star {
+  display: inline-flex;
+  width: 57px;
+  height: 54px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.figma-star__icon {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.figma-footer-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--figma-white);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 27.2px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.figma-footer-link--help-default {
+  width: 36px;
+  height: 28px;
+}
+
+.figma-footer-link--help-pressed {
+  width: 36px;
+  height: 28px;
+  color: var(--figma-orange);
+  text-decoration: underline;
+}
+
+.figma-footer-link--faq-default {
+  width: 31px;
+  height: 28px;
+}
+
+.figma-footer-link--faq-pressed {
+  width: 31px;
+  height: 28px;
+  color: var(--figma-orange);
+  text-decoration: underline;
+}
+
+.figma-footer-link--contact-default {
+  width: 84px;
+  height: 28px;
+}
+
+.figma-footer-link--contact-pressed {
+  width: 84px;
+  height: 28px;
+  color: var(--figma-orange);
+  text-decoration: underline;
+}
+
+.figma-spotify-shortcut {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 453px;
+  height: 50px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--figma-white);
+  font-size: 40px;
+  font-weight: 500;
+  line-height: 50px;
+  letter-spacing: -0.5px;
+  text-decoration: underline;
+  text-shadow: 0 4px 4px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
+
+.figma-spotify-shortcut--hover {
+  color: var(--figma-orange);
+}
+
+.figma-url-input {
+  position: relative;
+  width: 792px;
+}
+
+.figma-url-input__shell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 6px;
+  border-radius: 30px;
+  background: linear-gradient(
+    90deg,
+    rgba(253, 109, 17, 0.2) 0%,
+    rgba(255, 255, 255, 0.2) 100%
+  );
+}
+
+.figma-url-input__field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 780px;
+  height: 90px;
+  border-radius: 26px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9) 0%, #ffffff 100%);
+  box-shadow: 0 1px 4px rgba(255, 255, 255, 0.05);
+}
+
+.figma-url-input__placeholder {
+  margin-left: 42px;
+  color: rgba(0, 0, 0, 0.4);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: normal;
+}
+
+.figma-url-input__glow {
+  position: absolute;
+  top: 22px;
+  right: 177.7px;
+  bottom: 18px;
+  left: 582px;
+  border-radius: 8px;
+  background: linear-gradient(-90deg, #fd6d11 0%, #ffffff 94.37%);
+  filter: blur(2px);
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.figma-url-input__action {
+  position: absolute;
+  top: 20px;
+  right: 20.3px;
+}
+
+.figma-url-input--default {
+  height: 128px;
+}
+
+.figma-url-input--error {
+  height: 190px;
+}
+
+.figma-url-input__error {
+  margin-top: 12px;
+  color: #ff0000;
+  font-size: 25px;
+  font-weight: 400;
+  line-height: 90px;
+  text-align: center;
+}
+
+.figma-catalog {
+  margin: 0;
+  padding: 24px;
+  background: #2f2f2f;
+  color: var(--figma-white);
+  font-family: "Pretendard", "Gowun Dodum", sans-serif;
+}
+
+.figma-catalog__title {
+  margin: 0 0 8px;
+  font-size: 28px;
+  font-weight: 600;
+}
+
+.figma-catalog__intro {
+  margin: 0 0 24px;
+  color: rgba(255, 255, 255, 0.72);
+  line-height: 1.6;
+}
+
+.figma-catalog__section {
+  margin-bottom: 28px;
+  padding: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.figma-catalog__section h2 {
+  margin: 0 0 16px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.figma-catalog__grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+}
+
+.figma-catalog__item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.figma-catalog__meta {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.65);
+}

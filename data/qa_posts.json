@@ -1,0 +1,13 @@
+[
+  {
+    "id": 1,
+    "title": "안녕하세요 반갑습니다",
+    "content": "양규림입니다람쥐렁이",
+    "author": "Contact us",
+    "category": "question",
+    "status": "waiting",
+    "answer": null,
+    "created_at": "2026-05-17T15:54:36",
+    "updated_at": "2026-05-17T15:54:36"
+  }
+]

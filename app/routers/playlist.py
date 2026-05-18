@@ -1,6 +1,7 @@
-﻿import time
+import time
 import math
 import json
+import re
 from pathlib import Path
 from typing import Annotated, Any, Dict, List
 
@@ -10,10 +11,17 @@ from app.dependencies.spotify_session import get_spotify_session_service
 from app.services.analysis_flow import classify_text_analysis
 from app.services.pipeline_service import run_youtube_pipeline
 from app.services.spotify_cover import SpotifyCoverUploadError, upload_playlist_cover_image
-from app.services.spotify_playlist import analyze_spotify_candidates, create_playlist_from_track_uris
+from app.services.spotify_playlist import (
+    analyze_spotify_candidates,
+    create_playlist_from_track_uris,
+    enrich_results_album_images,
+)
 from app.services.spotify_service import SpotifyServiceError, create_playlist_from_songs
 from app.services.spotify_session_service import SpotifySessionService
 from app.services.youtube_thumbnail import (
+    extract_playlist_id,
+    extract_video_id,
+    get_playlist_thumbnail_url,
     YouTubeThumbnailError,
     get_thumbnail_base64_from_image_url,
     get_thumbnail_base64_from_youtube_url,
@@ -106,6 +114,8 @@ def _dedupe_pipeline_songs(raw_songs: List[Dict]) -> List[Dict[str, str]]:
                 "source_mode": item.get("source_mode", ""),
                 "timestamp": item.get("timestamp", ""),
                 "raw": item.get("raw", ""),
+                "original_input": item.get("original_input", {}),
+                "corrected_input": item.get("corrected_input", {}),
                 "left": item.get("left", ""),
                 "right": item.get("right", ""),
                 "swap_applied": item.get("swap_applied", False),
@@ -205,9 +215,15 @@ def _playlist_name(title_mode: str, user_playlist_name: str, youtube_title: str)
 
 def _youtube_thumbnail_url(youtube_result: Dict) -> str:
     video_id = (youtube_result.get("video_id") or "").strip()
-    if not video_id:
-        return ""
-    return f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
+    if video_id:
+        return f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
+
+    input_url = (youtube_result.get("input_url") or "").strip()
+    playlist_id = extract_playlist_id(input_url)
+    if playlist_id:
+        return get_playlist_thumbnail_url(playlist_id)
+
+    return ""
 
 
 
@@ -241,15 +257,41 @@ def _run_youtube_analysis(youtube_url: str, mode: str) -> tuple[Dict, List[Dict[
     return youtube_result, songs, analysis_elapsed_ms
 
 
-def _source_only_candidate(song: Dict[str, str]) -> Dict:
+def _normalize_spotify_track_id(value: Any) -> str:
+    s = str(value or "").strip()
+    if re.fullmatch(r"[0-9A-Za-z]{22}", s):
+        return s
+    return ""
+
+
+def _normalize_spotify_track_uri(value: Any) -> str:
+    """track_uris 페이로드 — spotify: URI, open.spotify URL, 22자 track id 모두 허용."""
+    s = str(value or "").strip()
+    if not s:
+        return ""
+    if s.startswith("spotify:track:"):
+        return s
+    if "open.spotify.com" in s and "/track/" in s:
+        m = re.search(r"/(?:intl-[a-z]{2}/)?track/([0-9A-Za-z]{22})", s)
+        if m:
+            return f"spotify:track:{m.group(1)}"
+    tid = _normalize_spotify_track_id(s)
+    if tid:
+        return f"spotify:track:{tid}"
+    return s if s.startswith("spotify:") else ""
+
+
+def _source_only_candidate(song: Dict[str, Any]) -> Dict:
     artist = (song.get("artist") or "").strip()
     title = (song.get("title") or "").strip()
+    acr_tid = _normalize_spotify_track_id(song.get("acr_spotify_track_id"))
+    spotify_uri = f"spotify:track:{acr_tid}" if acr_tid else None
     return {
         "input_artist": artist,
         "input_title": title,
         "matched": False,
-        "spotify_track_id": None,
-        "spotify_uri": None,
+        "spotify_track_id": acr_tid or None,
+        "spotify_uri": spotify_uri,
         "spotify_title": None,
         "spotify_artist": None,
         "album_image": None,
@@ -723,11 +765,13 @@ def analyze_youtube_for_playlist(
         print("[playlist/analyze-youtube] spotify matching end results =", len(results))
     except SpotifyServiceError as exc:
         total_elapsed_ms = int((time.perf_counter() - total_started_at) * 1000)
+        partial_results = [_source_only_candidate(song) for song in songs]
+        enrich_results_album_images(access_token, partial_results, market="KR")
         response_payload = _build_analysis_response(
             youtube_url=youtube_url,
             youtube_result=youtube_result,
             songs=songs,
-            results=[_source_only_candidate(song) for song in songs],
+            results=partial_results,
             title_mode=title_mode,
             user_playlist_name=user_playlist_name,
             mode=mode,
@@ -796,7 +840,7 @@ def create_playlist_from_selected_tracks(
     unique_track_uris = []
     seen = set()
     for uri in track_uris:
-        normalized = (str(uri) if uri is not None else "").strip()
+        normalized = _normalize_spotify_track_uri(uri)
         if not normalized or normalized in seen:
             continue
         seen.add(normalized)
@@ -816,6 +860,19 @@ def create_playlist_from_selected_tracks(
         )
         result["cover_upload_status"] = "not_attempted"
         result["cover_upload_error"] = None
+
+        # 프론트가 썸네일을 표시할 수 있도록 실제로 사용할 URL 계산
+        effective_thumbnail_url = thumbnail_url
+        if not effective_thumbnail_url and youtube_url:
+            try:
+                vid = extract_video_id(youtube_url)
+                effective_thumbnail_url = f"https://img.youtube.com/vi/{vid}/hqdefault.jpg"
+            except YouTubeThumbnailError:
+                pl_id = extract_playlist_id(youtube_url)
+                if pl_id:
+                    effective_thumbnail_url = get_playlist_thumbnail_url(pl_id) or ""
+        result["thumbnail_url"] = effective_thumbnail_url
+
         if result.get("playlist_id"):
             try:
                 if thumbnail_url:
