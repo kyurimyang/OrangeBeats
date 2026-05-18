@@ -205,27 +205,75 @@ button {
 }
 
 .site-header__spotify-connect {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   margin: 0;
-  padding: 4px 0;
-  border: none;
-  background: transparent;
+  box-sizing: border-box;
+  min-height: 28px;
+  padding: 4px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
   color: #ffffff;
-  font-size: 16px;
+  font-family: "Pretendard", sans-serif;
+  font-size: 12px;
   font-weight: 500;
-  line-height: 1.2;
-  letter-spacing: -0.32px;
+  line-height: 1;
+  letter-spacing: -0.24px;
   cursor: pointer;
   white-space: nowrap;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .site-header__spotify-connect:hover:not(:disabled) {
-  text-decoration: underline;
-  text-underline-offset: 3px;
+  background: rgba(29, 185, 84, 0.16);
+  border-color: rgba(29, 185, 84, 0.55);
+  box-shadow: 0 0 0 1px rgba(29, 185, 84, 0.12);
+}
+
+.site-header__spotify-connect:active:not(:disabled) {
+  background: rgba(29, 185, 84, 0.22);
+  border-color: rgba(29, 185, 84, 0.65);
+}
+
+.site-header__spotify-connect:focus-visible {
+  outline: 2px solid #fd6d11;
+  outline-offset: 2px;
 }
 
 .site-header__spotify-connect:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.site-header__spotify-connect-label {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+  padding: 0;
+}
+
+.site-header__spotify-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #1db954;
+  flex-shrink: 0;
+}
+
+.site-header__spotify-mark svg {
+  display: block;
+  width: 12px;
+  height: 12px;
+  color: #ffffff;
 }
 
 .home-shell {
@@ -236,7 +284,8 @@ button {
   width: 100%;
   max-width: 1440px;
   margin: 0 auto;
-  padding: 0;
+  padding: 0 clamp(16px, 4vw, 48px);
+  box-sizing: border-box;
 }
 
 .home-hero {
@@ -331,6 +380,73 @@ button {
   flex: 0 0 auto;
   text-decoration: none;
   color: inherit;
+}
+
+.home-hero-spotify {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  padding: 10px 26px 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  color: #ffffff;
+  font-family: "Pretendard", sans-serif;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.32px;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.1s ease;
+}
+
+.home-hero-spotify:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(253, 109, 17, 0.45);
+  box-shadow: 0 6px 24px rgba(253, 109, 17, 0.12);
+}
+
+.home-hero-spotify:active:not(:disabled) {
+  transform: translateY(1px);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.home-hero-spotify:focus-visible {
+  outline: 2px solid #fd6d11;
+  outline-offset: 3px;
+}
+
+.home-hero-spotify:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.home-hero-spotify__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #1db954;
+  flex-shrink: 0;
+}
+
+.home-hero-spotify__icon-mark {
+  display: block;
+  width: 18px;
+  height: 18px;
+  color: #ffffff;
+}
+
+.home-hero-spotify__label {
+  white-space: nowrap;
 }
 
 a.figma-spotify-connect {
@@ -458,7 +574,7 @@ a.figma-spotify-connect {
   margin: 0;
   font-size: 25px;
   font-weight: 400;
-  line-height: 20px;
+  line-height: 1.35;
   letter-spacing: -0.5px;
   text-align: center;
 }
@@ -470,7 +586,7 @@ a.figma-spotify-connect {
 }
 
 .home-copy__gap {
-  line-height: 20px;
+  line-height: 1.35;
 }
 
 .home-copy__list {
@@ -501,7 +617,7 @@ a.figma-spotify-connect {
 }
 
 .home-copy--tall {
-  height: 93px;
+  min-height: 0;
 }
 
 .home-shot {
@@ -522,71 +638,51 @@ a.figma-spotify-connect {
   pointer-events: none;
 }
 
-.home-shot--url-input {
-  width: 700px;
-  height: 184px;
-}
-
-.home-crop--title {
+/* How to use — 앱 스크린샷 (home-shot 절대배치와 분리) */
+.home-howto-shot {
+  display: block;
   flex: 0 0 auto;
-  width: 548px;
+  width: min(100%, var(--home-howto-w, 1024px));
   max-width: 100%;
-  height: 580px;
+  margin: 0 auto;
+  padding: 0;
+  overflow: visible;
+  align-self: center;
 }
 
-.home-crop--title img {
-  width: 95.47%;
-  height: 103.99%;
-  left: 2.35%;
-  top: -1.85%;
-}
-
-.home-crop--tracklist {
-  flex: 0 0 auto;
-  width: 647px;
-  max-width: 100%;
-  height: 615px;
-}
-
-.home-crop--tracklist img {
-  width: 107.42%;
-  height: 116.26%;
-  left: -3.71%;
-  top: -11.38%;
-}
-
-.home-shot--ocr-acr {
-  width: 535px;
-  height: 587px;
-}
-
-.home-shot--candidates {
-  width: 769px;
-  height: 444px;
-}
-
-.home-step-4-bundle {
-  position: relative;
-  flex: 0 0 auto;
-  width: 535px;
-  max-width: 100%;
-  height: 609px;
-  margin: 0;
-}
-
-.home-step-4-bundle__arrow {
-  position: absolute;
-  top: 565px;
-  left: 335px;
-  width: 28.571px;
-  height: 44px;
-}
-
-.home-step-4-bundle__arrow img {
+.home-howto-shot > img {
   display: block;
   width: 100%;
-  height: 100%;
-  max-width: none;
+  height: auto;
+  max-width: 100%;
+  position: static !important;
+  inset: auto !important;
+  object-fit: contain !important;
+  pointer-events: none;
+}
+
+.home-howto-shot--step1 {
+  --home-howto-w: 700px;
+}
+
+.home-howto-shot--title {
+  --home-howto-w: 700px;
+}
+
+.home-howto-shot--tracklist {
+  --home-howto-w: 852px;
+}
+
+.home-howto-shot--ocr-acr {
+  --home-howto-w: 740px;
+}
+
+.home-howto-shot--candidates {
+  --home-howto-w: 760px;
+}
+
+.home-howto-shot--ratings {
+  --home-howto-w: 340px;
 }
 
 .site-info {
@@ -754,6 +850,10 @@ a.figma-spotify-connect {
   background: #191919;
 }
 
+.help-page__card-block + .help-page__card-block {
+  margin-top: 27.2px;
+}
+
 .help-page__card-text {
   margin: 0;
   font-size: clamp(16px, 1.6vw, 20px);
@@ -764,8 +864,9 @@ a.figma-spotify-connect {
   word-break: break-word;
 }
 
-.help-page__card-text + .help-page__card-text {
-  margin-top: 27.2px;
+/* 블록 안 줄은 line-height만 간격 (사진과 동일) */
+.help-page__card-block .help-page__card-text + .help-page__card-text {
+  margin-top: 0;
 }
 
 /* Figma 001_1_FAQ — nodes 241:199, 245:267 */
@@ -994,6 +1095,7 @@ a.figma-spotify-connect {
 
 /* Figma 001_3_contactus — node 351:238 (reference) */
 .contact-page {
+  --contact-content-max-width: 1009px;
   min-height: 100vh;
   background: #000;
   color: #fff;
@@ -1016,7 +1118,8 @@ a.figma-spotify-connect {
 }
 
 .contact-page__intro {
-  max-width: 1009px;
+  max-width: var(--contact-content-max-width);
+  width: 100%;
   margin-bottom: clamp(40px, 5vw, 56px);
 }
 
@@ -1044,7 +1147,8 @@ a.figma-spotify-connect {
 }
 
 .contact-page__section {
-  max-width: 1009px;
+  max-width: var(--contact-content-max-width);
+  width: 100%;
 }
 
 .contact-page__section-title {
@@ -1236,7 +1340,8 @@ a.figma-spotify-connect {
 }
 
 .contact-page__footer {
-  max-width: 1009px;
+  max-width: var(--contact-content-max-width);
+  width: 100%;
   margin-top: clamp(56px, 7vw, 80px);
   padding-top: clamp(28px, 3.5vw, 40px);
   border-top: 1px solid rgba(255, 255, 255, 0.12);
@@ -1304,74 +1409,133 @@ a.figma-spotify-connect {
     white-space: normal;
   }
 
-  .home-step-1-bundle,
-  .home-crop--step1-browser,
-  .home-shot--url-input,
-  .home-crop--title,
-  .home-crop--tracklist,
-  .home-step-4-bundle,
-  .home-shot--ocr-acr,
-  .home-shot--candidates {
-    width: min(100%, 700px);
+  .home-howto-shot {
+    width: min(100%, var(--home-howto-w, 1024px));
     height: auto;
   }
 
-  .home-step-1-bundle {
-    height: auto;
-    padding-bottom: 44px;
+}
+
+/* Home + How to use — 태블릿·모바일 */
+@media (max-width: 1024px) {
+  .home-page,
+  .home-shell {
+    --home-section-gap: clamp(64px, 9vw, 96px);
+  }
+}
+
+@media (max-width: 768px) {
+  .home-page,
+  .home-shell {
+    --home-section-gap: clamp(48px, 8vw, 72px);
   }
 
-  .home-step-1-bundle__layer {
+  .home-shell {
+    padding-left: clamp(12px, 4vw, 24px);
+    padding-right: clamp(12px, 4vw, 24px);
+  }
+
+  .home-hero {
     width: 100%;
+    max-width: 100%;
     height: auto;
+    min-height: 0;
+    padding: 16px 0 28px;
   }
 
-  .home-crop--step1-browser {
-    height: auto;
-    aspect-ratio: 700 / 195;
+  .home-hero__copy {
+    position: relative;
+    gap: clamp(20px, 5vw, 32px);
+    padding-top: 0;
   }
 
-  .home-step-1-bundle__arrow-border,
-  .home-step-1-bundle__arrow,
-  .home-crop--step1-url-bar,
-  .home-step-4-bundle__arrow {
-    position: static;
-    display: block;
-    margin: 12px auto 0;
+  .home-hero__title-wrap,
+  .home-hero__subtitle-wrap {
+    padding-left: 0;
+    padding-right: 0;
   }
 
-  .home-crop--step1-url-bar {
+  .home-hero__subtitle-wrap {
+    width: 100%;
+  }
+
+  .home-hero__spacer {
+    display: none;
+  }
+
+  .home-section-title {
+    font-size: clamp(28px, 7.5vw, 44px);
+    line-height: 1.2;
+    min-height: 0;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .home-copy {
+    font-size: clamp(15px, 4.1vw, 20px);
+    line-height: 1.45;
+    padding-left: 4px;
+    padding-right: 4px;
+  }
+
+  .home-copy--step-1,
+  .home-copy--step-2,
+  .home-copy--wide {
     max-width: 100%;
   }
 
-  .home-shot {
-    height: auto;
-    aspect-ratio: auto;
+  .home-copy__list {
+    list-style-position: inside;
+    padding-left: 0;
+    padding-right: 0;
   }
 
-  .home-shot--url-input {
-    aspect-ratio: 700 / 184;
+  .home-howto-shot,
+  .home-howto-shot--step1,
+  .home-howto-shot--title,
+  .home-howto-shot--tracklist,
+  .home-howto-shot--ocr-acr,
+  .home-howto-shot--candidates,
+  .home-howto-shot--ratings {
+    width: 100%;
+    max-width: 100%;
   }
 
-  .home-crop--title {
-    aspect-ratio: 548 / 580;
+  .home-placeholder,
+  .home-placeholder--bottom {
+    width: min(100%, 208px);
+    height: clamp(48px, 12vw, 80px);
+  }
+}
+
+@media (max-width: 480px) {
+  .home-page,
+  .home-shell {
+    --home-section-gap: 40px;
   }
 
-  .home-crop--tracklist {
-    aspect-ratio: 647 / 615;
+  .home-hero__title {
+    font-size: clamp(32px, 9vw, 40px);
+    letter-spacing: -1px;
   }
 
-  .home-shot--ocr-acr {
-    aspect-ratio: 535 / 587;
+  .home-hero__subtitle {
+    font-size: clamp(14px, 3.8vw, 16px);
+    line-height: 1.45;
   }
 
-  .home-shot--candidates {
-    aspect-ratio: 769 / 444;
+  .home-hero-spotify {
+    font-size: 14px;
+    padding: 8px 18px 8px 10px;
+    gap: 8px;
   }
 
-  .home-step-4-bundle {
-    height: auto;
-    padding-bottom: 44px;
+  .home-section-title {
+    font-size: clamp(24px, 6.5vw, 32px);
+  }
+
+  .home-copy {
+    font-size: 15px;
   }
 }
 
@@ -1383,7 +1547,12 @@ a.figma-spotify-connect {
 
   .site-header__nav {
     gap: 20px;
-    padding: 20px 0 20px 20px;
+    padding: 12px 0 8px;
+    margin-left: 0;
+  }
+
+  .site-header__start {
+    gap: 20px 24px;
   }
 }
 
@@ -1527,6 +1696,7 @@ a.figma-spotify-connect {
   /* 브라우저 75% 줌에 가깝게 — 패널·행·휴지통·하단 CTA 동일 비율 */
   --result-scale: 0.75;
   /* 곡명/가수 — Figma(px) 기준. --result-scale(0.75)와 곱해져 패널·행과 비슷한 체감 크기로 맞춤 */
+  --result-track-index-col-px: 48;
   --result-track-title-px: 28;
   --result-track-title-line-px: 40;
   --result-track-artist-px: 20;
@@ -1583,6 +1753,14 @@ a.figma-spotify-connect {
   text-align: center;
 }
 
+/* Rectangle 11 — 플레이리스트 패널 프레임 */
+.result-list-panel {
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: linear-gradient(90deg, rgba(253, 109, 17, 0.2) 0%, rgba(255, 255, 255, 0.2) 100%);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
 /* Rectangle 11 — Figma 비율 × --result-scale */
 .result-list-panel {
   width: 100%;
@@ -1591,10 +1769,7 @@ a.figma-spotify-connect {
   flex-shrink: 0;
   height: auto;
   overflow: visible;
-  border: 1px solid rgba(255, 255, 255, 0.28);
   border-radius: calc(25px * var(--result-scale, 1));
-  background: linear-gradient(90deg, rgba(253, 109, 17, 0.2) 0%, rgba(255, 255, 255, 0.2) 100%);
-  backdrop-filter: blur(4px);
   padding: calc(18px * var(--result-scale, 1)) calc(24px * var(--result-scale, 1)) calc(20px * var(--result-scale, 1));
   display: flex;
   flex-direction: column;
@@ -1707,7 +1882,7 @@ a.figma-spotify-connect {
   min-height: calc(100px * var(--result-scale, 1));
   display: grid;
   grid-template-columns:
-    calc(20px * var(--result-scale, 1))
+    calc(var(--result-track-index-col-px) * 1px * var(--result-scale, 1))
     calc(85px * var(--result-scale, 1))
     minmax(0, 1fr)
     calc(56px * var(--result-scale, 1));
@@ -1717,10 +1892,14 @@ a.figma-spotify-connect {
 }
 
 .result-track-item__index {
+  justify-self: end;
+  min-width: calc(var(--result-track-index-col-px) * 1px * var(--result-scale, 1));
   font-family: "Pretendard", "Gowun Dodum", sans-serif;
   font-size: calc(30px * var(--result-scale, 1));
   font-weight: 500;
+  font-variant-numeric: tabular-nums;
   line-height: 1;
+  text-align: right;
   color: #ffffff;
 }
 
@@ -1831,49 +2010,7 @@ a.figma-spotify-connect {
   padding-top: 4px;
 }
 
-.result-list-page__actions .figma-playlist-create {
-  display: inline-flex;
-  box-sizing: border-box;
-  width: auto;
-  max-width: 100%;
-  height: auto;
-  min-height: 0;
-  padding: calc(18px * var(--result-scale, 1)) calc(40px * var(--result-scale, 1));
-  justify-content: center;
-  align-items: center;
-  gap: calc(10px * var(--result-scale, 1));
-  border-radius: calc(20px * var(--result-scale, 1));
-  border: 0;
-  background: #fd6d11;
-  background-image: linear-gradient(81.99deg, #ffb22d 4.72%, #fd6d11 70.27%);
-  box-shadow: none;
-}
-
-.result-list-page__actions .figma-playlist-create--default,
-.result-list-page__actions .figma-playlist-create--hover {
-  background: #fd6d11;
-  background-image: none;
-  box-shadow: none;
-}
-
-.result-list-page__actions .figma-playlist-create--pressed {
-  background: rgba(217, 217, 217, 0.6);
-  background-image: none;
-  box-shadow: none;
-}
-
-.result-list-page__actions .figma-playlist-create__label,
-.result-list-page__actions .figma-rematch__label {
-  color: #fff;
-  text-align: center;
-  font-family: "Pretendard", "Gowun Dodum", sans-serif;
-  font-size: calc(28px * var(--result-scale, 1));
-  font-style: normal;
-  font-weight: 400;
-  line-height: normal;
-  white-space: nowrap;
-}
-
+.result-list-page__actions .figma-playlist-create,
 .result-list-page__actions .figma-rematch {
   display: inline-flex;
   box-sizing: border-box;
@@ -1886,16 +2023,95 @@ a.figma-spotify-connect {
   align-items: center;
   gap: calc(10px * var(--result-scale, 1));
   border-radius: calc(20px * var(--result-scale, 1));
-  border: 0;
-  background: #7a4520;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    opacity 0.15s ease;
 }
 
-.result-list-page__actions .figma-rematch--pressed {
+.result-list-page__actions .figma-playlist-create__label,
+.result-list-page__actions .figma-rematch__label {
+  text-align: center;
+  font-family: "Pretendard", "Gowun Dodum", sans-serif;
+  font-size: calc(28px * var(--result-scale, 1));
+  font-style: normal;
+  font-weight: 400;
+  line-height: normal;
+  white-space: nowrap;
+}
+
+.result-list-page__actions .figma-playlist-create__label {
+  color: #ffffff;
+}
+
+.result-list-page__actions .figma-rematch__label {
+  color: #ffffff;
+}
+
+/* Primary — 이대로 Playlist 만들기 (figma/components.css variant 덮어씀) */
+.result-list-page__actions button.figma-playlist-create.figma-playlist-create--default,
+.result-list-page__actions button.figma-playlist-create.figma-playlist-create--hover {
+  border: 0;
+  background: #cc590f;
+  box-shadow: none;
+}
+
+.result-list-page__actions button.figma-playlist-create.figma-playlist-create--default:hover:not(:disabled),
+.result-list-page__actions button.figma-playlist-create.figma-playlist-create--hover:not(:disabled) {
+  background: #fd6d11;
+  box-shadow: 0 4px 16px rgba(253, 109, 17, 0.28);
+}
+
+.result-list-page__actions button.figma-playlist-create:active:not(:disabled),
+.result-list-page__actions button.figma-playlist-create.figma-playlist-create--pressed:not(:disabled) {
+  background: #a8480c;
+  box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.35);
+}
+
+.result-list-page__actions .figma-playlist-create:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.result-list-page__actions .figma-playlist-create:disabled .figma-playlist-create__label {
+  opacity: 0.65;
+}
+
+/* Secondary — 원하는 노래가 없어요 (Figma figma-rematch--pressed) */
+.result-list-page__actions button.figma-rematch.figma-rematch--pressed {
   width: auto;
   max-width: 100%;
-  background: #7a4520;
-  background-image: none;
+  border: 0;
+  background: rgba(217, 217, 217, 0.6);
   box-shadow: none;
+}
+
+.result-list-page__actions button.figma-rematch.figma-rematch--pressed:hover:not(:disabled) {
+  background: rgba(217, 217, 217, 0.75);
+}
+
+.result-list-page__actions button.figma-rematch.figma-rematch--pressed:active:not(:disabled) {
+  background: var(--figma-pressed, #6b6b6b);
+  box-shadow: var(--figma-pressed-inset, inset 0 4px 4px rgba(0, 0, 0, 0.25));
+}
+
+.result-list-page__actions .figma-rematch:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.result-list-page__actions .figma-rematch:disabled .figma-rematch__label {
+  opacity: 0.55;
+}
+
+.result-list-page__actions .figma-playlist-create:focus-visible,
+.result-list-page__actions .figma-rematch:focus-visible {
+  outline: 2px solid #fd6d11;
+  outline-offset: 3px;
 }
 
 .result-list-page__error {
@@ -2455,9 +2671,11 @@ a.figma-spotify-connect {
 }
 
 .result-list-loading__stack {
-  display: flex;
+  display: inline-flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
+  width: max-content;
+  max-width: min(92vw, 720px);
   text-align: center;
   gap: 24px;
 }
@@ -2467,31 +2685,41 @@ a.figma-spotify-connect {
   font-family: "Pretendard", "Gowun Dodum", sans-serif;
   font-size: 30px;
   font-weight: 500;
-  line-height: 20px;
+  line-height: 1.2;
   letter-spacing: -0.5px;
   color: #ffffff;
+  white-space: nowrap;
 }
-
 
 .url-loading-soundbar {
   display: flex;
   align-items: flex-end;
-  gap: 4px;
-  height: 32px;
+  justify-content: space-between;
+  width: 100%;
+  height: 36px;
+  box-sizing: border-box;
 }
 
 .url-loading-soundbar__bar {
   display: block;
+  flex: 0 0 4px;
   width: 4px;
   height: 5px;
-  background: #D4703A;
+  background: #d4703a;
   border-radius: 2px;
   animation: barUp 1s ease-in-out infinite;
 }
 
 @keyframes barUp {
-  0%, 100% { height: 5px;  opacity: 0.25; }
-  50%       { height: 32px; opacity: 1;    }
+  0%,
+  100% {
+    height: 5px;
+    opacity: 0.25;
+  }
+  50% {
+    height: 36px;
+    opacity: 1;
+  }
 }
 
 .result-list-loading__dots::after {
@@ -2543,6 +2771,7 @@ a.figma-spotify-connect {
   align-items: center;
   justify-content: center;
   width: 100%;
+  padding-top: clamp(32px, 6vh, 56px);
 }
 
 .playlist-create-loading__vinyl-scene {
@@ -3102,6 +3331,7 @@ a.figma-spotify-connect {
   margin-top: 0;
 }
 
+/* OCR/ACR — 패널 테두리 + Figma식 어두운 면 (하이브리드) */
 .result-analysis-card {
   box-sizing: border-box;
   width: 599px;
@@ -3112,9 +3342,24 @@ a.figma-spotify-connect {
   flex-direction: column;
   align-items: center;
   gap: 63px;
-  padding: 78px 33px 35px 42px;
-  border-radius: 20px;
-  background: #191919;
+  padding: 78px 42px 35px;
+  border-radius: 25px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background:
+    linear-gradient(135deg, rgba(253, 109, 17, 0.16) 0%, transparent 46%),
+    linear-gradient(168deg, #242424 0%, #191919 54%, #121212 100%);
+  box-shadow:
+    0 0 28px rgba(253, 109, 17, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+.result-analysis-card--acr {
+  background:
+    linear-gradient(135deg, rgba(253, 109, 17, 0.22) 0%, transparent 48%),
+    linear-gradient(168deg, #2a211c 0%, #1b1714 54%, #12100e 100%);
+  box-shadow:
+    0 0 32px rgba(253, 109, 17, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
 }
 
 .result-analysis-card__title-pill {
@@ -3127,15 +3372,9 @@ a.figma-spotify-connect {
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.result-analysis-card__title-pill-bg {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  display: block;
-  pointer-events: none;
+  border-radius: 20px;
+  border: none;
+  background: #444;
 }
 
 .result-analysis-card__title-pill-text {
@@ -3158,25 +3397,25 @@ a.figma-spotify-connect {
   line-height: normal;
 }
 
-.result-analysis-card__run {
-  flex-shrink: 0;
-}
-
 .result-analysis-card__run:disabled {
   cursor: not-allowed;
   opacity: 0.7;
 }
 
-/* Figma 164:1711 — 실행하기 */
-.result-analysis-card .figma-playlist-create {
+/* Figma 164:1711 — 실행하기 (카드 하단 가운데) */
+.result-analysis-card button.result-analysis-card__run.figma-playlist-create {
+  flex-shrink: 0;
+  margin-top: auto;
+  align-self: center;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 141px;
-  height: 42px;
-  padding: 0;
+  width: 220px;
+  max-width: calc(100% - 32px);
+  height: 52px;
+  padding: 0 28px;
   border: 0;
-  border-radius: 10px;
+  border-radius: 12px;
   background: #fd6d11;
   background-image: none;
   box-shadow: none;
@@ -3195,7 +3434,7 @@ a.figma-spotify-connect {
   color: #fff;
   text-align: center;
   font-family: "Pretendard", "Gowun Dodum", sans-serif;
-  font-size: 20px;
+  font-size: 22px;
   font-style: normal;
   font-weight: 300;
   line-height: normal;
@@ -3406,8 +3645,13 @@ a.figma-spotify-connect {
     white-space: normal;
   }
 
+  .result-analysis-card button.result-analysis-card__run.figma-playlist-create {
+    width: min(220px, 100%);
+    height: 48px;
+  }
+
   .result-analysis-card .figma-playlist-create__label {
-    font-size: clamp(16px, 4vw, 20px);
+    font-size: clamp(18px, 4.5vw, 22px);
     line-height: normal;
   }
 
@@ -3443,12 +3687,13 @@ a.figma-spotify-connect {
 
   .result-track-item {
     min-height: 72px;
-    grid-template-columns: 16px 56px minmax(0, 1fr) 44px;
+    grid-template-columns: 32px 56px minmax(0, 1fr) 44px;
     column-gap: 18px;
     row-gap: 0;
   }
 
   .result-track-item__index {
+    min-width: 32px;
     font-size: 20px;
   }
 
@@ -4153,11 +4398,14 @@ a.figma-spotify-connect {
 /* ── Contact page — public Q&A board ── */
 .contact-qa-board {
   margin-top: clamp(48px, 6vw, 72px);
+  max-width: var(--contact-content-max-width);
+  width: 100%;
 }
 
 .contact-qa-board__inner {
   display: flex;
   flex-direction: column;
+  width: 100%;
 }
 
 /* Top bar */
@@ -4238,24 +4486,105 @@ a.figma-spotify-connect {
 }
 
 .contact-qa-board__sort-wrap {
+  position: relative;
   flex-shrink: 0;
 }
 
-.contact-qa-board__sort {
-  background: #111;
+.contact-qa-board__sort-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  min-width: 108px;
+  height: 44px;
+  padding: 0 16px;
   border: 1px solid #222;
   border-radius: 100px;
-  color: rgba(255, 255, 255, 0.65);
+  background: #111;
+  color: rgba(255, 255, 255, 0.88);
   font-family: "Pretendard", sans-serif;
   font-size: 13px;
-  padding: 10px 36px 10px 16px;
+  font-weight: 500;
+  line-height: 1;
   cursor: pointer;
-  appearance: none;
-  -webkit-appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' stroke='rgba(255,255,255,0.45)' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 12px center;
-  outline: none;
+  white-space: nowrap;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.contact-qa-board__sort-trigger:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: #161616;
+}
+
+.contact-qa-board__sort-trigger:focus-visible {
+  outline: 2px solid #fd6d11;
+  outline-offset: 2px;
+}
+
+.contact-qa-board__sort-trigger-label {
+  flex: 1;
+  text-align: left;
+}
+
+.contact-qa-board__sort-chevron {
+  display: block;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid rgba(255, 255, 255, 0.55);
+  transition: transform 0.15s ease;
+  flex-shrink: 0;
+}
+
+.contact-qa-board__sort-chevron--open {
+  transform: rotate(180deg);
+}
+
+.contact-qa-board__sort-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 50;
+  min-width: 100%;
+  padding: 4px 0;
+  border-radius: 15px;
+  background: rgba(108, 108, 108, 0.35);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.contact-qa-board__sort-menu-item {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 8px 18px;
+  border: none;
+  background: transparent;
+  color: #ffffff;
+  font-family: "Pretendard", sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.25;
+  letter-spacing: -0.28px;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.contact-qa-board__sort-menu-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.contact-qa-board__sort-menu-item--active {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.contact-qa-board__sort-menu-rule {
+  height: 1px;
+  margin: 2px 16px;
+  background: rgba(255, 255, 255, 0.22);
 }
 
 /* Category chips */
@@ -4419,15 +4748,18 @@ a.figma-spotify-connect {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
   color: rgba(255, 255, 255, 0.4);
   flex-shrink: 0;
   transition: transform 0.2s;
-  transform: rotate(90deg);
+}
+
+.contact-qa-board__expand-icon svg {
+  display: block;
+  flex-shrink: 0;
 }
 
 .contact-qa-board__expand-icon--open {
-  transform: rotate(-90deg);
+  transform: rotate(180deg);
 }
 
 .contact-qa-board__item-title {
@@ -4628,5 +4960,446 @@ a.figma-spotify-connect {
 
   .contact-qa-board__faq-btn {
     align-self: flex-start;
+  }
+}
+
+/* ========== Site-wide responsive (all pages) ========== */
+
+@media (max-width: 1024px) {
+  .result-list-page {
+    --result-scale: 0.88;
+  }
+
+  .pcp-main {
+    padding: 32px 20px 64px;
+  }
+}
+
+@media (max-width: 768px) {
+  /* ── Header (공통) ── */
+  .site-header {
+    height: auto;
+  }
+
+  .site-header__inner {
+    flex-wrap: wrap;
+    align-items: center;
+    height: auto;
+    min-height: 56px;
+    padding: 10px 16px 12px;
+    gap: 10px 16px;
+  }
+
+  .site-header__start {
+    flex: 1 1 auto;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 14px;
+    min-width: 0;
+  }
+
+  .site-header__logo {
+    width: min(168px, 42vw);
+    height: auto;
+    aspect-ratio: 233 / 42;
+    overflow: visible;
+  }
+
+  .site-header__logo img {
+    position: static;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    left: auto;
+    top: auto;
+  }
+
+  .site-header__spotify-trigger {
+    font-size: 14px;
+  }
+
+  .site-header__nav {
+    flex: 1 1 100%;
+    order: 3;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: clamp(12px, 3.5vw, 24px);
+    padding: 4px 0 0;
+    margin-left: 0;
+  }
+
+  /* ── /create — URL 입력 ── */
+  .playlist-url-page__main {
+    padding: 20px 16px 56px;
+    justify-content: flex-start;
+    padding-top: clamp(32px, 8vh, 64px);
+  }
+
+  .playlist-url-page__heading {
+    margin-bottom: 28px;
+    font-size: clamp(20px, 5.2vw, 26px);
+    padding: 0 4px;
+  }
+
+  .playlist-url-page .figma-url-input,
+  .figma-url-input {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .figma-url-input__shell {
+    width: 100%;
+  }
+
+  .figma-url-input__field {
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    min-height: 52px;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 10px 12px 10px 16px;
+    box-sizing: border-box;
+  }
+
+  .figma-url-input__native {
+    position: static;
+    flex: 1 1 auto;
+    min-width: 0;
+    width: 100%;
+    height: auto;
+    min-height: 36px;
+    left: auto;
+    right: auto;
+    padding: 4px 0;
+    font-size: clamp(15px, 4vw, 18px);
+  }
+
+  .figma-url-input__action {
+    position: static;
+    flex-shrink: 0;
+    margin-top: 0;
+    margin-left: auto;
+  }
+
+  .figma-url-input--default,
+  .figma-url-input--error {
+    height: auto;
+  }
+
+  .figma-url-input__glow {
+    display: none;
+  }
+
+  .figma-url-input__error {
+    font-size: clamp(14px, 3.8vw, 18px);
+    line-height: 1.4;
+    margin-top: 10px;
+  }
+
+  .playlist-url-page__radios {
+    gap: 16px 28px;
+    margin-top: 24px;
+  }
+
+  .playlist-url-page__title-field {
+    max-width: 100%;
+  }
+
+  /* ── /result — 곡 목록 ── */
+  .result-list-page {
+    --result-scale: 1;
+  }
+
+  .result-list-page__main {
+    padding-left: 12px;
+    padding-right: 12px;
+    max-width: 100%;
+  }
+
+  .result-list-page__heading {
+    font-size: clamp(22px, 5.5vw, 30px);
+    line-height: 1.25;
+    white-space: normal;
+  }
+
+  .result-list-page__actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    max-width: 100%;
+  }
+
+  .result-list-page__actions .figma-playlist-create,
+  .result-list-page__actions .figma-rematch {
+    width: 100%;
+    max-width: 100%;
+    justify-content: center;
+  }
+
+  .result-list-page__actions .figma-playlist-create__label,
+  .result-list-page__actions .figma-rematch__label {
+    white-space: normal;
+    text-align: center;
+  }
+
+  .result-track-item {
+    grid-template-columns:
+      calc(32px * var(--result-scale, 1))
+      calc(52px * var(--result-scale, 1))
+      minmax(0, 1fr)
+      calc(36px * var(--result-scale, 1));
+    column-gap: calc(10px * var(--result-scale, 1));
+    min-height: calc(76px * var(--result-scale, 1));
+    padding: calc(8px * var(--result-scale, 1)) 0;
+  }
+
+  .result-track-item__cover {
+    width: calc(52px * var(--result-scale, 1));
+    height: calc(52px * var(--result-scale, 1));
+  }
+
+  .result-track-item__meta {
+    padding-left: calc(8px * var(--result-scale, 1));
+  }
+
+  .result-track-item__title {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    line-height: 1.25;
+  }
+
+  .result-track-item__artist {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .result-list-loading__title {
+    font-size: clamp(20px, 5vw, 26px);
+    white-space: normal;
+    max-width: 100%;
+  }
+
+  .result-list-loading__stack {
+    max-width: calc(100vw - 32px);
+  }
+
+  /* ── /result/created — 완료·평점 (pcp) ── */
+  .playlist-created-page__heading {
+    white-space: normal;
+    text-align: center;
+    line-height: 1.2;
+  }
+
+  .pcp-main {
+    padding: 24px 16px 56px;
+    gap: 22px;
+  }
+
+  .pcp-heading {
+    font-size: clamp(26px, 7vw, 40px);
+  }
+
+  .pcp-subheading {
+    font-size: clamp(14px, 3.6vw, 16px);
+    padding: 0 8px;
+    text-align: center;
+  }
+
+  .pcp-card {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .pcp-feedback {
+    width: 100%;
+    max-width: 100%;
+    padding: 20px 16px;
+    box-sizing: border-box;
+  }
+
+  .pcp-feedback__heading {
+    font-size: clamp(20px, 5vw, 26px);
+    white-space: normal;
+  }
+
+  .pcp-bottom {
+    width: 100%;
+  }
+
+  /* ── /result/rating ── */
+  .rating-page__main {
+    padding: 32px 16px 56px;
+    gap: 28px;
+  }
+
+  .rating-page__copy {
+    font-size: clamp(16px, 4.2vw, 18px);
+    line-height: 1.45;
+    padding: 0 8px;
+  }
+
+  .rating-page__feedback {
+    max-width: 100%;
+    padding: 0 4px;
+  }
+
+  .star-rating {
+    gap: 8px;
+  }
+
+  /* ── Help / FAQ ── */
+  .help-page__main,
+  .faq-page__main {
+    padding: clamp(56px, 10vw, 80px) clamp(16px, 4vw, 24px) 72px;
+  }
+
+  .help-page__sections,
+  .faq-page__list {
+    max-width: 100%;
+  }
+
+  .faq-page__question,
+  .faq-page__answer {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    min-height: 0;
+  }
+
+  .faq-page__number {
+    min-width: 0;
+  }
+
+  /* ── Contact ── */
+  .contact-page__main {
+    padding: clamp(48px, 9vw, 72px) clamp(16px, 4vw, 24px) 64px;
+  }
+
+  .contact-page__title {
+    font-size: clamp(32px, 8vw, 44px);
+  }
+
+  .contact-page__form,
+  .contact-page__section {
+    max-width: 100%;
+  }
+
+  .contact-qa-board {
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  /* ── 404 ── */
+  .not-found-page__main {
+    padding: 48px 20px 64px;
+  }
+
+  .not-found-page__actions {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    max-width: 320px;
+  }
+
+  .not-found-page__link {
+    width: 100%;
+    text-align: center;
+    box-sizing: border-box;
+  }
+
+  /* ── Admin ── */
+  .admin-main {
+    padding: 24px 16px 56px;
+    gap: 32px;
+  }
+
+  .admin-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .admin-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .admin-table {
+    min-width: 520px;
+  }
+
+  .admin-qa-item__meta {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 480px) {
+  .site-header__inner {
+    padding: 8px 12px 10px;
+  }
+
+  .site-header__nav {
+    gap: 10px 16px;
+  }
+
+  .site-header__nav .figma-footer-link {
+    font-size: 14px;
+  }
+
+  .playlist-url-page__radios {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .figma-url-input__field {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .figma-url-input__action {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .figma-url-input__action.figma-playlist-create {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .result-list-panel__header {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .result-analysis-page__scale-wrap {
+    zoom: 1;
+  }
+
+  @supports not (zoom: 1) {
+    .result-analysis-page__scale-wrap {
+      margin-bottom: 0;
+    }
+  }
+
+  .contact-page__cat-chips {
+    gap: 8px;
+  }
+
+  .contact-page__submit {
+    width: 100%;
+  }
+
+  .admin-stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pcp-nav-btn {
+    padding: 14px 16px;
   }
 }

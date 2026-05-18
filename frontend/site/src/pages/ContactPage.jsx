@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import SiteHeader from "../components/SiteHeader.jsx";
 
 const INTRO_LEAD = "서비스 개선 제안, 오류 제보, 협업 문의를 남겨주세요.";
@@ -36,6 +36,11 @@ const CATEGORY_LIST = [
 
 const PAGE_SIZE = 5;
 
+const SORT_OPTIONS = [
+  { value: "newest", label: "최신순" },
+  { value: "oldest", label: "오래된순" },
+];
+
 function QaBoard({ refreshTrigger }) {
   const [posts, setPosts] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -43,8 +48,12 @@ function QaBoard({ refreshTrigger }) {
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState("newest");
+  const [sortOpen, setSortOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [expandedId, setExpandedId] = useState(null);
+  const sortWrapRef = useRef(null);
+
+  const sortLabel = SORT_OPTIONS.find((opt) => opt.value === sort)?.label ?? "최신순";
 
   useEffect(() => {
     setLoading(true);
@@ -56,6 +65,24 @@ function QaBoard({ refreshTrigger }) {
   }, [refreshTrigger]);
 
   useEffect(() => { setPage(1); }, [statusFilter, categoryFilter, search, sort]);
+
+  useEffect(() => {
+    if (!sortOpen) return;
+    const onPointerDown = (e) => {
+      if (sortWrapRef.current && !sortWrapRef.current.contains(e.target)) {
+        setSortOpen(false);
+      }
+    };
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") setSortOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [sortOpen]);
 
   if (loading) return <p className="contact-qa-board__empty">불러오는 중…</p>;
   if (!posts) return null;
@@ -117,15 +144,48 @@ function QaBoard({ refreshTrigger }) {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <div className="contact-qa-board__sort-wrap">
-          <select
-            className="contact-qa-board__sort"
-            value={sort}
-            onChange={(e) => setSort(e.target.value)}
+        <div className="contact-qa-board__sort-wrap" ref={sortWrapRef}>
+          <button
+            type="button"
+            className="contact-qa-board__sort-trigger"
+            aria-expanded={sortOpen}
+            aria-haspopup="listbox"
+            aria-controls="contact-qa-sort-menu"
+            id="contact-qa-sort-trigger"
+            onClick={() => setSortOpen((open) => !open)}
           >
-            <option value="newest">최신순</option>
-            <option value="oldest">오래된순</option>
-          </select>
+            <span className="contact-qa-board__sort-trigger-label">{sortLabel}</span>
+            <span
+              className={`contact-qa-board__sort-chevron${sortOpen ? " contact-qa-board__sort-chevron--open" : ""}`}
+              aria-hidden="true"
+            />
+          </button>
+          {sortOpen ? (
+            <div
+              className="contact-qa-board__sort-menu"
+              id="contact-qa-sort-menu"
+              role="listbox"
+              aria-labelledby="contact-qa-sort-trigger"
+            >
+              {SORT_OPTIONS.map((opt, index) => (
+                <div key={opt.value}>
+                  {index > 0 ? <div className="contact-qa-board__sort-menu-rule" role="separator" /> : null}
+                  <button
+                    type="button"
+                    className={`contact-qa-board__sort-menu-item${sort === opt.value ? " contact-qa-board__sort-menu-item--active" : ""}`}
+                    role="option"
+                    aria-selected={sort === opt.value}
+                    onClick={() => {
+                      setSort(opt.value);
+                      setSortOpen(false);
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -177,8 +237,19 @@ function QaBoard({ refreshTrigger }) {
                       {CATEGORY_LABELS[post.category] || post.category}
                     </span>
                   </div>
-                  <span className={`contact-qa-board__expand-icon${isExpanded ? " contact-qa-board__expand-icon--open" : ""}`}>
-                    ›
+                  <span
+                    className={`contact-qa-board__expand-icon${isExpanded ? " contact-qa-board__expand-icon--open" : ""}`}
+                    aria-hidden="true"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <path
+                        d="M2.5 4.5 6 8 9.5 4.5"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
                   </span>
                 </button>
                 <p className="contact-qa-board__item-title">{post.title}</p>
@@ -243,7 +314,7 @@ function QaBoard({ refreshTrigger }) {
         <div className="contact-qa-board__faq-icon">+</div>
         <div className="contact-qa-board__faq-body">
           <strong className="contact-qa-board__faq-title">자주 묻는 질문에서 먼저 확인해 보세요</strong>
-          <span className="contact-qa-board__faq-sub">결제·매칭 관련 답변은 대부분 FAQ에서 빠르게 찾을 수 있어요.</span>
+          <span className="contact-qa-board__faq-sub">매칭·사용 관련 답변은 대부분 FAQ에서 빠르게 찾을 수 있어요.</span>
         </div>
         <a href="/faq" className="contact-qa-board__faq-btn">FAQ 보러가기</a>
       </div>
