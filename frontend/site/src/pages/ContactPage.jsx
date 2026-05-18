@@ -47,12 +47,24 @@ function QaBoard({ refreshTrigger }) {
   const [expandedId, setExpandedId] = useState(null);
 
   useEffect(() => {
-    setLoading(true);
-    fetch("/qa")
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data) => setPosts(Array.isArray(data) ? data : []))
-      .catch(() => setPosts([]))
-      .finally(() => setLoading(false));
+    let cancelled = false;
+
+    const fetchPosts = (isInitial = false) => {
+      if (isInitial) setLoading(true);
+      fetch("/qa")
+        .then((res) => (res.ok ? res.json() : []))
+        .then((data) => { if (!cancelled) setPosts(Array.isArray(data) ? data : []); })
+        .catch(() => { if (!cancelled) setPosts([]); })
+        .finally(() => { if (!cancelled && isInitial) setLoading(false); });
+    };
+
+    fetchPosts(true);
+    const interval = setInterval(() => fetchPosts(false), 30000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, [refreshTrigger]);
 
   useEffect(() => { setPage(1); }, [statusFilter, categoryFilter, search, sort]);
