@@ -58,6 +58,18 @@ class SongParserNumberedPairsTests(unittest.TestCase):
             ["00:53", "04:01"],
         )
 
+    @patch(
+        "app.parsers.song_parser._detect_llm_global_direction",
+        return_value={"global_direction": "artist_title", "confidence": "high", "reason": ""},
+    )
+    def test_ampersand_title_is_not_resplit_as_next_artist(self, _llm_mock):
+        result = parse_unstructured_lines_to_json("41:32 TWICE - YOUNG & WILD")
+
+        songs = result["songs"]
+        self.assertEqual(len(songs), 1)
+        self.assertEqual(songs[0]["artist"], "TWICE")
+        self.assertEqual(songs[0]["title"], "YOUNG & WILD")
+
 
 if __name__ == "__main__":
     unittest.main()

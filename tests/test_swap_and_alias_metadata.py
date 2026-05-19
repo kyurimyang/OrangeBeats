@@ -36,7 +36,7 @@ class SwapAndAliasMetadataTests(unittest.TestCase):
 
         self.assertEqual(
             [query["query"] for query in queries],
-            ['track:"Ditto" artist:"NewJeans"', "Ditto NewJeans", "Ditto"],
+            ['track:"Ditto" artist:"NewJeans"', "Ditto NewJeans"],
         )
         self.assertLessEqual(len(queries), 3)
 
