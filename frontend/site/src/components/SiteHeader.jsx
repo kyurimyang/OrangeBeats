@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import {
+  fetchSpotifyLoginStatus,
+  fetchSpotifyLoginUrl,
+  startSpotifyConnect,
+} from "../utils/spotifyAuth.js";
 
 const navItems = [
   { to: "/help", label: "Help", className: "figma-footer-link--help-default", activeClassName: "figma-footer-link--help-pressed" },
@@ -7,24 +12,14 @@ const navItems = [
   { to: "/contact", label: "Contact us", className: "figma-footer-link--contact-default", activeClassName: "figma-footer-link--contact-pressed" },
 ];
 
-async function fetchLoginStatus() {
-  try {
-    const res = await fetch("/spotify/login-status", { method: "GET", credentials: "include" });
-    if (!res.ok) return { logged_in: false };
-    return res.json();
-  } catch {
-    return { logged_in: false };
-  }
-}
-
-async function fetchLoginUrl(frontendPath) {
-  const frontendRedirect = `${window.location.origin}${frontendPath}`;
-  const loginEndpoint = `/spotify/login?frontend_origin=${encodeURIComponent(frontendRedirect)}`;
-  const res = await fetch(loginEndpoint, { method: "GET", credentials: "include" });
-  if (!res.ok) throw new Error("spotify_login_request_failed");
-  const data = await res.json();
-  if (!data?.login_url) throw new Error("spotify_login_url_missing");
-  return data.login_url;
+function SpotifyMarkIcon({ className = "" }) {
+  return (
+    <span className={`site-header__spotify-mark ${className}`.trim()} aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 0C5.372 0 0 5.372 0 12s5.372 12 12 12 12-5.372 12-12S18.628 0 12 0zm5.52 17.315a.75.75 0 01-1.03.25c-2.822-1.725-6.376-2.115-10.562-1.158a.75.75 0 01-.335-1.462c4.578-1.046 8.503-.595 11.677 1.34a.75.75 0 01.25 1.03zm1.474-3.275a.937.937 0 01-1.288.309c-3.228-1.983-8.15-2.56-11.97-1.4a.937.937 0 01-.544-1.793c4.363-1.323 9.787-.683 13.492 1.596a.937.937 0 01.31 1.288zm.127-3.41c-3.873-2.3-10.26-2.511-13.953-1.39a1.125 1.125 0 01-.652-2.152c4.244-1.287 11.294-1.038 15.748 1.608a1.125 1.125 0 01-1.143 1.934z" />
+      </svg>
+    </span>
+  );
 }
 
 export default function SiteHeader() {
@@ -36,15 +31,13 @@ export default function SiteHeader() {
   const menuWrapRef = useRef(null);
 
   const refreshStatus = useCallback(async () => {
-    const data = await fetchLoginStatus();
+    const data = await fetchSpotifyLoginStatus();
     setLoggedIn(Boolean(data?.logged_in));
   }, []);
 
   useEffect(() => {
     void refreshStatus();
   }, [refreshStatus]);
-
-  const hideSpotifyInBanner = location.pathname === "/";
 
   useEffect(() => {
     setMenuOpen(false);
@@ -74,17 +67,10 @@ export default function SiteHeader() {
     if (busy || loggedIn === null) return;
     setBusy(true);
     try {
-      const status = await fetchLoginStatus();
-      if (status?.logged_in) {
-        window.location.assign(`${window.location.origin}/create`);
-        return;
-      }
-      const loginUrl = await fetchLoginUrl("/create");
-      window.location.assign(loginUrl);
+      await startSpotifyConnect();
     } catch (err) {
       console.error(err);
       window.alert("Spotify 로그인 연결에 실패했습니다. 잠시 후 다시 시도해주세요.");
-    } finally {
       setBusy(false);
     }
   };
@@ -112,7 +98,7 @@ export default function SiteHeader() {
     try {
       await fetch("/spotify/logout", { method: "POST", credentials: "include" });
       setMenuOpen(false);
-      const loginUrl = await fetchLoginUrl(redirectAfterOAuth);
+      const loginUrl = await fetchSpotifyLoginUrl(redirectAfterOAuth);
       window.location.assign(loginUrl);
     } catch (err) {
       console.error(err);
@@ -129,9 +115,7 @@ export default function SiteHeader() {
             <img src="/assets/home/logo.png" alt="Orange Beats" />
           </NavLink>
 
-          {hideSpotifyInBanner
-            ? null
-            : loggedIn ? (
+          {loggedIn ? (
                 <div className="site-header__spotify" ref={menuWrapRef} data-node-id="486:382">
                   <button
                     type="button"
@@ -178,7 +162,10 @@ export default function SiteHeader() {
                   onClick={handleConnect}
                   disabled={busy || loggedIn === null}
                 >
-                  Spotify 연동하기
+                  <SpotifyMarkIcon />
+                  <span className="site-header__spotify-connect-label">
+                    {busy ? "연결 중…" : "Spotify 연동"}
+                  </span>
                 </button>
               )}
         </div>

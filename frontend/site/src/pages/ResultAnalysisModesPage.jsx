@@ -118,22 +118,6 @@ export default function ResultAnalysisModesPage() {
             data-node-id="314:266"
           >
             <div className="result-analysis-card__title-pill" data-node-id="314:264">
-              <svg
-                className="result-analysis-card__title-pill-bg"
-                xmlns="http://www.w3.org/2000/svg"
-                width="464"
-                height="79"
-                viewBox="0 0 464 79"
-                fill="none"
-                preserveAspectRatio="none"
-                aria-hidden="true"
-              >
-                <path
-                  d="M0 20C0 8.9543 8.95431 0 20 0H444C455.046 0 464 8.95431 464 20V59C464 70.0457 455.046 79 444 79H20C8.95431 79 0 70.0457 0 59V20Z"
-                  fill="#D9D9D9"
-                  fillOpacity="0.2"
-                />
-              </svg>
               <h2 id="result-analysis-ocr-title" className="result-analysis-card__title-pill-text">
                 OCR 이미지 분석
               </h2>
@@ -196,22 +180,6 @@ export default function ResultAnalysisModesPage() {
             data-node-id="314:267"
           >
             <div className="result-analysis-card__title-pill" data-node-id="314:268">
-              <svg
-                className="result-analysis-card__title-pill-bg"
-                xmlns="http://www.w3.org/2000/svg"
-                width="464"
-                height="79"
-                viewBox="0 0 464 79"
-                fill="none"
-                preserveAspectRatio="none"
-                aria-hidden="true"
-              >
-                <path
-                  d="M0 20C0 8.9543 8.95431 0 20 0H444C455.046 0 464 8.95431 464 20V59C464 70.0457 455.046 79 444 79H20C8.95431 79 0 70.0457 0 59V20Z"
-                  fill="#D9D9D9"
-                  fillOpacity="0.2"
-                />
-              </svg>
               <h2 id="result-analysis-acr-title" className="result-analysis-card__title-pill-text">
                 ACR 오디오 분석
               </h2>

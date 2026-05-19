@@ -2,7 +2,7 @@
 # .\.venv\Scripts\python.exe -m uvicorn app.main:app --port 8000
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -46,6 +46,25 @@ if LAB_DIR.is_dir():
     app.mount("/lab", StaticFiles(directory=str(LAB_DIR), html=True), name="lab")
 if FIGMA_DIR.is_dir():
     app.mount("/figma", StaticFiles(directory=str(FIGMA_DIR), html=True), name="figma")
+
+_HOME_ASSET_DIRS = (
+    DIST_DIR / "assets" / "home",
+    FRONTEND_DIR / "site" / "public" / "assets" / "home",
+)
+_HOWTO_ASSET_HEADERS = {"Cache-Control": "no-cache, must-revalidate"}
+
+
+@app.get("/assets/home/{asset_name}")
+async def home_howto_asset(asset_name: str) -> FileResponse:
+    """How to use PNG — dist·public 양쪽 탐색, 브라우저 캐시 방지."""
+    if asset_name != Path(asset_name).name:
+        raise HTTPException(status_code=404, detail="Not found")
+    for base in _HOME_ASSET_DIRS:
+        candidate = base / asset_name
+        if candidate.is_file():
+            return FileResponse(candidate, headers=_HOWTO_ASSET_HEADERS)
+    raise HTTPException(status_code=404, detail="Not found")
+
 
 if _USE_SPA and (DIST_DIR / "assets").is_dir():
     app.mount("/assets", StaticFiles(directory=str(DIST_DIR / "assets")), name="spa_assets")

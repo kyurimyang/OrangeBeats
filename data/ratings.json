@@ -80,5 +80,21 @@
     "playlist_name": "Playlist 그냥 좋음… 남돌 플레이리스트",
     "comment": "썸네일좀업로드되자",
     "created_at": "2026-05-17T21:24:36"
+  },
+  {
+    "id": 12,
+    "score": 4,
+    "playlist_url": "https://open.spotify.com/playlist/3gtQiIlTmKGNo1SrgF2sK6",
+    "playlist_name": "#grwm ♫ 같이 준비할래 ? ♡",
+    "comment": "9곡인데 17곡 추출됨",
+    "created_at": "2026-05-18T19:16:14"
+  },
+  {
+    "id": 13,
+    "score": 4,
+    "playlist_url": "https://open.spotify.com/playlist/2Kfz3f7ovAAVuAboQeFYbZ",
+    "playlist_name": "𝐏𝐥𝐚𝐲𝐥𝐢𝐬𝐭 사랑보다 깊은 감정을 느껴",
+    "comment": "댓글 같은것도 같이 인식돼요",
+    "created_at": "2026-05-18T19:48:55"
   }
 ]
