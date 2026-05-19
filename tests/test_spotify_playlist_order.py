@@ -78,8 +78,8 @@ class SpotifyPlaylistOrderTests(unittest.TestCase):
         results = analyze_spotify_candidates(
             access_token="token",
             songs=[
-                {"artist": "IU", "title": "Celebrity", "artist_inferred": True},
-                {"artist": "IU", "title": "Good Day", "artist_inferred": True},
+                {"artist": "IU", "title": "Celebrity", "artist_inferred": True, "artist_inference_confidence": "high"},
+                {"artist": "IU", "title": "Good Day", "artist_inferred": True, "artist_inference_confidence": "high"},
             ],
         )
 
@@ -142,7 +142,13 @@ class SpotifyPlaylistOrderTests(unittest.TestCase):
         results = analyze_spotify_candidates(
             access_token="token",
             songs=[
-                {"artist": "CORTIS", "title": "GO!", "artist_inferred": True, "music_section_confirmed": False},
+                {
+                    "artist": "CORTIS",
+                    "title": "GO!",
+                    "artist_inferred": True,
+                    "artist_inference_confidence": "high",
+                    "music_section_confirmed": False,
+                },
                 {"artist": "Harry Styles", "title": "As It Was", "artist_inferred": False, "confidence": "high"},
             ],
         )

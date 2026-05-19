@@ -660,7 +660,19 @@ def classify_candidate_patterns(
         or bool(detail.get("artist_alias_matched"))
         or bool(detail.get("romanization_matched"))
     )
-    if not _artist_confirmed and _is_short_title_false_positive(input_title, candidate_title, title_variant_score):
+    # 1글자 한국어 제목 + artist mismatch: 아티스트가 alias로 확인됐어도 강제 적용.
+    # "봐" → "봄인가 봐" substring 0.95 같은 케이스를 alias 우회 없이 차단.
+    _is_single_cjk_title = bool(
+        re.fullmatch(r"[가-힣一-鿿]", normalize_title(input_title).replace(" ", ""))
+        and len(normalize_title(input_title).split()) == 1
+    )
+    _force_short_fp = (
+        _is_single_cjk_title
+        and artist_variant_score < MIN_ARTIST_SCORE
+        and not bool(detail.get("artist_alias_matched"))
+        and _is_short_title_false_positive(input_title, candidate_title, title_variant_score)
+    )
+    if (not _artist_confirmed or _force_short_fp) and _is_short_title_false_positive(input_title, candidate_title, title_variant_score):
         tags.append("short_title_false_positive_pattern")
 
     if title_variant_score < 0.40 and (not input_artist or artist_variant_score < 0.40):
@@ -1201,11 +1213,20 @@ def _collect_candidate_evidence(candidate: Dict[str, Any]) -> Dict[str, Any]:
         and korean_to_english_metadata
         and album_image_exists
     )
+    # official_metadata_signal alone must not declare artist "strong" when
+    # artist_similarity is in the partial-match danger zone (e.g. red velvet vs
+    # WENDY/Eric Nam = 0.23 — some string overlap but wrong artist).
+    # However, pure Korean→English notation differences produce similarity == 0.0
+    # (e.g. 뉴진스 vs NewJeans, 잔나비 vs JANNABI) and must still be allowed
+    # through official_metadata so those artists aren't collaterally blocked.
+    # Rule: allow if similarity is effectively 0 (notation gap) or strong (≥ 0.45);
+    # block the suspicious middle range (0.05–0.44) where partial string overlap
+    # suggests a genuinely different artist.
     artist_strong = (
         artist_similarity >= 0.8
         or artist_alias_matched
         or bool(detail.get("romanization_matched"))
-        or official_metadata_signal
+        or (official_metadata_signal and (artist_similarity < 0.05 or artist_similarity >= 0.45))
     )
     return {
         "api_rank": api_rank,
@@ -2030,7 +2051,13 @@ def _build_case_queries(title: str, artist: str) -> List[Dict[str, str]]:
                 }
             )
 
-    if primary_title and len(queries) < MAX_QUERY_COUNT and all(query["query"] != primary_title for query in queries):
+    allow_title_only = _title_collision_risk(primary_title) == "low"
+    if (
+        primary_title
+        and allow_title_only
+        and len(queries) < MAX_QUERY_COUNT
+        and all(query["query"] != primary_title for query in queries)
+    ):
         queries.append(
             {
                 "mode": "query",
