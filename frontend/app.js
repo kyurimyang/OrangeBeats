@@ -813,8 +813,15 @@ async function matchCandidatesFromCurrentSongs(sourceMode = "text", { offerFallb
     ? safeArray(lastResultData.songs)
     : safeArray(lastResultData?.extracted_songs);
   if (!songs.length) {
-    setStatus("warn", "Spotify 후보를 검색할 곡이 없습니다. OCR 또는 ACR을 먼저 선택해주세요.");
-    setFallbackPanelVisible(true);
+    const ocrUsed = lastResultData?.ocr_used;
+    const acrUsed = lastResultData?.acr_used;
+    if (ocrUsed || acrUsed) {
+      setStatus("warn", `${ocrUsed ? "OCR" : "ACR"} 분석 결과에서 곡을 찾지 못했습니다. Raw Debug 탭에서 세부 내용을 확인해주세요.`);
+      setFallbackPanelVisible(false);
+    } else {
+      setStatus("warn", "Spotify 후보를 검색할 곡이 없습니다. OCR 또는 ACR을 먼저 선택해주세요.");
+      setFallbackPanelVisible(true);
+    }
     return null;
   }
 
@@ -886,6 +893,24 @@ async function matchCandidatesFromCurrentSongs(sourceMode = "text", { offerFallb
   }
 }
 
+function _fallbackEmptyReason(mode, data) {
+  const reason = data?.failure_reason || "";
+  const errMsg = data?.error || "";
+  if (mode === "acr") {
+    if (reason === "acr_credentials_missing" || errMsg.includes("자격증명")) {
+      return "ACRCloud 자격증명이 설정되지 않았습니다. .env 파일에서 ACRCLOUD_HOST, ACRCLOUD_ACCESS_KEY, ACRCLOUD_ACCESS_SECRET을 확인해주세요.";
+    }
+    if (errMsg) return `ACR 분석 실패: ${errMsg}`;
+    return "ACR 인식 결과가 없습니다. 오디오 DB에 등록되지 않은 음원이거나, 짧은 구간·전환부에서는 인식하지 못할 수 있습니다.";
+  }
+  if (reason === "frame_selection_failed") return "영상 프레임 추출에 실패했습니다. ffmpeg 또는 yt-dlp가 설치되어 있는지 확인해주세요.";
+  if (reason === "no_text_frame") return "화면에서 텍스트를 읽지 못했습니다. 화면에 곡 목록이 텍스트로 표시되어야 OCR 분석이 가능합니다.";
+  if (reason === "low_quality_frame") return "화면 텍스트 품질이 낮아 곡을 추출하지 못했습니다.";
+  if (reason === "ocr_noise_too_high") return "OCR 노이즈가 높아 곡을 추출하지 못했습니다.";
+  if (errMsg) return `OCR 분석 실패: ${errMsg}`;
+  return "OCR에서 곡을 찾지 못했습니다. 화면에 곡 목록이 없거나 OPENAI_API_KEY가 설정되지 않았을 수 있습니다.";
+}
+
 async function runFallbackAnalysis(mode, { direct = false } = {}) {
   const stopProgress = startAnalyzeProgress(mode);
   const timeoutMs = mode === "ocr" ? 1800000 : 600000;
@@ -916,6 +941,16 @@ async function runFallbackAnalysis(mode, { direct = false } = {}) {
       playlist_name: priorPlaylistName,
       title_mode: titleModeSelect.value,
     }, actionLabel);
+
+    const extractedSongs = safeArray(data?.songs).length ? safeArray(data.songs) : safeArray(data?.extracted_songs);
+    if (!extractedSongs.length) {
+      const reason = _fallbackEmptyReason(mode, data);
+      setStatus("warn", reason);
+      renderErrorBox(`${actionLabel} 결과 없음\n${reason}`);
+      setFallbackPanelVisible(true, `${mode.toUpperCase()} 분석에서 곡을 찾지 못했습니다. 다른 방법을 선택하거나 결과를 확인해주세요.`);
+      return;
+    }
+
     setFallbackPanelVisible(false);
     setStatus("success", `${mode.toUpperCase()} 분석을 완료했습니다. Spotify 후보 검색을 진행합니다.`);
     stopProgress();
