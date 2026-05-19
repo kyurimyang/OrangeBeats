@@ -175,13 +175,13 @@ export default function PlaylistCreatedPage() {
             <div className="pcp-feedback">
               <p className="pcp-feedback__step-label">
                 <span className="pcp-feedback__step-dot" aria-hidden="true" />
-                LAST STEP
+                RATINGS
               </p>
               <p className="pcp-feedback__heading">
                 orangebeats는<br />어땠나요?
               </p>
               <p className="pcp-feedback__desc">
-                여러분의 평가가 서비스 개선과 품질 향상에 큰 도움이 돼요.
+                여러분의 평가가 서비스 개선에 큰 도움이 됩니다.
               </p>
 
               {!feedbackDone ? (
@@ -199,7 +199,10 @@ export default function PlaylistCreatedPage() {
                         value={comment}
                         onChange={(e) => setComment(e.target.value)}
                         onKeyDown={(e) => {
-                          if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) submitRating();
+                          if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+                          if (e.shiftKey) return;
+                          e.preventDefault();
+                          submitRating();
                         }}
                       />
                       <button
@@ -221,18 +224,12 @@ export default function PlaylistCreatedPage() {
 
             {/* 네비게이션 버튼 */}
             <button type="button" className="pcp-nav-btn" onClick={() => navigate("/create")}>
-              <div>
-                <p className="pcp-nav-btn__title">다른 영상 더 올리기</p>
-                <p className="pcp-nav-btn__desc">새 내용으로 다시 시작</p>
-              </div>
+              <p className="pcp-nav-btn__title">다른 영상 더 올리기</p>
               <span className="pcp-nav-btn__arrow">→</span>
             </button>
 
             <button type="button" className="pcp-nav-btn" onClick={() => navigate("/")}>
-              <div>
-                <p className="pcp-nav-btn__title">홈으로 돌아가기</p>
-                <p className="pcp-nav-btn__desc">추천 플레이리스트 보기</p>
-              </div>
+              <p className="pcp-nav-btn__title">홈으로 돌아가기</p>
               <span className="pcp-nav-btn__arrow">→</span>
             </button>
 
