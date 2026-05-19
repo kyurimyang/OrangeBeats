@@ -15,7 +15,7 @@ from app.services.spotify_matching import (
 
 LOW_CONF_MIN_SCORE = 0.60
 HIGH_CONF_AUTO_CREATE_SCORE = 0.85
-_MAX_MATCH_WORKERS = 8
+_MAX_MATCH_WORKERS = 4
 ALLOWED_LOW_CONF_REASONS = {
     "probable_match",
     "review_needed",
@@ -48,6 +48,7 @@ def _single_artist_name_from_songs(songs: List[Dict[str, Any]]) -> str:
         if (
             isinstance(song, dict)
             and song.get("artist_inferred")
+            and str(song.get("artist_inference_confidence") or "").strip().lower() == "high"
             and not song.get("music_section_confirmed")
             and str(song.get("artist") or "").strip()
         )
@@ -127,12 +128,27 @@ def _single_artist_filter_decision(song: Dict[str, Any], single_artist_context: 
             "reason": f"weak_inferred_artist_source:{inferred_source or 'unknown'}",
             "context": {},
         }
+    inference_confidence = str(song.get("artist_inference_confidence") or "").strip().lower()
+    if inference_confidence != "high":
+        return {
+            "applied": False,
+            "reason": f"soft_single_artist_context:{inferred_source or 'unknown'}",
+            "context": {},
+        }
 
     return {
         "applied": True,
         "reason": "artist_inferred_without_music_section",
         "context": single_artist_context,
     }
+
+
+def _match_worker_count(song_count: int) -> int:
+    if song_count >= 40:
+        return 2
+    if song_count >= 20:
+        return 3
+    return _MAX_MATCH_WORKERS
 
 
 def _confidence_label(match_status: str, score: float, has_uri: bool) -> str:
@@ -541,7 +557,7 @@ def analyze_spotify_candidates(
             request_match_cache[key] = match
         return match
 
-    with ThreadPoolExecutor(max_workers=_MAX_MATCH_WORKERS) as executor:
+    with ThreadPoolExecutor(max_workers=_match_worker_count(len(prepared))) as executor:
         matches = list(executor.map(_fetch_match, prepared))
 
     # Phase 3: 결과 조립 (순서 보존, 순차 처리)
@@ -592,6 +608,20 @@ def analyze_spotify_candidates(
         results.append(result)
 
     enrich_results_album_images(access_token, results, market=market)
+
+    # 같은 Spotify track ID로 매칭된 중복 결과 제거 (한국어/영어 교차 중복 등)
+    best_by_track: Dict[str, int] = {}
+    for i, result in enumerate(results):
+        tid = result.get("spotify_track_id")
+        if not tid:
+            continue
+        if tid not in best_by_track or result.get("confidence", 0) > results[best_by_track[tid]].get("confidence", 0):
+            best_by_track[tid] = i
+    results = [
+        r for i, r in enumerate(results)
+        if not r.get("spotify_track_id") or best_by_track.get(r["spotify_track_id"]) == i
+    ]
+
     return results
 
 
@@ -761,7 +791,7 @@ def create_playlist_from_songs(
             request_match_cache[key] = match
         return match
 
-    with ThreadPoolExecutor(max_workers=_MAX_MATCH_WORKERS) as executor:
+    with ThreadPoolExecutor(max_workers=_match_worker_count(len(prepared))) as executor:
         matches = list(executor.map(_fetch_match_create, prepared))
 
     # Phase 3: 결과 조립 (순서 보존, 순차 처리)
