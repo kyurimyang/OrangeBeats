@@ -210,6 +210,9 @@ def _apply_single_artist_context(result: dict, detection: dict) -> dict:
             item["completeness_score"] = max(float(item.get("completeness_score") or 0.0), 1.0)
             item["artist_inferred"] = True
             item["inferred_artist_source"] = (detection or {}).get("source") or "single_artist_context"
+            item["artist_inference_confidence"] = (
+                "high" if (detection or {}).get("source") == "extracted_songs" else "low"
+            )
             changed = True
         updated_songs.append(item)
 
@@ -388,7 +391,7 @@ def _titles_match(text_title: str, section_title: str) -> bool:
     """정규화된 제목 매칭. 음악 섹션이 '곡명 (Sung by ...)' 형태일 때도 허용."""
     t = _normalize_title_for_match(text_title)
     s = _normalize_title_for_match(section_title)
-    return t == s or s.startswith(t + " ") or t.startswith(s + " ")
+    return t == s or s.startswith(t + " ") or t.startswith(s + " ") or t.endswith(" " + s) or s.endswith(" " + t)
 
 
 def _has_strong_text_evidence(song: dict) -> bool:
@@ -411,6 +414,19 @@ def _confidence_for_unmatched_music_section(song: dict) -> str:
     if song.get("artist_inferred") and not _has_strong_text_evidence(song):
         return "low"
     return existing if existing in {"high", "medium", "low"} else "medium"
+
+
+def _should_apply_positional_music_section(
+    songs: list[dict],
+    music_section: list[dict],
+    matched_count: int,
+) -> bool:
+    """Use order-only music-section hints only when the two lists clearly align."""
+    if not songs or not music_section:
+        return False
+    if len(songs) != len(music_section):
+        return False
+    return matched_count > 0
 
 
 def _enrich_songs_with_music_section(
@@ -467,25 +483,25 @@ def _enrich_songs_with_music_section(
     unmatched_song_indices = [
         idx for idx, s in enumerate(enriched) if not s.get("music_section_confirmed")
     ]
-    for rank, song_idx in enumerate(unmatched_song_indices):
-        if rank >= len(unmatched_section):
-            break
-        sec_idx, sec = unmatched_section[rank]
-        song = dict(enriched[song_idx])
-        if not song.get("artist") or song.get("artist_inferred"):
-            song["artist"] = sec["artist"]
-            song["artist_exists"] = True
-            song["is_complete"] = True
-            song["completeness_score"] = max(float(song.get("completeness_score") or 0.0), 1.0)
-            song["artist_inferred"] = False
-            song["inferred_artist_source"] = "youtube_music_section_positional"
-        if sec.get("album"):
-            song["album"] = sec["album"]
-        song["music_section_confirmed"] = "positional"
-        song["music_section_title_hint"] = sec["title"]
-        song["confidence"] = "medium"
-        enriched[song_idx] = song
-        matched_section_idx.add(sec_idx)
+    if _should_apply_positional_music_section(enriched, music_section, len(matched_section_idx)):
+        for rank, song_idx in enumerate(unmatched_song_indices):
+            if rank >= len(unmatched_section):
+                break
+            sec_idx, sec = unmatched_section[rank]
+            song = dict(enriched[song_idx])
+            song["music_section_confirmed"] = "positional_suggestion"
+            song["music_section_hint"] = {
+                "title": sec.get("title", ""),
+                "artist": sec.get("artist", ""),
+                "album": sec.get("album", ""),
+                "source": "youtube_music_section",
+                "match_type": "order_only",
+            }
+            song["music_section_title_hint"] = sec["title"]
+            song["music_section_artist_hint"] = sec["artist"]
+            song["confidence"] = "low" if song.get("artist_inferred") else _confidence_for_unmatched_music_section(song)
+            song["review_reason"] = "music_section_order_only_hint"
+            enriched[song_idx] = song
 
     # 멀티 아티스트 확정 시 미확인 곡의 잘못된 추론 아티스트 제거
     # music section이 2종류 이상 아티스트를 확인했으면 해시태그 등으로 추론된 단일 아티스트는 신뢰 불가
@@ -496,7 +512,7 @@ def _enrich_songs_with_music_section(
     }
     if len(confirmed_artists) >= 2:
         for s in enriched:
-            if s.get("artist_inferred") and not s.get("music_section_confirmed"):
+            if s.get("artist_inferred") and s.get("music_section_confirmed") is not True:
                 s["artist"] = ""
                 s["artist_exists"] = False
                 s["is_complete"] = bool(s.get("title"))
@@ -510,12 +526,69 @@ def _enrich_songs_with_music_section(
             "artist": ms["artist"],
             "album": ms.get("album", ""),
             "source": "music_section_only",
+            "match_type": "section_only",
         }
         for i, ms in enumerate(music_section)
         if i not in matched_section_idx
     ]
 
     return enriched, extras
+
+
+def _supplement_songs_from_candidates(
+    songs: list[dict], candidates: list[dict]
+) -> tuple[list[dict], list[dict]]:
+    updated = list(songs)
+    annotated: list[dict] = []
+    for cand in candidates:
+        title = (cand.get("title") or "").strip()
+        artist = (cand.get("artist") or "").strip()
+        if not title or not artist:
+            annotated.append({**cand, "merge_decision": "excluded", "debug_reason": "missing_title_or_artist"})
+            continue
+
+        duplicate_reason = ""
+        normalized_artist = _normalize_title_for_match(artist)
+        for song in updated:
+            if not _titles_match(str(song.get("title") or ""), title):
+                continue
+            song_artist = _normalize_title_for_match(str(song.get("artist") or ""))
+            if normalized_artist and normalized_artist == song_artist:
+                duplicate_reason = "duplicate_title_artist"
+                break
+            if song.get("music_section_confirmed"):
+                duplicate_reason = "duplicate_music_section_title"
+                break
+        if duplicate_reason:
+            annotated.append({**cand, "merge_decision": "excluded", "debug_reason": duplicate_reason})
+            continue
+
+        updated.append({
+            "title": title,
+            "artist": artist,
+            "album": cand.get("album", ""),
+            "source": "music_section_only",
+            "source_mode": "music_section_only",
+            "sources": ["music_section"],
+            "raw_line": f"{artist} - {title}",
+            "evidence_type": "music_section_only",
+            "music_section_confirmed": "supplemental",
+            "confidence": "low",
+            "artist_exists": True,
+            "title_exists": True,
+            "is_complete": True,
+            "completeness_score": 1.0,
+            "artist_inferred": False,
+            "review_reason": "music_section_only_candidate",
+            "debug_reason": "added_from_music_section_only_missing_from_text",
+        })
+        annotated.append({
+            **cand,
+            "merge_decision": "added",
+            "debug_reason": "added_from_music_section_only_missing_from_text",
+        })
+
+    return updated, annotated
 
 
 def _music_section_to_songs(music_section: list[dict]) -> list[dict]:
@@ -607,6 +680,10 @@ def run_youtube_text_pipeline(url: str) -> dict:
         merged_result["songs"], music_extras = _enrich_songs_with_music_section(
             merged_result["songs"], source_data["video_id"]
         )
+        # text에서 누락된 music_section_only 곡을 조건부로 songs에 보완 추가
+        merged_result["songs"], music_extras = _supplement_songs_from_candidates(
+            merged_result["songs"], music_extras
+        )
         artist_detection = _override_single_artist_detection_with_music_section(
             artist_detection,
             merged_result["songs"],
@@ -640,6 +717,9 @@ def run_youtube_text_pipeline(url: str) -> dict:
                 "description_count": len(description_result.get("songs", [])),
                 "comments_count": len(comments_result.get("songs", [])),
                 "merged_count": len(merged_result["songs"]),
+                "music_section_added_count": sum(
+                    1 for item in music_extras if item.get("merge_decision") == "added"
+                ),
                 **merge_meta,
             },
             "debug": {

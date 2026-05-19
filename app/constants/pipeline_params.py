@@ -33,7 +33,20 @@ NATURAL_SENTENCE_HINTS = [
     "please", "hope", "thanks", "enjoy", "subscribe", "comment", "watch"
 ]
 
-TITLE_DELIMITERS = [" - ", " – ", " — ", " | ", " : ", " ~ ", " / ", " _ "]
+PAIR_SEPARATORS = [
+    " - ",
+    " – ",
+    " — ",
+    " | ",
+    " / ",
+    " : ",
+    ": ",
+    " ~ ",
+    " _ ",
+]
+
+# TITLE_DELIMITERS is an alias — validity checks and splitting share one list.
+TITLE_DELIMITERS = PAIR_SEPARATORS
 
 NON_MUSIC_LINE_PATTERNS = [
     r"https?://\S+",
@@ -52,7 +65,11 @@ NON_MUSIC_LINE_PATTERNS = [
     r"^\s*음원으로 인한 수익.*",
     r"^\s*수익은 발생하지 않습니다.*",
     r"^\s*all rights reserved.*",
+    r"^\s*provided by\b.*",
     r"^\s*provided to youtube by.*",
+    r"^\s*ost\s*[:|].*",
+    r".*(?:문장|시집|수록된|수록되어).*(?:입니다|있구요|있고요).*$",
+    r".*는\s*'.+\s[-–—]\s.+'$",
     r"^\s*(?:ig|insta|instagram|spotify|yt|youtube|tiktok|soundcloud)\s*[:|]\s*@?[\w\.\-]{2,}\s*$",
     # Photo/image credit lines
     r"사진\s*출처",
@@ -63,17 +80,6 @@ NON_MUSIC_LINE_PATTERNS = [
     r"@[\w가-힣一-鿿぀-ヿ]+\s*$",
     # Lines made of mathematical/decorative Unicode (styled YouTube headers like 𝑷𝒍𝒂𝒚𝒍𝒊𝒔𝒕)
     r"[\U0001D400-\U0001D7FF]",
-]
-
-PAIR_SEPARATORS = [
-    " - ",
-    " – ",
-    " — ",
-    " | ",
-    " / ",
-    " : ",
-    ": ",
-    " _ ",
 ]
 
 GLOBAL_DIRECTION_SAMPLE_SIZE = 5
@@ -124,6 +130,13 @@ CORE_ARTIST_ALIAS_MAP.update({
     "팀": ["Tim"],
     "씨야": ["SeeYa", "Kim Yeonji", "Kim Yeon Ji"],
     "더윈": ["The Wind"],
+    "코르티스": ["CORTIS"],
+    "올데이 프로젝트": ["ALLDAY PROJECT"],
+    "올데이프로젝트": ["ALLDAY PROJECT"],
+    "캣츠아이": ["KATSEYE"],
+    "미야오": ["MEOVV"],
+    "베이비몬스터": ["BABYMONSTER"],
+    "베몬": ["BABYMONSTER"],
 })
 
 CORE_TITLE_ALIAS_MAP = {

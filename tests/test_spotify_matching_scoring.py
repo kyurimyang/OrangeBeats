@@ -57,7 +57,7 @@ class SpotifyMatchingScoringTests(unittest.TestCase):
 
         self.assertEqual(
             [query["query"] for query in queries],
-            ['track:"Ditto" artist:"NewJeans"', "Ditto NewJeans", "Ditto"],
+            ['track:"Ditto" artist:"NewJeans"', "Ditto NewJeans"],
         )
         self.assertLessEqual(len(queries), 3)
 
@@ -539,6 +539,55 @@ class SpotifyMatchingScoringTests(unittest.TestCase):
 
         self.assertEqual(scored[0]["match_status"], "matched")
         self.assertGreaterEqual(scored[0]["score"], 0.85)
+
+    def test_short_korean_title_substring_artist_mismatch_is_not_auto_matched(self):
+        candidate = track("\ubd04\uc778\uac00 \ubd10 Spring Love", ["WENDY", "Eric Nam"])
+        scored = _score_tracks(
+            [candidate],
+            primary_source(candidate, "\ubd10", "red velvet"),
+            input_title="\ubd10",
+            input_artist="red velvet",
+            chosen_case="original",
+        )
+
+        detail = scored[0]["score_detail"]
+        self.assertLess(detail["title_variant_score"], 0.8)
+        self.assertLess(detail["artist_variant_score"], 0.3)
+        self.assertNotEqual(scored[0]["match_status"], "matched")
+
+    def test_parenthetical_english_title_hint_can_match_official_title(self):
+        candidate = track("Look", ["Red Velvet"])
+        scored = _score_tracks(
+            [candidate],
+            primary_source(candidate, "\ubd10 (look)", "red velvet"),
+            input_title="\ubd10 (look)",
+            input_artist="red velvet",
+            chosen_case="original",
+        )
+
+        self.assertEqual(scored[0]["match_status"], "matched")
+        self.assertGreaterEqual(scored[0]["score_detail"]["title_variant_score"], 0.99)
+
+    def test_current_kpop_korean_artist_aliases_match_english_spotify_metadata(self):
+        cases = [
+            ("\ucf54\ub974\ud2f0\uc2a4", "GO!", track("GO!", ["CORTIS"])),
+            ("\uc62c\ub370\uc774 \ud504\ub85c\uc81d\ud2b8", "YOU AND I", track("YOU AND I", ["ALLDAY PROJECT"])),
+            ("\uc62c\ub370\uc774\ud504\ub85c\uc81d\ud2b8", "ONE MORE TIME", track("ONE MORE TIME", ["ALLDAY PROJECT"])),
+            ("\ucea3\uce20\uc544\uc774", "Debut", track("Debut", ["KATSEYE"])),
+        ]
+
+        for artist, title, candidate in cases:
+            with self.subTest(artist=artist, title=title):
+                scored = _score_tracks(
+                    [candidate],
+                    primary_source(candidate, title, artist),
+                    input_title=title,
+                    input_artist=artist,
+                    chosen_case="original",
+                )
+
+                self.assertEqual(scored[0]["match_status"], "matched")
+                self.assertTrue(scored[0]["score_detail"]["artist_alias_matched"])
 
 
 if __name__ == "__main__":

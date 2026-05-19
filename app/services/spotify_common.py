@@ -631,7 +631,9 @@ def _string_similarity(a: str, b: str) -> float:
         if a_compact == b_compact:
             return 1.0
         if a_compact and b_compact and (a_compact in b_compact or b_compact in a_compact):
-            return 0.95
+            if re.search(r"[\uAC00-\uD7A3]", a_compact + b_compact):
+                return 0.55
+            return 0.75
         return 0.0
     if a_norm == b_norm:
         return 1.0

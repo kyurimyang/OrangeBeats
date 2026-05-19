@@ -2,7 +2,7 @@
 # .\.venv\Scripts\python.exe -m uvicorn app.main:app --port 8000
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -24,8 +24,8 @@ app.add_middleware(
     allow_origins=sorted(get_allowed_frontend_origins()),
     allow_origin_regex=r"^https?://(?:localhost|127(?:\.\d{1,3}){3}|10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2})(?::\d+)?$",
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Session-Id"],
 )
 
 app.include_router(youtube.router)
@@ -39,12 +39,15 @@ DIST_DIR = FRONTEND_DIR / "dist"
 LAB_DIR = FRONTEND_DIR / "lab"
 FIGMA_DIR = FRONTEND_DIR / "figma"
 
+# React 빌드가 있으면 SPA, 없으면 frontend/ 바닐라 JS 테스트 UI로 폴백
+_USE_SPA = (DIST_DIR / "index.html").is_file()
+
 if LAB_DIR.is_dir():
     app.mount("/lab", StaticFiles(directory=str(LAB_DIR), html=True), name="lab")
 if FIGMA_DIR.is_dir():
     app.mount("/figma", StaticFiles(directory=str(FIGMA_DIR), html=True), name="figma")
 
-if (DIST_DIR / "assets").is_dir():
+if _USE_SPA and (DIST_DIR / "assets").is_dir():
     app.mount("/assets", StaticFiles(directory=str(DIST_DIR / "assets")), name="spa_assets")
 
 if FRONTEND_DIR.is_dir():
@@ -54,43 +57,40 @@ if FRONTEND_DIR.is_dir():
 _NO_CACHE_HEADERS = {"Cache-Control": "no-store"}
 
 
-def _spa_index_response() -> FileResponse:
-    index_file = DIST_DIR / "index.html"
-    if not index_file.is_file():
-        raise HTTPException(status_code=503, detail="Frontend build is missing. Run npm run build in frontend/site.")
-    return FileResponse(index_file, headers=_NO_CACHE_HEADERS)
+def _index_response() -> FileResponse:
+    if _USE_SPA:
+        return FileResponse(DIST_DIR / "index.html", headers=_NO_CACHE_HEADERS)
+    return FileResponse(FRONTEND_DIR / "index.html", headers=_NO_CACHE_HEADERS)
 
 
-def _resolve_spa_file(path: str) -> Path | None:
+def _resolve_static_file(path: str) -> Path | None:
     if not path or path.endswith("/"):
         return None
-    candidate = DIST_DIR / path
-    if candidate.is_file():
-        return candidate
-    return None
+    root = DIST_DIR if _USE_SPA else FRONTEND_DIR
+    candidate = root / path
+    return candidate if candidate.is_file() else None
 
 
 @app.get("/")
 async def spa_root() -> FileResponse:
-    return _spa_index_response()
+    return _index_response()
 
 
 @app.get("/result/analysis")
 @app.get("/result/created")
 @app.get("/result/rating")
 async def spa_result_analysis() -> FileResponse:
-    return _spa_index_response()
+    return _index_response()
 
 
 @app.get("/{page}")
 async def spa_page(page: str) -> FileResponse:
-    static_file = _resolve_spa_file(page)
+    static_file = _resolve_static_file(page)
     if static_file is not None:
         return FileResponse(static_file, headers=_NO_CACHE_HEADERS)
-
-    return _spa_index_response()
+    return _index_response()
 
 
 @app.get("/result/{rest:path}")
 async def spa_result_subpaths(rest: str) -> FileResponse:
-    return _spa_index_response()
+    return _index_response()
