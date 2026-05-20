@@ -220,3 +220,4 @@ data/artist_aliases.json
 data/demo_cache.json
 data/sessions.json
 credentials/
+tmp/
