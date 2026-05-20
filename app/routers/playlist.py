@@ -762,6 +762,17 @@ def analyze_youtube_for_playlist(
             source_mode=mode,
         )
         spotify_elapsed_ms = int((time.perf_counter() - spotify_started_at) * 1000)
+        # 같은 Spotify 트랙이 두 번 나오는 케이스 방지 (입력 후보가 달라도 URI가 동일하면 중복)
+        _seen_uris: set[str] = set()
+        _deduped: List[Dict] = []
+        for _item in results:
+            _uri = _item.get("spotify_uri") or ""
+            if _uri and _uri in _seen_uris:
+                continue
+            if _uri:
+                _seen_uris.add(_uri)
+            _deduped.append(_item)
+        results = _deduped
         print("[playlist/analyze-youtube] spotify matching end results =", len(results))
     except SpotifyServiceError as exc:
         total_elapsed_ms = int((time.perf_counter() - total_started_at) * 1000)
