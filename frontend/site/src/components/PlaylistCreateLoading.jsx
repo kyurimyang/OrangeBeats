@@ -1,17 +1,21 @@
-﻿import { useEffect, useState } from "react";
+﻿import { useEffect, useRef, useState } from "react";
 
 function estimateCreateDurationMs(trackCount) {
   const n = Math.max(1, Number(trackCount) || 1);
-  return Math.min(16000, Math.max(4500, 2800 + n * 550));
+  const batchBonus = Math.max(0, Math.floor((n - 1) / 100)) * 800;
+  return Math.min(15000, Math.max(6000, 8000 + batchBonus));
 }
 
 export function usePlaylistCreateProgress(active, trackCount) {
   const [percent, setPercent] = useState(0);
   const [secondsLeft, setSecondsLeft] = useState(0);
+  const percentRef = useRef(0);
+  const tickIdRef = useRef(null);
 
   useEffect(() => {
     if (!active) {
       setPercent(0);
+      percentRef.current = 0;
       setSecondsLeft(0);
       return undefined;
     }
@@ -21,19 +25,39 @@ export function usePlaylistCreateProgress(active, trackCount) {
 
     const tick = () => {
       const elapsed = Date.now() - startedAt;
-      const ratio = Math.min(0.92, elapsed / totalMs);
-      setPercent(Math.round(ratio * 100));
+      const ratio = Math.min(0.98, elapsed / totalMs);
+      const next = Math.round(ratio * 100);
+      percentRef.current = next;
+      setPercent(next);
       setSecondsLeft(Math.max(0, Math.ceil((totalMs - elapsed) / 1000)));
     };
 
     tick();
     const id = window.setInterval(tick, 90);
-    return () => window.clearInterval(id);
+    tickIdRef.current = id;
+    return () => {
+      window.clearInterval(id);
+      tickIdRef.current = null;
+    };
   }, [active, trackCount]);
 
   const finish = () => {
-    setPercent(100);
+    // tick 인터벌 먼저 중단 — finish 애니메이션과 충돌 방지
+    if (tickIdRef.current != null) {
+      window.clearInterval(tickIdRef.current);
+      tickIdRef.current = null;
+    }
     setSecondsLeft(0);
+    const remaining = 100 - percentRef.current;
+    if (remaining <= 0) return;
+    // 남은 퍼센트를 ~500ms 안에 균등하게 채움
+    const step = Math.max(2, Math.ceil(remaining / 16));
+    const id = window.setInterval(() => {
+      const next = Math.min(100, percentRef.current + step);
+      percentRef.current = next;
+      setPercent(next);
+      if (next >= 100) window.clearInterval(id);
+    }, 30);
   };
 
   return { percent, secondsLeft, finish };
