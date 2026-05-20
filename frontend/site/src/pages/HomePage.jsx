@@ -5,7 +5,7 @@ import SiteHeader from "../components/SiteHeader.jsx";
 
 const SESSION_KEY = "ob_admin_key";
 /** How to use PNG 캐시 무효화 — 이미지 교체 시 값만 올리면 됨 */
-const HOWTO_IMG_V = "20260515figma6";
+const HOWTO_IMG_V = "20260211figma333244";
 const howtoImg = (filename) => `/assets/home/${filename}?v=${HOWTO_IMG_V}`;
 const howtoImgSrcSet = (filename, filename2x) =>
   `${howtoImg(filename)} 1x, ${howtoImg(filename2x)} 2x`;
