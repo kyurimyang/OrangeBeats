@@ -532,6 +532,28 @@ def _enrich_songs_with_music_section(
         if i not in matched_section_idx
     ]
 
+    # 설명란과 댓글의 방향 추론이 달라 artist/title이 뒤집힌 버전과 올바른 버전이
+    # 함께 들어오는 경우, music section이 확인한 곡을 기준으로 swap 중복본을 제거한다.
+    confirmed = [s for s in enriched if s.get("music_section_confirmed")]
+    if confirmed:
+        confirmed_swap_keys: set[tuple[str, str]] = {
+            (
+                str(s.get("title") or "").strip().casefold(),
+                str(s.get("artist") or "").strip().casefold(),
+            )
+            for s in confirmed
+            if s.get("artist") and s.get("title")
+        }
+        enriched = [
+            s for s in enriched
+            if s.get("music_section_confirmed")
+            or (
+                str(s.get("artist") or "").strip().casefold(),
+                str(s.get("title") or "").strip().casefold(),
+            )
+            not in confirmed_swap_keys
+        ]
+
     return enriched, extras
 
 
@@ -651,16 +673,17 @@ def run_youtube_text_pipeline(url: str) -> dict:
         }
 
     description_result = analyze_description(description_text, inferred_artist=title_inferred_artist)
+    _skip_comments = description_result.get("success")
     comments_result = (
         analyze_comments_prioritized(comments, inferred_artist=title_inferred_artist)
-        if comments
+        if comments and not _skip_comments
         else {
             "stage": "comments",
             "success": False,
             "method": "skipped",
             "signals": {},
             "metrics": {},
-            "failure_reason": "no_comments",
+            "failure_reason": "description_success" if _skip_comments else "no_comments",
             "songs": [],
             "source_priority_used": "none",
         }
@@ -677,12 +700,19 @@ def run_youtube_text_pipeline(url: str) -> dict:
             "metrics": merge_meta["metrics"].get("merged", {}),
         }
         merged_result = _apply_single_artist_context(merged_result, artist_detection)
-        merged_result["songs"], music_extras = _enrich_songs_with_music_section(
+        enriched_songs, music_extras = _enrich_songs_with_music_section(
             merged_result["songs"], source_data["video_id"]
         )
-        # text에서 누락된 music_section_only 곡을 조건부로 songs에 보완 추가
-        merged_result["songs"], music_extras = _supplement_songs_from_candidates(
-            merged_result["songs"], music_extras
+        # 음악 섹션에서만 발견된 곡(텍스트 매칭 실패)을 후보 풀에 합산
+        merged_result["songs"] = (
+            merge_song_sources(
+                enriched_songs,
+                music_extras,
+                base_source="text",
+                fallback_source="music_section",
+            )
+            if music_extras
+            else enriched_songs
         )
         artist_detection = _override_single_artist_detection_with_music_section(
             artist_detection,
