@@ -302,7 +302,7 @@ def _looks_like_natural_sentence(line: str) -> bool:
     lower = line.lower()
     has_delimiter = any(delimiter in line for delimiter in TITLE_DELIMITERS)
     hint_count = sum(1 for word in NATURAL_SENTENCE_HINTS if word in lower)
-    punct_count = sum(lower.count(char) for char in [".", "!", "?", ","])
+    punct_count = sum(lower.count(char) for char in [".", "?", ","])
     word_count = len(lower.split())
 
     if hint_count >= 2 and not has_delimiter:
@@ -730,6 +730,30 @@ def _extract_numbered_hyphen_track(text: str) -> dict | None:
         "artist": artist,
         "title": title,
         "_numbered_track": True,
+    }
+
+
+def _extract_bare_hyphen_pair(text: str) -> dict | None:
+    """타임스탬프 라인에서 'Artist-Title' (공백 없는 하이픈) 형식을 처리한다.
+    PAIR_SEPARATORS(공백 있는 구분자)로 분리 실패 시 fallback으로만 호출된다."""
+    cleaned = _clean_text(text)
+    if not cleaned or "-" not in cleaned:
+        return None
+    if any(sep in cleaned for sep in SEPARATORS):
+        return None
+    raw_left, raw_right = cleaned.split("-", 1)
+    left = _clean_text(raw_left)
+    right = _clean_text(raw_right)
+    if not left or not right:
+        return None
+    return {
+        "raw": text,
+        "separator": "-",
+        "left": left,
+        "right": right,
+        "artist_parentheses_preserved": _has_preserved_parenthetical_identifier(raw_left),
+        "left_title_metadata": _extract_title_metadata_hints(raw_left),
+        "right_title_metadata": _extract_title_metadata_hints(raw_right),
     }
 
 
@@ -1521,6 +1545,8 @@ def parse_unstructured_lines_to_json(text: str) -> dict:
         parts = _extract_pair_parts(raw_target)
         if not parts:
             parts = _extract_numbered_hyphen_track(raw_target)
+        if not parts and ts_match:
+            parts = _extract_bare_hyphen_pair(raw_target)
         if not parts:
             # 타임스탬프가 있는데 구분자가 없으면 body 전체를 title-only로 보관
             if ts_match:
