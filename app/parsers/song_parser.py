@@ -24,7 +24,7 @@ TIMESTAMP_LINE_REGEX = re.compile(r"^(?P<ts>\d{1,2}:\d{2}(?::\d{2})?)\s+(?P<body
 TIMESTAMP_PREFIX_ONLY_REGEX = re.compile(r"^\d{1,2}:\d{2}(?::\d{2})?\s+")
 NUMBERED_HYPHEN_TRACK_REGEX = re.compile(r"^\d{1,3}-(.+?)-(.+)$")
 TRACK_NUMBER_ONLY_REGEX = re.compile(r"^\s*(?:\d{1,3}|[A-Za-z])[\.)]?\s*$")
-TITLE_TRACK_NUMBER_PREFIX_REGEX = re.compile(r"^\s*(?:\d{1,3}|[A-Za-z])\s*[\.)]\s+")
+TITLE_TRACK_NUMBER_PREFIX_REGEX = re.compile(r"^\s*(?:\d{1,3}|[A-Za-z])\s*[\.)|]\s+")
 MULTISPACE_REGEX = re.compile(r"\s+")
 BRACKET_REGEX = re.compile(r"[\[\(\{].*?[\]\)\}]")
 PARENTHETICAL_REGEX = re.compile(r"[\(\[\{]([^\)\]\}]{1,12})[\)\]\}]")
@@ -293,6 +293,11 @@ def _left_part_is_metadata(normalized: str) -> bool:
         if delimiter in normalized:
             left = normalized.split(delimiter, 1)[0].strip()
             if _contains_section_keyword(left):
+                return True
+            # "from [앨범/곡명] — [아티스트]" 형태의 출처 표기 라인 거부
+            # em/en dash 구분자 한정: 일반 " - " 라인은 "From Me to You - Beatles" 같은
+            # 정상 트랙 라인과 겹칠 수 있어 제외
+            if delimiter in (" — ", " – ") and re.match(r"^from\s+\S", left, re.IGNORECASE):
                 return True
             break
     return False
@@ -1434,6 +1439,7 @@ def _reuse_existing_direction_meta(songs: list[dict]) -> tuple[str, dict] | None
 
 def _append_song(results: list[dict], artist: str, title: str, meta: dict | None = None) -> None:
     artist = _clean_text(artist)
+    artist = TITLE_TRACK_NUMBER_PREFIX_REGEX.sub("", artist).strip()
     title = _clean_text(title)
     title = TITLE_TRACK_NUMBER_PREFIX_REGEX.sub("", title).strip()
     meta = meta or {}
