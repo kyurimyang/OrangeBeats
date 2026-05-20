@@ -221,3 +221,4 @@ data/demo_cache.json
 data/sessions.json
 data/ratings.json
 credentials/
+tmp/
