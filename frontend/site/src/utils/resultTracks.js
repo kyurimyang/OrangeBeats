@@ -36,15 +36,15 @@ function pickDirectionalLeftRight(songRow) {
 
 /** YouTube 원문 표기 — 스왑·보정 전 텍스트 우선 */
 export function pickYoutubeInputFields(item, songRow = {}) {
-  const orig = songRow?.original_input;
+  const orig = item?.original_input ?? songRow?.original_input;
   if (orig && typeof orig === "object") {
     const title = String(orig.title ?? "").trim();
     const artist = String(orig.artist ?? "").trim();
     if (title || artist) return { title, artist };
   }
 
-  if (songRow?.swap_applied) {
-    const directional = pickDirectionalLeftRight(songRow);
+  if ((item?.swap_applied ?? songRow?.swap_applied)) {
+    const directional = pickDirectionalLeftRight(item ?? songRow);
     if (directional && (directional.title || directional.artist)) {
       return directional;
     }
