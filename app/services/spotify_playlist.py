@@ -392,6 +392,8 @@ def _result_from_match(
         result: Dict[str, Any] = {
             "input_artist": input_artist,
             "input_title": input_title,
+            "original_input": song.get("original_input") or {},
+            "swap_applied": bool(song.get("swap_applied")),
             "matched": False,
             "spotify_track_id": None,
             "spotify_uri": None,
@@ -449,6 +451,8 @@ def _result_from_match(
     return {
         "input_artist": input_artist,
         "input_title": input_title,
+        "original_input": song.get("original_input") or {},
+        "swap_applied": bool(song.get("swap_applied")),
         "matched": bool(spotify_uri) and match_status == "matched",
         "spotify_track_id": match.get("id"),
         "spotify_uri": spotify_uri,

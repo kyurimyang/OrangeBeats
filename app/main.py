@@ -1,8 +1,17 @@
 # python -m uvicorn app.main:app --reload
+# cd frontend\site && npm run build
 # .\.venv\Scripts\python.exe -m uvicorn app.main:app --port 8000
+import sys
+import traceback
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -13,6 +22,14 @@ from app.services.spotify_session_service import SpotifySessionService
 from app.sessions.file_store import FileOAuthStateStore, FileSpotifyTokenStore
 
 app = FastAPI(title="Orange Beats")
+
+
+@app.exception_handler(Exception)
+async def _unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    tb = traceback.format_exc()
+    print(f"[500] {request.method} {request.url}\n{tb}")
+    return JSONResponse(status_code=500, content={"detail": str(exc), "traceback": tb})
+
 
 app.state.spotify_session_service = SpotifySessionService(
     token_store=FileSpotifyTokenStore(),
