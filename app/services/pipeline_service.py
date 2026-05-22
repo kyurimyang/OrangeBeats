@@ -58,6 +58,11 @@ _HASHTAG_STOPWORDS = {
     "추천", "신곡", "발라드", "ballad", "ost",
     # 한국어 장르·모음 복합 표현 — 아티스트명이 아님
     "노래모음", "케이팝", "팝송", "모음곡", "추천곡", "인기곡",
+    # 플리(playlist) 복합 태그 — ~플리로 끝나는 건 모두 플레이리스트 태그
+    "국힙플리", "힙합플리", "팝플리", "발라드플리", "케이팝플리", "인디플리",
+    "1시간플리", "2시간플리", "국힙", "노동요",
+    # 세대 태그 — 9n년생, 0n년생 등
+    "9n년생", "0n년생", "10년대", "90년대",
 }
 
 _ARTIST_CONTEXT_STOPWORDS = {
@@ -129,12 +134,17 @@ def _is_plausible_artist_context(value: str) -> bool:
     return bool(re.search(r"[A-Za-z0-9\uAC00-\uD7A3]", normalized))
 
 
+_HASHTAG_GENRE_SUFFIX = re.compile(r"(\uD50C\uB9AC|\uB144\uC0DD|\uC138\uB300|\uD799\uD569|\uC7A5\uB974|\uBBA4\uC9C1)$")
+
+
 def _extract_hashtag_artists(description: str) -> list[str]:
     """\uC124\uBA85\uB780 \uD574\uC2DC\uD0DC\uADF8\uC5D0\uC11C \uC544\uD2F0\uC2A4\uD2B8 \uD6C4\uBCF4 \uCD94\uCD9C. stopword\u00B7\uBB38\uC7A5\uD615 \uD544\uD130 \uC801\uC6A9."""
     candidates = []
     for match in _HASHTAG_PATTERN.finditer(description or ""):
         tag = match.group(1).replace("_", " ").strip()
         if tag.lower() in _HASHTAG_STOPWORDS:
+            continue
+        if _HASHTAG_GENRE_SUFFIX.search(tag):
             continue
         if _is_plausible_artist_context(tag):
             candidates.append(tag)
@@ -169,15 +179,11 @@ def _detect_single_artist_from_text(title: str, description: str) -> dict:
     # 설명란 해시태그가 있으면 title-pattern보다 우선 사용
     hashtag_candidates = _extract_hashtag_artists(description)
     if hashtag_candidates:
-        # 알려진 아티스트(known group·alias) 태그를 우선 선택
+        # 알려진 아티스트(known group·alias) 태그만 신뢰 — 장르·플레이리스트 태그 오감지 방지
         known = _find_known_artist_in_candidates(hashtag_candidates)
         if known:
             return {"is_single_artist": True, "inferred_artist": known, "source": "description_hashtag"}
-        # 알려진 아티스트 없으면 최다 빈도 후보로 폴백
-        counter = Counter(c.lower() for c in hashtag_candidates)
-        winner_key, _ = counter.most_common(1)[0]
-        inferred_artist = next(c for c in hashtag_candidates if c.lower() == winner_key)
-        return {"is_single_artist": True, "inferred_artist": inferred_artist, "source": "description_hashtag"}
+        # 알려진 아티스트 없으면 해시태그로 단일 아티스트 추론하지 않음
 
     candidates = []
     for text in [_normalize_unicode_text(title), _normalize_unicode_text(description)]:
@@ -192,15 +198,12 @@ def _detect_single_artist_from_text(title: str, description: str) -> dict:
     if not candidates:
         return {"is_single_artist": False, "inferred_artist": "", "source": ""}
 
-    # 알려진 아티스트가 후보에 있으면 우선 반환
+    # 알려진 아티스트가 후보에 있으면 반환 — 패턴 매칭은 known artist만 신뢰 (오감지 방지)
     known = _find_known_artist_in_candidates(candidates)
     if known:
         return {"is_single_artist": True, "inferred_artist": known, "source": "title_description"}
 
-    counter = Counter(candidate.lower() for candidate in candidates)
-    winner_key, _ = counter.most_common(1)[0]
-    inferred_artist = next(candidate for candidate in candidates if candidate.lower() == winner_key)
-    return {"is_single_artist": True, "inferred_artist": inferred_artist, "source": "title_description"}
+    return {"is_single_artist": False, "inferred_artist": "", "source": ""}
 
 
 def _detect_single_artist_from_songs(songs: list[dict]) -> dict:
@@ -245,11 +248,15 @@ def _apply_single_artist_context(result: dict, detection: dict) -> dict:
         artist_same_as_title = bool(artist and title and artist.lower() == title.lower())
         # 파서가 버전/앨범 주석을 아티스트로 잘못 분류한 경우 교정
         # (예: "So Amazing - Special Track" → artist="Special Track" → inferred_artist로 교체)
+        # 단, "기리보이 & 키드밀리 & NO:EL & 스윙스" 같은 멀티 아티스트 문자열은 교체하지 않음
+        _artist_looks_multi = bool(re.search(r"[&,]|\bfeat\b|\bft\b", artist, re.IGNORECASE))
         artist_is_spurious = bool(
             artist
+            and inferred_artist
             and not item.get("artist_inferred", False)
             and artist.lower() != inferred_artist.lower()
             and not is_known_artist(artist)
+            and not _artist_looks_multi
         )
         if artist_missing or artist_same_as_title or artist_is_spurious:
             item["artist"] = inferred_artist
@@ -435,11 +442,28 @@ def _normalize_title_for_match(title: str) -> str:
     return re.sub(r"\s+", " ", t).strip()
 
 
+def _extract_base_title(title: str) -> str:
+    """괄호 내 부가 정보(Prod., Feat., 원제 등)를 제거한 기본 제목."""
+    t = re.sub(r"\s*\([^)]*\)", "", title or "").strip()
+    return _normalize_title_for_match(t)
+
+
 def _titles_match(text_title: str, section_title: str) -> bool:
     """정규화된 제목 매칭. 음악 섹션이 '곡명 (Sung by ...)' 형태일 때도 허용."""
     t = _normalize_title_for_match(text_title)
     s = _normalize_title_for_match(section_title)
-    return t == s or s.startswith(t + " ") or t.startswith(s + " ") or t.endswith(" " + s) or s.endswith(" " + t)
+    if t == s or s.startswith(t + " ") or t.startswith(s + " ") or t.endswith(" " + s) or s.endswith(" " + t):
+        return True
+    # 괄호 부가 정보 제거 후 기본 제목만 비교 (예: "flex (Prod. by 기리보이)" ↔ "flex (Prod. By GIRIBOY(기리보이))")
+    bt = _extract_base_title(text_title)
+    bs = _extract_base_title(section_title)
+    if bt and bs and len(bt) >= 2 and (bt == bs or bs.startswith(bt + " ") or bt.startswith(bs + " ")):
+        return True
+    # 한국어↔영어 혼용 제목 처리 (예: "비워 (Prod...)" ↔ "Beer(비워) (Prod...)")
+    # 한쪽 base 제목이 상대방 full normalized 제목 내에 포함되는 경우
+    if bt and bs and len(bt) >= 2 and len(bs) >= 2 and (bt in s or bs in t):
+        return True
+    return False
 
 
 def _has_strong_text_evidence(song: dict) -> bool:
