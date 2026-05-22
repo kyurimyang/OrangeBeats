@@ -7,6 +7,7 @@ from app.acr.acr_pipeline import extract_songs_with_acr
 from app.services.analysis_flow import merge_song_sources
 from app.services.fallback_extraction import extract_songs_with_ocr
 from app.services.text_analysis import analyze_comments_prioritized, analyze_description
+from app.parsers.song_parser import is_known_artist
 
 _AI_PLAYLIST_KEYWORDS = [
     # 한국어
@@ -55,6 +56,8 @@ _HASHTAG_STOPWORDS = {
     "music", "뮤직", "노래", "가사", "lyrics", "cover", "커버",
     "shorts", "유튜브", "youtube", "spotify", "멜론", "지니",
     "추천", "신곡", "발라드", "ballad", "ost",
+    # 한국어 장르·모음 복합 표현 — 아티스트명이 아님
+    "노래모음", "케이팝", "팝송", "모음곡", "추천곡", "인기곡",
 }
 
 _ARTIST_CONTEXT_STOPWORDS = {
@@ -93,6 +96,13 @@ _ARTIST_CONTEXT_STOPWORDS = {
     "\uD50C\uB808\uC774\uB9AC\uC2A4\uD2B8",
     "\uC804\uACE1",
     "\uC74C\uC545",
+    # \uD55C\uAD6D\uC5B4 \uC7A5\uB974\u00B7\uBAA8\uC74C \uBCF5\uD569 \uD45C\uD604 \u2014 \uC544\uD2F0\uC2A4\uD2B8\uBA85\uC774 \uC544\uB2D8
+    "\uB178\uB798\uBAA8\uC74C",
+    "\uCF00\uC774\uD31D",
+    "\uD31D\uC1A1",
+    "\uBAA8\uC74C\uACE1",
+    "\uCD94\uCC9C\uACE1",
+    "\uC778\uAE30\uACE1",
 }
 
 
@@ -137,10 +147,33 @@ def _normalize_unicode_text(text: str) -> str:
     return re.sub(r"\s+", " ", normalized).strip()
 
 
+def _find_known_artist_in_candidates(candidates: list[str]) -> str:
+    """후보 목록에서 알려진 아티스트를 우선 반환. 없으면 빈 문자열."""
+    for candidate in candidates:
+        if is_known_artist(candidate):
+            return candidate
+    return ""
+
+
+def _trim_to_known_artist_suffix(text: str) -> str:
+    """'이 계절엔 샤이니' → '샤이니' 처럼, 알려진 아티스트가 뒤에 있으면 그 부분만 반환."""
+    words = text.split()
+    for start in range(1, len(words)):
+        suffix = " ".join(words[start:])
+        if is_known_artist(suffix):
+            return suffix
+    return text
+
+
 def _detect_single_artist_from_text(title: str, description: str) -> dict:
     # 설명란 해시태그가 있으면 title-pattern보다 우선 사용
     hashtag_candidates = _extract_hashtag_artists(description)
     if hashtag_candidates:
+        # 알려진 아티스트(known group·alias) 태그를 우선 선택
+        known = _find_known_artist_in_candidates(hashtag_candidates)
+        if known:
+            return {"is_single_artist": True, "inferred_artist": known, "source": "description_hashtag"}
+        # 알려진 아티스트 없으면 최다 빈도 후보로 폴백
         counter = Counter(c.lower() for c in hashtag_candidates)
         winner_key, _ = counter.most_common(1)[0]
         inferred_artist = next(c for c in hashtag_candidates if c.lower() == winner_key)
@@ -151,11 +184,18 @@ def _detect_single_artist_from_text(title: str, description: str) -> dict:
         for pattern in _SINGLE_ARTIST_PATTERNS:
             for match in pattern.finditer(text):
                 artist = _clean_artist_context(match.group("artist"))
+                # "이 계절엔 샤이니" 같이 앞에 맥락 단어가 붙은 경우 알려진 아티스트 suffix 추출
+                artist = _trim_to_known_artist_suffix(artist)
                 if _is_plausible_artist_context(artist):
                     candidates.append(artist)
 
     if not candidates:
         return {"is_single_artist": False, "inferred_artist": "", "source": ""}
+
+    # 알려진 아티스트가 후보에 있으면 우선 반환
+    known = _find_known_artist_in_candidates(candidates)
+    if known:
+        return {"is_single_artist": True, "inferred_artist": known, "source": "title_description"}
 
     counter = Counter(candidate.lower() for candidate in candidates)
     winner_key, _ = counter.most_common(1)[0]
