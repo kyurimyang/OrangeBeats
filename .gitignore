@@ -219,4 +219,7 @@ data/match_overrides.json
 data/artist_aliases.json
 data/demo_cache.json
 data/sessions.json
+data/ratings.json
+data/qa_posts.json
 credentials/
+tmp/

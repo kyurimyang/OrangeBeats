@@ -26,7 +26,7 @@ TIMESTAMP_LINE_REGEX = re.compile(r"^(?P<ts>\d{1,2}:\d{2}(?::\d{2})?)\s+(?P<body
 TIMESTAMP_PREFIX_ONLY_REGEX = re.compile(r"^\d{1,2}:\d{2}(?::\d{2})?\s+")
 NUMBERED_HYPHEN_TRACK_REGEX = re.compile(r"^\d{1,3}-(.+?)-(.+)$")
 TRACK_NUMBER_ONLY_REGEX = re.compile(r"^\s*(?:\d{1,3}|[A-Za-z])[\.)]?\s*$")
-TITLE_TRACK_NUMBER_PREFIX_REGEX = re.compile(r"^\s*(?:\d{1,3}|[A-Za-z])\s*[\.)]\s+")
+TITLE_TRACK_NUMBER_PREFIX_REGEX = re.compile(r"^\s*(?:\d{1,3}|[A-Za-z])\s*[\.)|]\s+")
 MULTISPACE_REGEX = re.compile(r"\s+")
 BRACKET_REGEX = re.compile(r"[\[\(\{].*?[\]\)\}]")
 PARENTHETICAL_REGEX = re.compile(r"[\(\[\{]([^\)\]\}]{1,12})[\)\]\}]")
@@ -108,6 +108,8 @@ _SECTION_LABEL_WORDS: frozenset[str] = frozenset({
     "credits", "end credits", "ending", "opening",
     "인트로", "아웃트로", "인터루드",
 })
+
+NUMBERED_LIST_REGEX = re.compile(r"^\d{1,3}[.)]\s+(.+)$")
 
 TITLE_LEADING_WORDS_EN = {"the", "a", "an", "my", "your", "our", "this", "that"}
 TITLE_VERB_HINTS_EN = {"is", "are", "was", "were", "be", "build", "love", "hate", "need", "want"}
@@ -377,6 +379,11 @@ def _left_part_is_metadata(normalized: str) -> bool:
             left = normalized.split(delimiter, 1)[0].strip()
             if _contains_section_keyword(left):
                 return True
+            # "from [앨범/곡명] — [아티스트]" 형태의 출처 표기 라인 거부
+            # em/en dash 구분자 한정: 일반 " - " 라인은 "From Me to You - Beatles" 같은
+            # 정상 트랙 라인과 겹칠 수 있어 제외
+            if delimiter in (" — ", " – ") and re.match(r"^from\s+\S", left, re.IGNORECASE):
+                return True
             break
     return False
 
@@ -385,7 +392,7 @@ def _looks_like_natural_sentence(line: str) -> bool:
     lower = line.lower()
     has_delimiter = any(delimiter in line for delimiter in TITLE_DELIMITERS)
     hint_count = sum(1 for word in NATURAL_SENTENCE_HINTS if word in lower)
-    punct_count = sum(lower.count(char) for char in [".", "!", "?", ","])
+    punct_count = sum(lower.count(char) for char in [".", "?", ","])
     word_count = len(lower.split())
 
     if hint_count >= 2 and not has_delimiter:
@@ -582,6 +589,18 @@ def looks_like_artist(text: str) -> bool:
     if is_hangul_only(cleaned) and 2 <= len(cleaned) <= 5:
         return True
     return False
+
+
+def is_known_artist(text: str) -> bool:
+    """알려진 아티스트 목록(그룹·앨리어스)에 정확히 매칭되면 True."""
+    cleaned = _clean_text(text)
+    if not cleaned:
+        return False
+    return (
+        _known_group_artist_hit(cleaned)
+        or _artist_alias_hit(cleaned)
+        or _shared_artist_alias_hit(cleaned)
+    )
 
 
 def looks_like_title(text: str) -> bool:
@@ -830,6 +849,30 @@ def _extract_numbered_hyphen_track(text: str) -> dict | None:
         "artist": artist,
         "title": title,
         "_numbered_track": True,
+    }
+
+
+def _extract_bare_hyphen_pair(text: str) -> dict | None:
+    """타임스탬프 라인에서 'Artist-Title' (공백 없는 하이픈) 형식을 처리한다.
+    PAIR_SEPARATORS(공백 있는 구분자)로 분리 실패 시 fallback으로만 호출된다."""
+    cleaned = _clean_text(text)
+    if not cleaned or "-" not in cleaned:
+        return None
+    if any(sep in cleaned for sep in SEPARATORS):
+        return None
+    raw_left, raw_right = cleaned.split("-", 1)
+    left = _clean_text(raw_left)
+    right = _clean_text(raw_right)
+    if not left or not right:
+        return None
+    return {
+        "raw": text,
+        "separator": "-",
+        "left": left,
+        "right": right,
+        "artist_parentheses_preserved": _has_preserved_parenthetical_identifier(raw_left),
+        "left_title_metadata": _extract_title_metadata_hints(raw_left),
+        "right_title_metadata": _extract_title_metadata_hints(raw_right),
     }
 
 
@@ -1568,7 +1611,8 @@ def _reuse_existing_direction_meta(songs: list[dict]) -> tuple[str, dict] | None
 
 def _append_song(results: list[dict], artist: str, title: str, meta: dict | None = None) -> None:
     artist = _clean_text(artist)
-    title = _clean_pair_side(title)
+    artist = TITLE_TRACK_NUMBER_PREFIX_REGEX.sub("", artist).strip()
+    title = _clean_text(title)
     title = TITLE_TRACK_NUMBER_PREFIX_REGEX.sub("", title).strip()
     meta = meta or {}
 
@@ -1679,12 +1723,22 @@ def parse_unstructured_lines_to_json(text: str) -> dict:
         parts = _extract_pair_parts(raw_target)
         if not parts:
             parts = _extract_numbered_hyphen_track(raw_target)
+        if not parts and ts_match:
+            parts = _extract_bare_hyphen_pair(raw_target)
         if not parts:
-            # 타임스탬프가 있는데 구분자가 없으면 body 전체를 title-only로 보관
             if ts_match:
+                # 타임스탬프가 있는데 구분자가 없으면 body 전체를 title-only로 보관
                 parts = {"raw": raw_target, "left": "", "right": "", "_title_only": True}
             else:
-                continue
+                # 번호 목록 형식: "1. 제목" / "2) 제목" → title-only로 보관
+                numbered_match = NUMBERED_LIST_REGEX.match(raw_target)
+                if numbered_match:
+                    body = numbered_match.group(1).strip()
+                    body_clean = _clean_text(body)
+                    if body_clean and _is_valid_music_line(body_clean) and not _extract_pair_parts(body):
+                        parts = {"raw": body, "left": "", "right": "", "_title_only": True}
+                if not parts:
+                    continue
 
         if ts_match:
             parts["_timestamp"] = ts_match.group("ts")

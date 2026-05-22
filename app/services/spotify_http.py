@@ -106,9 +106,9 @@ def _throttle() -> None:
     with _throttle_lock:
         now = time.time()
         wait = _MIN_REQUEST_INTERVAL - (now - _last_request_time)
-        if wait > 0:
-            time.sleep(wait)
-        _last_request_time = time.time()
+        _last_request_time = now + max(wait, 0)
+    if wait > 0:
+        time.sleep(wait)
 
 
 def spotify_request(

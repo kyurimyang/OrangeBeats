@@ -1,4 +1,5 @@
 import re
+from collections import OrderedDict
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.services.spotify_api import get_track, search_artists_query, search_track, search_tracks_query
@@ -23,8 +24,18 @@ from app.services.spotify_common import (
     _token_overlap_ratio,
 )
 
-_MATCH_CACHE: Dict[Tuple[str, str], Optional[Dict[str, Any]]] = {}
-_MATCH_DEBUG: Dict[Tuple[str, str], Dict[str, Any]] = {}
+_MATCH_CACHE: OrderedDict[Tuple[str, str], Optional[Dict[str, Any]]] = OrderedDict()
+_MATCH_DEBUG: OrderedDict[Tuple[str, str], Dict[str, Any]] = OrderedDict()
+
+
+def _cache_put(key: Tuple[str, str], value: Optional[Dict[str, Any]]) -> None:
+    if key in _MATCH_CACHE:
+        _MATCH_CACHE.move_to_end(key)
+    _MATCH_CACHE[key] = value
+    if len(_MATCH_CACHE) > MAX_CACHE_SIZE:
+        evicted = next(iter(_MATCH_CACHE))
+        _MATCH_CACHE.pop(evicted)
+        _MATCH_DEBUG.pop(evicted, None)
 
 
 EARLY_RETURN_SCORE = 0.85
@@ -597,13 +608,9 @@ def _is_short_title_false_positive(input_title: str, candidate_title: str, title
     candidate_tokens = normalize_title(candidate_title).split()
     if not input_tokens or len(input_tokens) > 2:
         return False
-    collision_risk = _title_collision_risk(input_title)
+    # 후보가 입력보다 훨씬 길 때(+3토큰)만 false positive 판정.
+    # 동일 길이의 완벽 매칭("봄" vs "봄")이 과도하게 페널티를 받는 문제 수정.
     much_longer = len(candidate_tokens) >= len(input_tokens) + 3
-    if collision_risk == "high":
-        # 1토큰 단일 단어: 충돌 위험 높음. 임계값 0.80으로 소폭 강화
-        return title_score >= 0.80
-    # 2토큰 medium risk: 후보가 훨씬 길 때(+3 토큰 이상)만 적용.
-    # "봄 하루", "밤 바다" 같은 정상 2단어 제목이 과도하게 페널티를 받던 문제 수정.
     return title_score >= 0.80 and much_longer
 
 
@@ -2471,12 +2478,16 @@ def _store_match_debug(
     unmatched_reason: str,
     top_candidates: List[Dict[str, Any]],
     case_results: List[Dict[str, Any]],
+    queries: Optional[List[str]] = None,
+    fallback_used: bool = False,
 ) -> None:
     _MATCH_DEBUG[cache_key] = {
         "selected_case": selected_case,
         "search_title": search_title,
         "search_artist": search_artist,
         "unmatched_reason": unmatched_reason,
+        "queries": queries or [],
+        "fallback_used": fallback_used,
         "case_results": [_summarize_case_result(case_result) for case_result in case_results],
         "top_candidates": [
             {
@@ -2824,8 +2835,10 @@ def pick_best_track_match(
         "title_producer_artists": song_meta.get("title_producer_artists", []),
     }
 
-    if cache_key in _MATCH_CACHE:
-        cached = _MATCH_CACHE[cache_key]
+    _CACHE_MISS = object()
+    cached = _MATCH_CACHE.get(cache_key, _CACHE_MISS)
+    if cached is not _CACHE_MISS:
+        _MATCH_CACHE.move_to_end(cache_key)
         cached_debug = _MATCH_DEBUG.get(cache_key, {})
         selected = "none"
         candidate_count = 0
@@ -2897,10 +2910,7 @@ def pick_best_track_match(
                 unmatched_reason="",
                 early_return=True,
             )
-            if len(_MATCH_CACHE) >= MAX_CACHE_SIZE:
-                _MATCH_CACHE.clear()
-                _MATCH_DEBUG.clear()
-            _MATCH_CACHE[cache_key] = best
+            _cache_put(cache_key, best)
             return best
 
     case_inputs = _extract_case_inputs(input_title, input_artist, song_meta)
@@ -2947,7 +2957,7 @@ def pick_best_track_match(
             unmatched_reason="no_search_result",
             early_return=False,
         )
-        _MATCH_CACHE[cache_key] = None
+        _cache_put(cache_key, None)
         return None
 
     best_candidate = selected_case_result.get("best_candidate") or {}
@@ -2968,7 +2978,7 @@ def pick_best_track_match(
             top_candidates=selected_case_result.get("scored_candidates", []),
             case_results=case_results,
         )
-        _MATCH_CACHE[cache_key] = None
+        _cache_put(cache_key, None)
         _log_match(
             input_title=input_title,
             input_artist=input_artist,
@@ -3022,10 +3032,9 @@ def pick_best_track_match(
         unmatched_reason=unmatched_reason,
         top_candidates=selected_case_result.get("scored_candidates", []),
         case_results=case_results,
+        queries=selected_queries,
+        fallback_used=fallback_used,
     )
-
-    _MATCH_DEBUG[cache_key]["queries"] = selected_queries
-    _MATCH_DEBUG[cache_key]["fallback_used"] = fallback_used
 
     _log_match(
         input_title=input_title,
@@ -3042,8 +3051,5 @@ def pick_best_track_match(
         early_return=early_return,
     )
 
-    if len(_MATCH_CACHE) >= MAX_CACHE_SIZE:
-        _MATCH_CACHE.clear()
-        _MATCH_DEBUG.clear()
-    _MATCH_CACHE[cache_key] = best
+    _cache_put(cache_key, best)
     return best

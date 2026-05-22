@@ -1,8 +1,9 @@
 import difflib
 import shutil
 import tempfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional, Tuple
 
 from app.acr.acr_client import acr_credentials_available, recognize_acr_segment
 from app.acr.audio_extractor import download_youtube_audio
@@ -115,21 +116,31 @@ def extract_songs_with_acr(youtube_url: str) -> Dict:
         recognized: List[Dict] = []
         interval_sec = sample_interval(info.get("duration"), ACR_MAX_SEGMENTS)
 
-        for segment_index, segment_path in enumerate(segments):
+        def _recognize_one(args: Tuple[int, Path]) -> Optional[Dict]:
+            segment_index, segment_path = args
             song = recognize_acr_segment(segment_path)
-            if song:
-                recognized_segments += 1
-                start_sec = segment_index * interval_sec
-                song["source"] = song.get("source") or "acr"
-                song["source_mode"] = song.get("source_mode") or "acr"
-                song["evidence_type"] = "acr_audio_fingerprint"
-                song["acr_evidence"] = {
-                    "segments": [{"index": segment_index, "start_sec": start_sec, "score": song.get("score", 0)}],
-                    "recognition_count": 1,
-                    "max_score": song.get("score", 0),
-                    "spotify_track_id_present": bool(song.get("acr_spotify_track_id")),
-                }
-                recognized.append(song)
+            if not song:
+                return None
+            start_sec = segment_index * interval_sec
+            song["source"] = song.get("source") or "acr"
+            song["source_mode"] = song.get("source_mode") or "acr"
+            song["evidence_type"] = "acr_audio_fingerprint"
+            song["acr_evidence"] = {
+                "segments": [{"index": segment_index, "start_sec": start_sec, "score": song.get("score", 0)}],
+                "recognition_count": 1,
+                "max_score": song.get("score", 0),
+                "spotify_track_id_present": bool(song.get("acr_spotify_track_id")),
+            }
+            return song
+
+        max_workers = min(6, len(segments)) if segments else 1
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(_recognize_one, (i, p)): i for i, p in enumerate(segments)}
+            for future in as_completed(futures):
+                result = future.result()
+                if result:
+                    recognized_segments += 1
+                    recognized.append(result)
         recognition_rate = recognized_segments / max(sampled_segments, 1)
         unrecognized_reason = ""
         if recognized_segments == 0:

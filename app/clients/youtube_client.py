@@ -2,6 +2,7 @@
 # Youtube에서 텍스트 긁어오기
 
 import time
+from functools import lru_cache
 from urllib.parse import parse_qs, urlparse
 
 import requests
@@ -296,6 +297,7 @@ def _extract_cards_from_hcl(hcl: dict) -> list[dict]:
     return songs
 
 
+@lru_cache(maxsize=256)
 def get_video_music_section(video_id: str) -> list[dict]:
     """YouTube InnerTube API로 영상의 '음악' 섹션(Content ID 매칭) 추출.
     반환: [{"title": ..., "artist": ..., "album": ...}, ...]
