@@ -243,7 +243,15 @@ def _apply_single_artist_context(result: dict, detection: dict) -> dict:
         title = (item.get("title") or "").strip()
         artist_missing = not artist and title
         artist_same_as_title = bool(artist and title and artist.lower() == title.lower())
-        if artist_missing or artist_same_as_title:
+        # 파서가 버전/앨범 주석을 아티스트로 잘못 분류한 경우 교정
+        # (예: "So Amazing - Special Track" → artist="Special Track" → inferred_artist로 교체)
+        artist_is_spurious = bool(
+            artist
+            and not item.get("artist_inferred", False)
+            and artist.lower() != inferred_artist.lower()
+            and not is_known_artist(artist)
+        )
+        if artist_missing or artist_same_as_title or artist_is_spurious:
             item["artist"] = inferred_artist
             item["artist_exists"] = True
             item["is_complete"] = True
