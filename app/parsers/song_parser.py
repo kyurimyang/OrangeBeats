@@ -109,6 +109,8 @@ _SECTION_LABEL_WORDS: frozenset[str] = frozenset({
     "인트로", "아웃트로", "인터루드",
 })
 
+NUMBERED_LIST_REGEX = re.compile(r"^\d{1,3}[.)]\s+(.+)$")
+
 TITLE_LEADING_WORDS_EN = {"the", "a", "an", "my", "your", "our", "this", "that"}
 TITLE_VERB_HINTS_EN = {"is", "are", "was", "were", "be", "build", "love", "hate", "need", "want"}
 TITLE_TRAILING_WORDS_EN = {"mine", "more", "sick", "dance", "umbrella", "vida"}
@@ -587,6 +589,18 @@ def looks_like_artist(text: str) -> bool:
     if is_hangul_only(cleaned) and 2 <= len(cleaned) <= 5:
         return True
     return False
+
+
+def is_known_artist(text: str) -> bool:
+    """알려진 아티스트 목록(그룹·앨리어스)에 정확히 매칭되면 True."""
+    cleaned = _clean_text(text)
+    if not cleaned:
+        return False
+    return (
+        _known_group_artist_hit(cleaned)
+        or _artist_alias_hit(cleaned)
+        or _shared_artist_alias_hit(cleaned)
+    )
 
 
 def looks_like_title(text: str) -> bool:
@@ -1712,11 +1726,19 @@ def parse_unstructured_lines_to_json(text: str) -> dict:
         if not parts and ts_match:
             parts = _extract_bare_hyphen_pair(raw_target)
         if not parts:
-            # 타임스탬프가 있는데 구분자가 없으면 body 전체를 title-only로 보관
             if ts_match:
+                # 타임스탬프가 있는데 구분자가 없으면 body 전체를 title-only로 보관
                 parts = {"raw": raw_target, "left": "", "right": "", "_title_only": True}
             else:
-                continue
+                # 번호 목록 형식: "1. 제목" / "2) 제목" → title-only로 보관
+                numbered_match = NUMBERED_LIST_REGEX.match(raw_target)
+                if numbered_match:
+                    body = numbered_match.group(1).strip()
+                    body_clean = _clean_text(body)
+                    if body_clean and _is_valid_music_line(body_clean) and not _extract_pair_parts(body):
+                        parts = {"raw": body, "left": "", "right": "", "_title_only": True}
+                if not parts:
+                    continue
 
         if ts_match:
             parts["_timestamp"] = ts_match.group("ts")
