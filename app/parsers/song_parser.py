@@ -763,15 +763,15 @@ def _extract_pair_parts(text: str) -> dict | None:
                     if _has_dangling_title_connector(cand_artist_clean):
                         continue
 
-                cand_artist_known = _strong_artist_identity_evidence(cand_artist_clean) >= 2.5
-                cand_artist_multi_caps = (
-                    _count_words(cand_artist_clean) >= 2
-                    and all(t.isupper() or t.isdigit() for t in cand_artist_clean.split()[:2])
-                )
-                cand_title_strong = bool(
-                    cand_title_clean
-                    and re.match(r"[가-힣一-鿿぀-ヿ]", cand_title_clean)
-                ) or _count_words(cand_title_clean) >= 2
+                    cand_artist_known = _strong_artist_identity_evidence(cand_artist_clean) >= 2.5
+                    cand_artist_multi_caps = (
+                        _count_words(cand_artist_clean) >= 2
+                        and all(t.isupper() or t.isdigit() for t in cand_artist_clean.split()[:2])
+                    )
+                    cand_title_strong = bool(
+                        cand_title_clean
+                        and re.match(r"[가-힣一-鿿぀-ヿ]", cand_title_clean)
+                    ) or _count_words(cand_title_clean) >= 2
 
                     if not (cand_title_strong and (cand_artist_known or cand_artist_multi_caps)):
                         continue
