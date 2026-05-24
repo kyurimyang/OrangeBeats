@@ -105,6 +105,19 @@ SYSTEM_PROMPT = """
     {"artist": "로꼬 & 펀치", "title": "Say Yes"}
   ]
 }
+
+예시 5
+입력:
+00:00 404(new era) - kiikii
+00:30 777 - kiikii
+
+출력:
+{
+  "songs": [
+    {"artist": "kiikii", "title": "404(new era)"},
+    {"artist": "kiikii", "title": "777"}
+  ]
+}
 """
 
 SPOTIFY_RERANK_SYSTEM_PROMPT = """
