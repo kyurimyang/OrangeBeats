@@ -362,6 +362,9 @@ def _is_meaningful_text(text: str) -> bool:
     if PURE_PUNCT_REGEX.fullmatch(text):
         return False
     if re.fullmatch(r"[\d\s]+", text):
+        digit_only = re.sub(r"\s+", "", text)
+        if len(digit_only) >= 3:
+            return True  # 3자리 이상 숫자는 곡 제목일 수 있음 (404, 777, 2020 등)
         return False
     return True
 
