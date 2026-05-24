@@ -86,33 +86,9 @@ def analyze_text_block(
     inferred_artist: str = "",
 ) -> dict:
     text = text or ""
-    rule_based = parse_unstructured_lines_to_json(text)
-    rule_based = normalize_song_candidates(rule_based, inferred_artist=inferred_artist)
-    rule_based['songs'] = _annotate_song_evidence(
-        rule_based['songs'],
-        source_text=text,
-        source_name=stage,
-        method='rule_based',
-    )
-
-    rule_validity = assess_text_stage_validity(text, rule_based['songs'])
-    rule_success = rule_validity["success"]
-    rule_metrics = _build_song_metrics(rule_based['songs'])
     rule_signals = count_text_signals(text)
 
-    if rule_success:
-        return {
-            'stage': stage,
-            'success': True,
-            'method': 'rule_based',
-            'signals': rule_signals,
-            'metrics': rule_metrics,
-            'failure_reason': '',
-            'is_partial_but_valid': rule_validity['is_partial_but_valid'],
-            'validity_reason': rule_validity['validity_reason'],
-            'songs': rule_based['songs'],
-        }
-
+    # LLM 우선: artist/title 분리 오탐을 줄이고 edge case 처리
     llm_raw = extract_songs_with_llm(llm_blocks if llm_blocks is not None else [text])
     llm_json = parse_json_from_text(llm_raw)
     llm_result = normalize_song_candidates(llm_json, inferred_artist=inferred_artist)
@@ -128,16 +104,43 @@ def analyze_text_block(
     llm_success = llm_validity["success"]
     llm_metrics = _build_song_metrics(llm_result['songs'])
 
+    if llm_success:
+        return {
+            'stage': stage,
+            'success': True,
+            'method': 'llm',
+            'signals': rule_signals,
+            'metrics': llm_metrics,
+            'failure_reason': '',
+            'is_partial_but_valid': llm_validity['is_partial_but_valid'],
+            'validity_reason': llm_validity['validity_reason'],
+            'songs': llm_result['songs'],
+        }
+
+    # LLM 실패 시 규칙 기반 fallback (API 장애, 빈 결과 등)
+    rule_based = parse_unstructured_lines_to_json(text)
+    rule_based = normalize_song_candidates(rule_based, inferred_artist=inferred_artist)
+    rule_based['songs'] = _annotate_song_evidence(
+        rule_based['songs'],
+        source_text=text,
+        source_name=stage,
+        method='rule_based',
+    )
+
+    rule_validity = assess_text_stage_validity(text, rule_based['songs'])
+    rule_success = rule_validity["success"]
+    rule_metrics = _build_song_metrics(rule_based['songs'])
+
     return {
         'stage': stage,
-        'success': llm_success,
-        'method': 'llm',
+        'success': rule_success,
+        'method': 'rule_based',
         'signals': rule_signals,
-        'metrics': llm_metrics,
-        'failure_reason': '' if llm_success else llm_validity['failure_reason'],
-        'is_partial_but_valid': llm_validity['is_partial_but_valid'],
-        'validity_reason': llm_validity['validity_reason'],
-        'songs': llm_result['songs'],
+        'metrics': rule_metrics,
+        'failure_reason': '' if rule_success else rule_validity['failure_reason'],
+        'is_partial_but_valid': rule_validity['is_partial_but_valid'],
+        'validity_reason': rule_validity['validity_reason'],
+        'songs': rule_based['songs'],
     }
 
 
