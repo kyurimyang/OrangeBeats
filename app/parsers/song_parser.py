@@ -29,7 +29,7 @@ MULTISPACE_REGEX = re.compile(r"\s+")
 BRACKET_REGEX = re.compile(r"[\[\(\{].*?[\]\)\}]")
 PARENTHETICAL_REGEX = re.compile(r"[\(\[\{]([^\)\]\}]{1,12})[\)\]\}]")
 TITLE_METADATA_HINT_REGEX = re.compile(
-    r"[\(\[\{]?\s*(?P<kind>feat|ft|featuring|with|prod(?:uced)?\s+by)\.?\s+(?P<value>[^\)\]\}\-_/|]{1,80})[\)\]\}]?",
+    r"[\(\[\{]?\s*(?P<kind>feat|ft|featuring|with|prod(?:uced)?\s+by)\.?\s+(?P<value>[^\)\]\}_/|]{1,80})[\)\]\}]?",
     re.IGNORECASE,
 )
 PAIR_REGEX = re.compile(r".+\s[-–—|/:~_]\s.+")
@@ -652,7 +652,7 @@ def _extract_pair_parts(text: str) -> dict | None:
                 cand_artist_known = _strong_artist_identity_evidence(cand_artist_clean) >= 2.5
                 cand_artist_multi_caps = (
                     _count_words(cand_artist_clean) >= 2
-                    and all(t.isupper() or t.isdigit() for t in cand_artist_clean.split()[:2])
+                    and all(re.match(r'^[A-Z0-9]+$', t) for t in cand_artist_clean.split()[:2])
                 )
                 cand_title_strong = bool(
                     cand_title_clean
