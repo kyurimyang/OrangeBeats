@@ -1,4 +1,5 @@
 # python -m uvicorn app.main:app --reload
+# cd frontend/site && npm run build
 # .\.venv\Scripts\python.exe -m uvicorn app.main:app --port 8000
 from pathlib import Path
 
