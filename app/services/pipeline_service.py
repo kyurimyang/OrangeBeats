@@ -52,17 +52,11 @@ _HASHTAG_PATTERN = re.compile(r"#([A-Za-z가-힣][A-Za-z0-9가-힣_]{1,30})")
 # 해시태그 stopword — 장르·무드·플랫폼 태그
 _HASHTAG_STOPWORDS = {
     "kpop", "krnb", "rnb", "hiphop", "힙합", "팝", "pop", "indie", "인디",
-    "playlist", "플레이리스트", "감성", "lofi", "chillout", "chill",
+    "playlist", "플레이리스트", "플리", "감성", "lofi", "chillout", "chill",
     "music", "뮤직", "노래", "가사", "lyrics", "cover", "커버",
     "shorts", "유튜브", "youtube", "spotify", "멜론", "지니",
     "추천", "신곡", "발라드", "ballad", "ost",
-    # 한국어 장르·모음 복합 표현 — 아티스트명이 아님
-    "노래모음", "케이팝", "팝송", "모음곡", "추천곡", "인기곡",
-    # 플리(playlist) 복합 태그 — ~플리로 끝나는 건 모두 플레이리스트 태그
-    "국힙플리", "힙합플리", "팝플리", "발라드플리", "케이팝플리", "인디플리",
-    "1시간플리", "2시간플리", "국힙", "노동요",
-    # 세대 태그 — 9n년생, 0n년생 등
-    "9n년생", "0n년생", "10년대", "90년대",
+    "popsongs", "kpopsongs", "songs", "hits",
 }
 
 _ARTIST_CONTEXT_STOPWORDS = {
@@ -338,11 +332,9 @@ def _single_artist_payload(detection: dict) -> dict:
 
 
 def _detect_ai_playlist(title: str, description: str, comments: list) -> bool:
-    texts = [title.lower(), description.lower()]
-    for c in comments[:10]:
-        text = (c.get("text", "") if isinstance(c, dict) else str(c)).lower()
-        texts.append(text)
-    combined = " ".join(texts)
+    # 댓글은 제외: "AI 플레이리스트 채널들 사이에서 한 줄기 빛" 같은 비교 표현이
+    # AI 키워드를 포함해도 이 영상이 AI 콘텐츠임을 의미하지 않음
+    combined = f"{title} {description}".lower()
     return any(kw in combined for kw in _AI_PLAYLIST_KEYWORDS)
 
 
@@ -714,6 +706,38 @@ def _music_section_to_songs(music_section: list[dict]) -> list[dict]:
     return songs
 
 
+def _build_source_quality_summary(
+    description_result: dict,
+    comments_result: dict,
+    selected_source: str,
+    music_extras: list[dict],
+) -> dict:
+    desc_metrics = description_result.get("metrics") or {}
+    comm_metrics = comments_result.get("metrics") or {}
+    return {
+        "selected_source": selected_source,
+        "description": {
+            "success": bool(description_result.get("success")),
+            "song_count": desc_metrics.get("song_count", 0),
+            "complete_song_count": desc_metrics.get("complete_song_count", 0),
+            "avg_completeness": desc_metrics.get("avg_completeness", 0.0),
+            "failure_reason": description_result.get("failure_reason", ""),
+        },
+        "comments": {
+            "success": bool(comments_result.get("success")),
+            "skipped": comments_result.get("method") == "skipped",
+            "song_count": comm_metrics.get("song_count", 0),
+            "complete_song_count": comm_metrics.get("complete_song_count", 0),
+            "avg_completeness": comm_metrics.get("avg_completeness", 0.0),
+            "failure_reason": comments_result.get("failure_reason", ""),
+        },
+        "music_section": {
+            "role": "enrichment_only",
+            "extra_candidates_count": len(music_extras),
+        },
+    }
+
+
 def run_youtube_text_pipeline(url: str) -> dict:
     source_data = collect_text_sources(url)
 
@@ -744,90 +768,128 @@ def run_youtube_text_pipeline(url: str) -> dict:
             **_single_artist_payload(title_artist_detection),
         }
 
+    # Phase 1: 설명란 파싱
     description_result = analyze_description(description_text, inferred_artist=title_inferred_artist)
-    _skip_comments = description_result.get("success")
-    comments_result = (
-        analyze_comments_prioritized(comments, inferred_artist=title_inferred_artist)
-        if comments and not _skip_comments
-        else {
-            "stage": "comments",
-            "success": False,
-            "method": "skipped",
-            "signals": {},
-            "metrics": {},
-            "failure_reason": "description_success" if _skip_comments else "no_comments",
-            "songs": [],
-            "source_priority_used": "none",
-        }
-    )
-    merged_songs, merge_meta = _combined_text_result(description_result, comments_result)
-    if merged_songs:
+    description_ok = bool(description_result.get("success"))
+
+    # Phase 2: 설명란이 충분하면 댓글 스킵, 부족하면 댓글 파싱
+    _skipped = {
+        "stage": "comments",
+        "success": False,
+        "method": "skipped",
+        "signals": {},
+        "metrics": {},
+        "songs": [],
+        "source_priority_used": "none",
+    }
+    if description_ok:
+        comments_result = {**_skipped, "failure_reason": "description_success"}
+    elif comments:
+        comments_result = analyze_comments_prioritized(comments, inferred_artist=title_inferred_artist)
+    else:
+        comments_result = {**_skipped, "failure_reason": "no_comments"}
+    comments_ok = bool(comments_result.get("success"))
+
+    # Phase 3: Priority 기반 primary source 선택 (무조건 병합 제거)
+    if description_ok:
+        primary_songs = description_result.get("songs", [])
+        selected_source = "description"
+        fallback_reason = None
+    elif comments_ok:
+        primary_songs = comments_result.get("songs", [])
+        selected_source = "comments"
+        fallback_reason = description_result.get("failure_reason") or "description_insufficient"
+    else:
+        # 둘 다 실패 — partial 결과만 있을 때 최후 수단으로 병합
+        primary_songs = merge_song_sources(
+            description_result.get("songs", []),
+            comments_result.get("songs", []),
+            base_source="description",
+            fallback_source="comments",
+        )
+        selected_source = "merged_partial"
+        fallback_reason = (
+            comments_result.get("failure_reason")
+            or description_result.get("failure_reason")
+            or "both_partial"
+        )
+
+    if primary_songs:
         artist_detection = _merge_single_artist_detection(
             title_artist_detection,
-            _detect_single_artist_from_songs(merged_songs),
+            _detect_single_artist_from_songs(primary_songs),
         )
-        merged_result = {
-            "success": bool(description_result.get("success") or comments_result.get("success")),
-            "songs": merged_songs,
-            "metrics": merge_meta["metrics"].get("merged", {}),
+        primary_result = {
+            "success": description_ok or comments_ok,
+            "songs": primary_songs,
+            "metrics": (
+                description_result.get("metrics", {}) if description_ok
+                else comments_result.get("metrics", {})
+            ),
         }
-        merged_result = _apply_single_artist_context(merged_result, artist_detection)
+        primary_result = _apply_single_artist_context(primary_result, artist_detection)
+
+        # Phase 4: 음악 섹션으로 보강 (enrichment only — music_extras는 songs에 합산하지 않음)
         enriched_songs, music_extras = _enrich_songs_with_music_section(
-            merged_result["songs"], source_data["video_id"]
+            primary_result["songs"], source_data["video_id"]
         )
-        # 음악 섹션에서만 발견된 곡(텍스트 매칭 실패)을 후보 풀에 합산
-        merged_result["songs"] = (
-            merge_song_sources(
-                enriched_songs,
-                music_extras,
-                base_source="text",
-                fallback_source="music_section",
-            )
-            if music_extras
-            else enriched_songs
-        )
+        primary_result["songs"] = enriched_songs
+
         artist_detection = _override_single_artist_detection_with_music_section(
             artist_detection,
-            merged_result["songs"],
+            primary_result["songs"],
         )
-        selected_text_stage = "+".join(merge_meta["successful_sources"] or merge_meta["partial_sources"] or ["merged"])
+        source_quality_summary = _build_source_quality_summary(
+            description_result, comments_result, selected_source, music_extras
+        )
         return {
             "input_url": source_data["input_url"],
             "video_id": source_data["video_id"],
             "youtube_title": source_data.get("youtube_title", ""),
             "selected_stage": "text",
-            "text_stage": selected_text_stage,
+            "text_stage": selected_source,
+            "selected_source": selected_source,
+            "fallback_reason": fallback_reason,
+            "source_quality_summary": source_quality_summary,
             "success": True,
-            "songs": merged_result["songs"],
+            "songs": primary_result["songs"],
             "music_section_candidates": music_extras,
             "ocr_used": False,
             "acr_used": False,
-            "signals": merge_meta["signals"],
-            "metrics": merge_meta["metrics"],
+            "signals": {
+                "description": description_result.get("signals", {}),
+                "comments": comments_result.get("signals", {}),
+            },
+            "metrics": {
+                "description": description_result.get("metrics", {}),
+                "comments": comments_result.get("metrics", {}),
+                "primary": {
+                    "song_count": len(primary_result["songs"]),
+                    "complete_song_count": sum(
+                        1 for s in primary_result["songs"] if s.get("artist") and s.get("title")
+                    ),
+                },
+            },
             "failure_reason": "",
-            "partial_success": not bool(description_result.get("success") and comments_result.get("success")),
+            "partial_success": not (description_ok or comments_ok),
             "is_partial_but_valid": bool(
                 description_result.get("is_partial_but_valid") or comments_result.get("is_partial_but_valid")
             ),
             "validity_reason": (
                 description_result.get("validity_reason")
                 or comments_result.get("validity_reason")
-                or "merged_text_candidates"
+                or "priority_text_selection"
             ),
-            "source_priority_used": comments_result.get("source_priority_used", "expanded_comments"),
+            "source_priority_used": comments_result.get("source_priority_used", "none"),
             "source_merge": {
                 "description_count": len(description_result.get("songs", [])),
                 "comments_count": len(comments_result.get("songs", [])),
-                "merged_count": len(merged_result["songs"]),
-                "music_section_added_count": sum(
-                    1 for item in music_extras if item.get("merge_decision") == "added"
-                ),
-                **merge_meta,
+                "primary_count": len(primary_result["songs"]),
+                "selected_source": selected_source,
             },
             "debug": {
                 "description": description_result,
                 "comments": comments_result,
-                "source_merge": merge_meta,
             },
             **_single_artist_payload(artist_detection),
         }
@@ -850,6 +912,15 @@ def run_youtube_text_pipeline(url: str) -> dict:
                 "youtube_title": source_data.get("youtube_title", ""),
                 "selected_stage": "text",
                 "text_stage": "music_section",
+                "selected_source": "music_section",
+                "fallback_reason": (
+                    comments_result.get("failure_reason")
+                    or description_result.get("failure_reason")
+                    or "text_extraction_failed"
+                ),
+                "source_quality_summary": _build_source_quality_summary(
+                    description_result, comments_result, "music_section", []
+                ),
                 "success": True,
                 "songs": section_songs,
                 "music_section_candidates": [],
@@ -857,7 +928,7 @@ def run_youtube_text_pipeline(url: str) -> dict:
                 "acr_used": False,
                 "signals": {},
                 "metrics": {
-                    "merged": {
+                    "primary": {
                         "song_count": len(section_songs),
                         "complete_song_count": len(section_songs),
                     }
@@ -870,7 +941,8 @@ def run_youtube_text_pipeline(url: str) -> dict:
                 "source_merge": {
                     "description_count": 0,
                     "comments_count": 0,
-                    "merged_count": len(section_songs),
+                    "primary_count": len(section_songs),
+                    "selected_source": "music_section",
                 },
                 "debug": {
                     "description": description_result,
@@ -887,20 +959,25 @@ def run_youtube_text_pipeline(url: str) -> dict:
         "youtube_title": source_data.get("youtube_title", ""),
         "selected_stage": "text",
         "text_stage": "none",
+        "selected_source": "none",
+        "fallback_reason": comments_result.get("failure_reason") or description_result.get("failure_reason") or "no_pattern",
+        "source_quality_summary": _build_source_quality_summary(
+            description_result, comments_result, "none", []
+        ),
         "success": False,
         "failure_reason": comments_result.get("failure_reason") or description_result.get("failure_reason") or "no_pattern",
         "fallback_recommendation": fallback_recommendation,
-        "source_priority_used": comments_result.get("source_priority_used", "expanded_comments"),
+        "source_priority_used": comments_result.get("source_priority_used", "none"),
         "songs": [],
         "ocr_used": False,
         "acr_used": False,
         "signals": {
-            "description": description_result["signals"],
-            "comments": comments_result["signals"],
+            "description": description_result.get("signals", {}),
+            "comments": comments_result.get("signals", {}),
         },
         "metrics": {
-            "description": description_result["metrics"],
-            "comments": comments_result["metrics"],
+            "description": description_result.get("metrics", {}),
+            "comments": comments_result.get("metrics", {}),
         },
         "debug": {
             "description": description_result,
