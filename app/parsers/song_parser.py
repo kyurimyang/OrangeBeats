@@ -36,6 +36,12 @@ PAIR_REGEX = re.compile(r".+\s[-–—|/:~_]\s.+")
 PURE_PUNCT_REGEX = re.compile(r"^[^\w\uAC00-\uD7A3]+$")
 LEADING_DECORATION_REGEX = re.compile(r"^[~*#>+\-\s]+")
 TRAILING_DECORATION_REGEX = re.compile(r"[~*#<>\-\s]+$")
+# "Outro : House Of Cards", "EPILOGUE : Young Forever" 같은 앨범 섹션 마커 라인
+# → 마커는 버리고 뒤의 곡명만 title-only로 추출
+ALBUM_SECTION_MARKER_REGEX = re.compile(
+    r"^(?:intro|outro|interlude|epilogue|skit|prologue|prelude|bridge|chapter)\s*[:：]\s*(.+)$",
+    re.IGNORECASE,
+)
 
 SEPARATORS = PAIR_SEPARATORS
 KOREAN_NAME_REGEX = re.compile(r"^[\uAC00-\uD7A3]{2,4}$")
@@ -312,7 +318,8 @@ def _looks_like_natural_sentence(line: str) -> bool:
 
     if hint_count >= 2 and not has_delimiter:
         return True
-    if punct_count >= 2 and not has_delimiter:
+    # 단어가 1개뿐인 경우 점(.) 2개 이상이어도 문장이 아닌 두문자어(D.D.D, U.S.A)일 수 있음
+    if punct_count >= 2 and not has_delimiter and word_count >= 2:
         return True
     if word_count >= 8 and not has_delimiter:
         return True
@@ -642,7 +649,7 @@ def _extract_pair_parts(text: str) -> dict | None:
                 cand_artist_clean = _clean_text(cand_artist)
                 cand_title_clean = _clean_text(cand_title)
 
-                cand_artist_known = _known_artist_evidence(cand_artist_clean) >= 2.5
+                cand_artist_known = _strong_artist_identity_evidence(cand_artist_clean) >= 2.5
                 cand_artist_multi_caps = (
                     _count_words(cand_artist_clean) >= 2
                     and all(t.isupper() or t.isdigit() for t in cand_artist_clean.split()[:2])
@@ -1548,17 +1555,29 @@ def parse_unstructured_lines_to_json(text: str) -> dict:
         if not target or not _is_valid_music_line(target):
             continue
 
-        parts = _extract_pair_parts(raw_target)
-        if not parts:
-            parts = _extract_numbered_hyphen_track(raw_target)
-        if not parts and ts_match:
-            parts = _extract_bare_hyphen_pair(raw_target)
-        if not parts:
-            # 타임스탬프가 있는데 구분자가 없으면 body 전체를 title-only로 보관
-            if ts_match:
-                parts = {"raw": raw_target, "left": "", "right": "", "_title_only": True}
-            else:
-                continue
+        # 앨범 섹션 마커 우선 처리: "Outro : House Of Cards" → 분리 차단, 전체가 곡명
+        # "Outro: House of Cards", "EPILOGUE: Young Forever" 같이 마커 포함이 공식 제목임
+        album_section_match = ALBUM_SECTION_MARKER_REGEX.match(raw_target)
+        if album_section_match:
+            parts = {
+                "raw": raw_target,
+                "left": "",
+                "right": "",
+                "_title_only": True,
+                # _section_marker_title 없음 → 아래 title-only 처리에서 parts["raw"] 전체를 제목으로 사용
+            }
+        else:
+            parts = _extract_pair_parts(raw_target)
+            if not parts:
+                parts = _extract_numbered_hyphen_track(raw_target)
+            if not parts and ts_match:
+                parts = _extract_bare_hyphen_pair(raw_target)
+            if not parts:
+                # 타임스탬프가 있는데 구분자가 없으면 body 전체를 title-only로 보관
+                if ts_match:
+                    parts = {"raw": raw_target, "left": "", "right": "", "_title_only": True}
+                else:
+                    continue
 
         if ts_match:
             parts["_timestamp"] = ts_match.group("ts")
@@ -1572,8 +1591,9 @@ def parse_unstructured_lines_to_json(text: str) -> dict:
     results = []
     for parts in pair_candidates:
         # 타임스탬프 + 제목만 있는 줄: artist는 inferred_artist에서 채워질 예정
+        # 섹션 마커 라인("Outro : House Of Cards")은 _section_marker_title을 우선 사용
         if parts.get("_title_only"):
-            title = _clean_text(parts["raw"])
+            title = _clean_text(parts.get("_section_marker_title") or parts["raw"])
             if title:
                 meta: dict = {"_title_only": True}
                 if parts.get("_timestamp"):
