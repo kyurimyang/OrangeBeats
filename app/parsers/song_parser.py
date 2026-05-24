@@ -448,8 +448,9 @@ def _is_meaningful_text(text: str) -> bool:
     if PURE_PUNCT_REGEX.fullmatch(cleaned):
         return False
     if re.fullmatch(r"[\d\s]+", cleaned):
-        # cleaned is all digits; still meaningful if original had letter content
-        # e.g. "404 (new era)" → cleaned="404" but original has "new era"
+        digit_only = re.sub(r"\s+", "", cleaned)
+        if len(digit_only) >= 3:
+            return True  # 3자리 이상 숫자는 곡 제목일 수 있음 (404, 777, 2020 등)
         return bool(re.search(r"[A-Za-z가-힣]", original))
     return True
 
