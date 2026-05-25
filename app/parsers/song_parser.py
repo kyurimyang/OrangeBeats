@@ -21,6 +21,7 @@ from app.constants.pipeline_params import (
 TIME_PREFIX_REGEX = re.compile(r"^\s*(?:\d{1,2}:\d{2}(?::\d{2})?)\s*[-|~>*]*\s*")
 TIMESTAMP_TOKEN_REGEX = re.compile(r"(?<!\d)(?:\d{1,2}:\d{2}(?::\d{2})?)(?!\d)")
 TIMESTAMP_LINE_REGEX = re.compile(r"^(?P<ts>\d{1,2}:\d{2}(?::\d{2})?)\s+(?P<body>.+)$")
+TRAILING_TIMESTAMP_LINE_REGEX = re.compile(r"^(?P<body>.{2,60}?)\s+(?P<ts>\d{1,2}:\d{2}(?::\d{2})?)$")
 TIMESTAMP_PREFIX_ONLY_REGEX = re.compile(r"^\d{1,2}:\d{2}(?::\d{2})?\s+")
 NUMBERED_HYPHEN_TRACK_REGEX = re.compile(r"^\d{1,3}-(.+?)-(.+)$")
 TRACK_NUMBER_ONLY_REGEX = re.compile(r"^\s*(?:\d{1,3}|[A-Za-z])[\.)]?\s*$")
@@ -1647,9 +1648,26 @@ def parse_unstructured_lines_to_json(text: str) -> dict:
             continue
 
         ts_match = TIMESTAMP_LINE_REGEX.match(line)
-        raw_target = ts_match.group("body") if ts_match else line
+        trailing_ts_match = None
+        if not ts_match:
+            m = TRAILING_TIMESTAMP_LINE_REGEX.match(line)
+            if m:
+                body = m.group("body").strip()
+                # 자연어 반응 댓글 필터: 말줄임표로 끝나거나 _is_valid_music_line을 통과 못하면 무시
+                if not body.endswith(("…", "...")) and _is_valid_music_line(body):
+                    trailing_ts_match = m
+
+        raw_target = (
+            ts_match.group("body") if ts_match
+            else trailing_ts_match.group("body").strip() if trailing_ts_match
+            else line
+        )
         target = _clean_text(raw_target)
         if not target or not _is_valid_music_line(target):
+            continue
+
+        # 타임스탬프 body가 말줄임표로 끝나면 오탐(팬 반응 댓글)으로 처리
+        if ts_match and raw_target.endswith(("…", "...")):
             continue
 
         # 앨범 섹션 마커 우선 처리: "Outro : House Of Cards" → 분리 차단, 전체가 곡명
@@ -1667,17 +1685,22 @@ def parse_unstructured_lines_to_json(text: str) -> dict:
             parts = _extract_pair_parts(raw_target)
             if not parts:
                 parts = _extract_numbered_hyphen_track(raw_target)
-            if not parts and ts_match:
+            if not parts and (ts_match or trailing_ts_match):
                 parts = _extract_bare_hyphen_pair(raw_target)
             if not parts:
                 # 타임스탬프가 있는데 구분자가 없으면 body 전체를 title-only로 보관
-                if ts_match:
+                if ts_match or trailing_ts_match:
                     parts = {"raw": raw_target, "left": "", "right": "", "_title_only": True}
                 else:
                     continue
 
-        if ts_match:
-            parts["_timestamp"] = ts_match.group("ts")
+        effective_ts = (
+            ts_match.group("ts") if ts_match
+            else trailing_ts_match.group("ts") if trailing_ts_match
+            else None
+        )
+        if effective_ts:
+            parts["_timestamp"] = effective_ts
         pair_candidates.append(parts)
 
     pair_candidates_with_sep = [
