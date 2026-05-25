@@ -310,7 +310,8 @@
 
 .figma-url-input {
   position: relative;
-  width: 792px;
+  width: 100%;
+  max-width: 792px;
 }
 
 .figma-url-input__shell {
@@ -327,10 +328,14 @@
 }
 
 .figma-url-input__field {
+  --url-input-btn-right: 20.3px;
+  --url-input-btn-width: 177.7px;
+  --url-input-glow-width: 22px;
   position: relative;
   display: flex;
   align-items: center;
-  width: 780px;
+  width: 100%;
+  max-width: 780px;
   height: 90px;
   border-radius: 26px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.9) 0%, #ffffff 100%);
@@ -345,23 +350,36 @@
   line-height: normal;
 }
 
+/* 레거시 마크업 호환 — 실제 글로우는 버튼 ::before에 붙임 */
 .figma-url-input__glow {
-  position: absolute;
-  top: 22px;
-  right: 177.7px;
-  bottom: 18px;
-  left: 582px;
-  border-radius: 8px;
-  background: linear-gradient(-90deg, #fd6d11 0%, #ffffff 94.37%);
-  filter: blur(2px);
-  opacity: 0.4;
-  pointer-events: none;
+  display: none;
 }
 
 .figma-url-input__action {
   position: absolute;
   top: 20px;
-  right: 20.3px;
+  right: var(--url-input-btn-right);
+  isolation: isolate;
+  overflow: visible;
+}
+
+/* 글로우 = Playlist 생성 버튼과 동일 박스(inset 0)에 겹침 */
+.figma-url-input__action::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  background: linear-gradient(-90deg, #fd6d11 0%, #ffffff 94.37%);
+  filter: blur(2px);
+  opacity: 0.4;
+  mix-blend-mode: soft-light;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.figma-url-input__action .figma-playlist-create__label {
+  position: relative;
+  z-index: 2;
 }
 
 .figma-url-input--default {
