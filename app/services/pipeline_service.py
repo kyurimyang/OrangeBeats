@@ -207,12 +207,14 @@ def _apply_single_artist_context(result: dict, detection: dict) -> dict:
         artist_missing = not artist and title
         artist_same_as_title = bool(artist and title and artist.lower() == title.lower())
         if artist_missing or artist_same_as_title:
-            item["artist"] = inferred_artist
-            item["artist_exists"] = True
-            item["is_complete"] = True
-            item["completeness_score"] = max(float(item.get("completeness_score") or 0.0), 1.0)
+            if artist_same_as_title:
+                item["artist"] = ""
+                item["artist_exists"] = False
+            item["artist_hint"] = inferred_artist
+            item["artist_hint_source"] = (detection or {}).get("source") or "single_artist_context"
             item["artist_inferred"] = True
             item["inferred_artist_source"] = (detection or {}).get("source") or "single_artist_context"
+            item["artist_inference_confidence"] = item.get("artist_inference_confidence") or "high"
             changed = True
         updated_songs.append(item)
 
@@ -220,9 +222,19 @@ def _apply_single_artist_context(result: dict, detection: dict) -> dict:
         result = {**result, "songs": updated_songs}
         metrics = dict(result.get("metrics") or {})
         total_count = len(updated_songs)
-        complete_count = sum(1 for song in updated_songs if song.get("is_complete"))
+        complete_count = sum(
+            1
+            for song in updated_songs
+            if song.get("is_complete")
+            or (song.get("title") and (song.get("artist") or song.get("artist_hint")))
+        )
         avg_completeness = (
-            sum(song.get("completeness_score", 0.0) for song in updated_songs) / total_count
+            sum(
+                max(float(song.get("completeness_score") or 0.0), 0.75)
+                if song.get("title") and song.get("artist_hint") and not song.get("artist")
+                else float(song.get("completeness_score") or 0.0)
+                for song in updated_songs
+            ) / total_count
             if total_count else 0.0
         )
         result["metrics"] = {

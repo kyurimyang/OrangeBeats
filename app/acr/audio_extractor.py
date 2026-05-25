@@ -1,15 +1,7 @@
-import os
 from pathlib import Path
 import uuid
 
-_YTDLP_COOKIE_FILE = os.getenv("YTDLP_COOKIE_FILE", "").strip()
-
-
-def _ytdlp_base_opts() -> dict:
-    opts = {"quiet": True, "no_warnings": True, "noplaylist": True}
-    if _YTDLP_COOKIE_FILE:
-        opts["cookiefile"] = _YTDLP_COOKIE_FILE
-    return opts
+from app.utils.ytdlp_opts import ytdlp_base_opts as _ytdlp_base_opts
 
 
 def download_youtube_audio(youtube_url: str, output_dir: Path) -> Path:
