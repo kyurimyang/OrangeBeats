@@ -1,5 +1,15 @@
+import os
 from pathlib import Path
 import uuid
+
+_YTDLP_COOKIE_FILE = os.getenv("YTDLP_COOKIE_FILE", "").strip()
+
+
+def _ytdlp_base_opts() -> dict:
+    opts = {"quiet": True, "no_warnings": True, "noplaylist": True}
+    if _YTDLP_COOKIE_FILE:
+        opts["cookiefile"] = _YTDLP_COOKIE_FILE
+    return opts
 
 
 def download_youtube_audio(youtube_url: str, output_dir: Path) -> Path:
@@ -9,11 +19,9 @@ def download_youtube_audio(youtube_url: str, output_dir: Path) -> Path:
         output_dir.mkdir(parents=True, exist_ok=True)
         output_template = str(output_dir / f"{uuid.uuid4().hex}.%(ext)s")
         ydl_opts = {
+            **_ytdlp_base_opts(),
             "format": "bestaudio/best",
             "outtmpl": output_template,
-            "quiet": True,
-            "no_warnings": True,
-            "noplaylist": True,
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:

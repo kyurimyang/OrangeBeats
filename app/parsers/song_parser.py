@@ -188,7 +188,7 @@ def parse_json_from_text(text: str) -> dict:
     try:
         parsed = json.loads(match.group(0))
         if isinstance(parsed, dict) and "songs" in parsed:
-            return normalize_song_candidates(parsed)
+            return parsed
     except Exception:
         pass
 
@@ -1620,7 +1620,7 @@ def _reuse_existing_direction_meta(songs: list[dict]) -> tuple[str, dict] | None
 def _append_song(results: list[dict], artist: str, title: str, meta: dict | None = None) -> None:
     artist = _clean_text(artist)
     artist = TITLE_TRACK_NUMBER_PREFIX_REGEX.sub("", artist).strip()
-    title = _clean_text(title)
+    title = _clean_pair_side(title)
     title = TITLE_TRACK_NUMBER_PREFIX_REGEX.sub("", title).strip()
     meta = meta or {}
 
@@ -1889,7 +1889,7 @@ def normalize_song_candidates(data: Any, inferred_artist: str = "") -> dict:
                 parsed["nested_pair_extracted"] = True
                 parsed["track_number_prefix"] = item.get("track_number_prefix", "")
             artist = _clean_text(parsed.get("artist", artist))
-            title = _clean_text(parsed.get("title", title))
+            title = _clean_pair_side(parsed.get("title", title))
             meta.update(parsed)
             _log_parse_line(parsed)
         elif artist and title:
@@ -1897,7 +1897,7 @@ def normalize_song_candidates(data: Any, inferred_artist: str = "") -> dict:
             parsed = _resolve_orientation({"raw": raw, "left": artist, "right": title}, global_direction)
             parsed.update(direction_meta)
             artist = _clean_text(parsed.get("artist", artist))
-            title = _clean_text(parsed.get("title", title))
+            title = _clean_pair_side(parsed.get("title", title))
             meta.update(parsed)
         else:
             meta["score"] = max(meta["score"], 0.5 if title else 0.0)

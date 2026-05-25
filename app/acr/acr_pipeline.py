@@ -20,7 +20,8 @@ def _get_youtube_info(youtube_url: str) -> Dict:
     try:
         import yt_dlp
 
-        with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "noplaylist": True}) as ydl:
+        from app.acr.audio_extractor import _ytdlp_base_opts
+        with yt_dlp.YoutubeDL(_ytdlp_base_opts()) as ydl:
             info = ydl.extract_info(youtube_url, download=False)
             return {
                 "duration": int(info.get("duration") or 0),

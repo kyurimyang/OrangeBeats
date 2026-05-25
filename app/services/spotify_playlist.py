@@ -524,6 +524,8 @@ def analyze_spotify_candidates(
             "evidence_type": song.get("evidence_type", ""),
             "ocr_evidence": song.get("ocr_evidence", {}),
             "acr_evidence": song.get("acr_evidence", {}),
+            "music_section_title_hint": song.get("music_section_title_hint", ""),
+            "music_section_artist_hint": song.get("music_section_artist_hint", ""),
             **song_single_artist_context,
         }
         cache_key = build_match_cache_key(

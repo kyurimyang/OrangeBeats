@@ -2,6 +2,14 @@ import os
 import uuid
 from pathlib import Path
 
+_YTDLP_COOKIE_FILE = os.getenv("YTDLP_COOKIE_FILE", "").strip()
+
+
+def _ytdlp_base_opts() -> dict:
+    opts = {"quiet": True, "no_warnings": True, "noplaylist": True}
+    if _YTDLP_COOKIE_FILE:
+        opts["cookiefile"] = _YTDLP_COOKIE_FILE
+    return opts
 
 
 def download_youtube_video(
@@ -14,12 +22,10 @@ def download_youtube_video(
     output_template = os.path.join(output_dir, f"{unique_id}.%(ext)s")
 
     ydl_opts = {
+        **_ytdlp_base_opts(),
         "format": "mp4/bestvideo+bestaudio/best",
         "outtmpl": output_template,
         "merge_output_format": "mp4",
-        "quiet": True,
-        "no_warnings": True,
-        "noplaylist": True,
     }
 
     try:

@@ -21,6 +21,25 @@ def _infer_evidence_type(raw_line: str) -> str:
     return "other"
 
 
+def _title_from_timestamp_only_line(raw_line: str) -> str:
+    import re
+
+    value = str(raw_line or "").strip()
+    value = re.sub(r'^\s*(?:\d{1,2}:)?\d{1,2}:\d{2}\s*[-–—]?\s*', '', value)
+    return value.strip()
+
+
+def _timestamp_line_lacks_pair_delimiter(raw_line: str) -> bool:
+    import re
+
+    if not _comment_has_timestamp(raw_line):
+        return False
+    tail = _title_from_timestamp_only_line(raw_line)
+    if not tail:
+        return False
+    return not bool(re.search(r"\s[-–—~|/]\s|:\s", tail))
+
+
 def _source_lines(text: str) -> list[str]:
     return [line.strip() for line in (text or "").splitlines() if line.strip()]
 
@@ -45,6 +64,19 @@ def _annotate_song_evidence(
     for song in songs or []:
         item = dict(song)
         raw_line = str(item.get("raw_line") or item.get("raw") or "").strip()
+        if method == "llm" and raw_line and not _raw_line_in_source(raw_line, source_text):
+            title = str(item.get("title") or "").strip()
+            artist = str(item.get("artist") or "").strip()
+            raw_line = next(
+                (
+                    line
+                    for line in lines
+                    if (title and title in line) or (artist and artist in line)
+                ),
+                "",
+            )
+            if not raw_line:
+                continue
         if require_raw_line and not _raw_line_in_source(raw_line, source_text):
             continue
         if not raw_line:
@@ -55,6 +87,18 @@ def _annotate_song_evidence(
         item["source"] = item.get("source") or source_name
         item["source_mode"] = item.get("source_mode") or source_name
         item["evidence_type"] = item.get("evidence_type") or _infer_evidence_type(raw_line)
+        if _timestamp_line_lacks_pair_delimiter(raw_line):
+            item["evidence_type"] = "title_only_timestamp"
+        if item["evidence_type"] == "title_only_timestamp":
+            timestamp_title = _title_from_timestamp_only_line(raw_line)
+            if timestamp_title:
+                item["title"] = timestamp_title
+                item["artist"] = timestamp_title
+                item["artist_exists"] = True
+                item["title_exists"] = True
+                item["is_complete"] = True
+                item["completeness_score"] = max(float(item.get("completeness_score") or 0.0), 1.0)
+                item["timestamp_title_normalized"] = True
         item["confidence"] = _normalize_evidence_confidence(
             item.get("confidence"),
             "high" if method == "rule_based" and raw_line else "medium",
