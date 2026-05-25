@@ -1,4 +1,5 @@
 import re
+from collections import OrderedDict
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.services.spotify_api import get_track, search_artists_query, search_track, search_tracks_query
@@ -23,8 +24,8 @@ from app.services.spotify_common import (
     _token_overlap_ratio,
 )
 
-_MATCH_CACHE: Dict[Tuple[str, str], Optional[Dict[str, Any]]] = {}
-_MATCH_DEBUG: Dict[Tuple[str, str], Dict[str, Any]] = {}
+_MATCH_CACHE: OrderedDict[Tuple[str, str], Optional[Dict[str, Any]]] = OrderedDict()
+_MATCH_DEBUG: OrderedDict[Tuple[str, str], Dict[str, Any]] = OrderedDict()
 
 
 EARLY_RETURN_SCORE = 0.85
@@ -1938,6 +1939,18 @@ def _log_match(
     )
 
 
+def _cache_put(key: Tuple[str, str], value: Optional[Dict[str, Any]], debug: Optional[Dict[str, Any]] = None) -> None:
+    _MATCH_CACHE.pop(key, None)
+    _MATCH_CACHE[key] = value
+    if len(_MATCH_CACHE) > MAX_CACHE_SIZE:
+        _MATCH_CACHE.popitem(last=False)
+    if debug is not None:
+        _MATCH_DEBUG.pop(key, None)
+        _MATCH_DEBUG[key] = debug
+        if len(_MATCH_DEBUG) > MAX_CACHE_SIZE:
+            _MATCH_DEBUG.popitem(last=False)
+
+
 def _track_dedupe_key(track: Dict[str, Any]) -> Tuple[Any, ...]:
     return (track.get("id") or track.get("uri") or "",)
 
@@ -2798,6 +2811,7 @@ def pick_best_track_match(
     }
 
     if cache_key in _MATCH_CACHE:
+        _MATCH_CACHE.move_to_end(cache_key)
         cached = _MATCH_CACHE[cache_key]
         cached_debug = _MATCH_DEBUG.get(cache_key, {})
         selected = "none"
@@ -2870,10 +2884,7 @@ def pick_best_track_match(
                 unmatched_reason="",
                 early_return=True,
             )
-            if len(_MATCH_CACHE) >= MAX_CACHE_SIZE:
-                _MATCH_CACHE.clear()
-                _MATCH_DEBUG.clear()
-            _MATCH_CACHE[cache_key] = best
+            _cache_put(cache_key, best)
             return best
 
     case_inputs = _extract_case_inputs(input_title, input_artist, song_meta)
@@ -2920,7 +2931,7 @@ def pick_best_track_match(
             unmatched_reason="no_search_result",
             early_return=False,
         )
-        _MATCH_CACHE[cache_key] = None
+        _cache_put(cache_key, None)
         return None
 
     best_candidate = selected_case_result.get("best_candidate") or {}
@@ -2941,7 +2952,7 @@ def pick_best_track_match(
             top_candidates=selected_case_result.get("scored_candidates", []),
             case_results=case_results,
         )
-        _MATCH_CACHE[cache_key] = None
+        _cache_put(cache_key, None)
         _log_match(
             input_title=input_title,
             input_artist=input_artist,
@@ -3015,8 +3026,5 @@ def pick_best_track_match(
         early_return=early_return,
     )
 
-    if len(_MATCH_CACHE) >= MAX_CACHE_SIZE:
-        _MATCH_CACHE.clear()
-        _MATCH_DEBUG.clear()
-    _MATCH_CACHE[cache_key] = best
+    _cache_put(cache_key, best)
     return best

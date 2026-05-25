@@ -1330,24 +1330,34 @@ def _direction_vote(parts: dict) -> str:
         return "title_artist"
     return "unknown"
 
-def _infer_global_direction(parsed_pairs: list[dict]) -> str:
+def _infer_global_direction(parsed_pairs: list[dict]) -> tuple[str, str]:
     if not parsed_pairs:
-        return "per_line"
+        return "per_line", "low"
 
     votes = [_direction_vote(parts) for parts in parsed_pairs]
     decisive_votes = [vote for vote in votes if vote in {"artist_title", "title_artist"}]
     if not decisive_votes:
-        return "per_line"
+        return "per_line", "low"
 
     artist_title_count = decisive_votes.count("artist_title")
     title_artist_count = decisive_votes.count("title_artist")
     total = len(decisive_votes)
 
+    dominant_count = max(artist_title_count, title_artist_count)
+    ratio = dominant_count / total
+
+    if ratio >= 0.90 and total >= 3:
+        rule_confidence = "high"
+    elif ratio >= DOMINANT_DIRECTION_RATIO and total >= 2:
+        rule_confidence = "medium"
+    else:
+        rule_confidence = "low"
+
     if artist_title_count / total >= DOMINANT_DIRECTION_RATIO:
-        return "artist_title"
+        return "artist_title", rule_confidence
     if title_artist_count / total >= DOMINANT_DIRECTION_RATIO:
-        return "title_artist"
-    return "per_line"
+        return "title_artist", rule_confidence
+    return "per_line", "low"
 
 
 def _detect_llm_global_direction(parsed_pairs: list[dict]) -> dict:
@@ -1397,7 +1407,22 @@ def _detect_llm_global_direction(parsed_pairs: list[dict]) -> dict:
 
 
 def _resolve_global_direction(parsed_pairs: list[dict]) -> tuple[str, dict]:
-    rule_direction = _infer_global_direction(parsed_pairs)
+    rule_direction, rule_confidence = _infer_global_direction(parsed_pairs)
+
+    if rule_confidence == "high":
+        global_direction = rule_direction
+        print(
+            f"[direction] rule={rule_direction} confidence=high → llm skipped"
+        )
+        return global_direction, {
+            "llm_global_direction": rule_direction,
+            "llm_direction_confidence": "high",
+            "llm_direction_reason": "rule_high_confidence_skipped_llm",
+            "direction_source": "rule_only",
+            "rule_global_direction": rule_direction,
+            "rule_confidence": rule_confidence,
+        }
+
     llm_direction = _detect_llm_global_direction(parsed_pairs)
     llm_global_direction = llm_direction.get("global_direction", "mixed")
     llm_confidence = llm_direction.get("confidence", "low")
@@ -1410,8 +1435,9 @@ def _resolve_global_direction(parsed_pairs: list[dict]) -> tuple[str, dict]:
         source = "rule_fallback"
 
     print(
-        f"[direction] rule={rule_direction} llm={llm_global_direction} "
-        f"confidence={llm_confidence} chosen={global_direction} source={source} "
+        f"[direction] rule={rule_direction} rule_confidence={rule_confidence} "
+        f"llm={llm_global_direction} llm_confidence={llm_confidence} "
+        f"chosen={global_direction} source={source} "
         f"reason='{_safe_log_value(llm_direction.get('reason', ''))}'"
     )
 
@@ -1421,6 +1447,7 @@ def _resolve_global_direction(parsed_pairs: list[dict]) -> tuple[str, dict]:
         "llm_direction_reason": llm_direction.get("reason", ""),
         "direction_source": source,
         "rule_global_direction": rule_direction,
+        "rule_confidence": rule_confidence,
     }
 
 
@@ -1642,7 +1669,7 @@ def parse_unstructured_lines_to_json(text: str) -> dict:
     return {"songs": deduplicate_songs(results)}
 
 
-def normalize_song_candidates(data: Any, inferred_artist: str = "") -> dict:
+def normalize_song_candidates(data: Any, inferred_artist: str = "", skip_direction_detection: bool = False) -> dict:
     if not data:
         return {"songs": []}
 
@@ -1663,11 +1690,22 @@ def normalize_song_candidates(data: Any, inferred_artist: str = "") -> dict:
         if left and right:
             pair_candidates.append({"raw": raw, "left": left, "right": right})
 
-    reused_direction = _reuse_existing_direction_meta(songs)
-    if reused_direction:
-        global_direction, direction_meta = reused_direction
+    if skip_direction_detection:
+        # LLM이 이미 artist/title을 분리했으므로 방향 재결정 스킵
+        global_direction = "artist_title"
+        direction_meta = {
+            "llm_global_direction": "artist_title",
+            "llm_direction_confidence": "high",
+            "llm_direction_reason": "llm_parsed_trust",
+            "direction_source": "llm_parse",
+            "rule_global_direction": "artist_title",
+        }
     else:
-        global_direction, direction_meta = _resolve_global_direction(pair_candidates)
+        reused_direction = _reuse_existing_direction_meta(songs)
+        if reused_direction:
+            global_direction, direction_meta = reused_direction
+        else:
+            global_direction, direction_meta = _resolve_global_direction(pair_candidates)
 
     for item in songs:
         if not isinstance(item, dict):

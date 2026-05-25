@@ -1,6 +1,8 @@
+import difflib
 import re
 import unicodedata
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 
 from app.clients.youtube_client import collect_text_sources, get_video_music_section
 from app.acr.acr_pipeline import extract_songs_with_acr
@@ -383,12 +385,6 @@ def _normalize_title_for_match(title: str) -> str:
     return re.sub(r"\s+", " ", t).strip()
 
 
-def _titles_match(text_title: str, section_title: str) -> bool:
-    """정규화된 제목 매칭. 음악 섹션이 '곡명 (Sung by ...)' 형태일 때도 허용."""
-    t = _normalize_title_for_match(text_title)
-    s = _normalize_title_for_match(section_title)
-    return t == s or s.startswith(t + " ") or t.startswith(s + " ")
-
 
 def _has_strong_text_evidence(song: dict) -> bool:
     confidence = str(song.get("confidence") or "").strip().lower()
@@ -412,8 +408,40 @@ def _confidence_for_unmatched_music_section(song: dict) -> str:
     return existing if existing in {"high", "medium", "low"} else "medium"
 
 
+def _find_best_music_section_match(
+    title: str, music_section: list[dict], matched_indices: set[int]
+) -> tuple[int | None, dict | None]:
+    normalized = _normalize_title_for_match(title)
+    if not normalized:
+        return None, None
+
+    best_score = 0.0
+    best_idx: int | None = None
+    best_entry: dict | None = None
+
+    for i, ms in enumerate(music_section):
+        if i in matched_indices:
+            continue
+        candidate = _normalize_title_for_match(ms.get("title", ""))
+        if not candidate:
+            continue
+
+        if normalized == candidate or candidate.startswith(normalized + " ") or normalized.startswith(candidate + " "):
+            return i, ms
+
+        score = difflib.SequenceMatcher(None, normalized, candidate).ratio()
+        if score > best_score:
+            best_score = score
+            best_idx = i
+            best_entry = ms
+
+    if best_score >= 0.75 and best_idx is not None:
+        return best_idx, best_entry
+    return None, None
+
+
 def _enrich_songs_with_music_section(
-    songs: list[dict], video_id: str
+    songs: list[dict], music_section: list[dict]
 ) -> tuple[list[dict], list[dict]]:
     """텍스트 추출 곡과 YouTube 음악 섹션을 교차 검증.
 
@@ -421,7 +449,6 @@ def _enrich_songs_with_music_section(
         enriched: 신뢰도·아티스트가 보강된 원본 곡 목록
         extras:   음악 섹션에만 있는 곡 (미확인 후보)
     """
-    music_section = get_video_music_section(video_id)
     if not music_section:
         return songs, []
 
@@ -429,9 +456,8 @@ def _enrich_songs_with_music_section(
     enriched: list[dict] = []
 
     for song in songs:
-        match_idx, match = next(
-            ((i, ms) for i, ms in enumerate(music_section) if _titles_match(song.get("title", ""), ms["title"])),
-            (None, None),
+        match_idx, match = _find_best_music_section_match(
+            song.get("title", ""), music_section, matched_section_idx
         )
 
         song = dict(song)
@@ -457,34 +483,6 @@ def _enrich_songs_with_music_section(
                 song["source_tag"] = "description_only"
 
         enriched.append(song)
-
-    # 포지션 기반 보강: 제목 매칭 실패한 곡 ↔ 미매칭 음악 섹션 항목을 순서로 연결
-    # "메아리"(챕터 0번) ↔ "Love Me Now - NCT 127"(음악 섹션 0번) 케이스 처리
-    unmatched_section = [
-        (i, ms) for i, ms in enumerate(music_section) if i not in matched_section_idx
-    ]
-    unmatched_song_indices = [
-        idx for idx, s in enumerate(enriched) if not s.get("music_section_confirmed")
-    ]
-    for rank, song_idx in enumerate(unmatched_song_indices):
-        if rank >= len(unmatched_section):
-            break
-        sec_idx, sec = unmatched_section[rank]
-        song = dict(enriched[song_idx])
-        if not song.get("artist") or song.get("artist_inferred"):
-            song["artist"] = sec["artist"]
-            song["artist_exists"] = True
-            song["is_complete"] = True
-            song["completeness_score"] = max(float(song.get("completeness_score") or 0.0), 1.0)
-            song["artist_inferred"] = False
-            song["inferred_artist_source"] = "youtube_music_section_positional"
-        if sec.get("album"):
-            song["album"] = sec["album"]
-        song["music_section_confirmed"] = "positional"
-        song["music_section_title_hint"] = sec["title"]
-        song["confidence"] = "medium"
-        enriched[song_idx] = song
-        matched_section_idx.add(sec_idx)
 
     # 멀티 아티스트 확정 시 미확인 곡의 잘못된 추론 아티스트 제거
     # music section이 2종류 이상 아티스트를 확인했으면 해시태그 등으로 추론된 단일 아티스트는 신뢰 불가
@@ -630,8 +628,13 @@ def run_youtube_text_pipeline(url: str) -> dict:
             **_single_artist_payload(title_artist_detection),
         }
 
-    # Phase 1: 설명란 파싱
-    description_result = analyze_description(description_text, inferred_artist=title_inferred_artist)
+    # Phase 1: 설명란 파싱 + 음악 섹션 조회 병렬 실행
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        desc_future  = ex.submit(analyze_description, description_text, title_inferred_artist)
+        music_future = ex.submit(get_video_music_section, source_data["video_id"])
+
+    description_result = desc_future.result()
+    prefetched_music_section = music_future.result() or []
     description_ok = bool(description_result.get("success"))
 
     # Phase 2: 설명란이 충분하면 댓글 스킵, 부족하면 댓글 파싱
@@ -693,7 +696,7 @@ def run_youtube_text_pipeline(url: str) -> dict:
 
         # Phase 4: 음악 섹션으로 보강 (enrichment only — music_extras는 songs에 합산하지 않음)
         enriched_songs, music_extras = _enrich_songs_with_music_section(
-            primary_result["songs"], source_data["video_id"]
+            primary_result["songs"], prefetched_music_section
         )
         primary_result["songs"] = enriched_songs
 
@@ -757,7 +760,7 @@ def run_youtube_text_pipeline(url: str) -> dict:
         }
 
     # 텍스트에서 곡을 못 찾으면 YouTube 음악 섹션(Content ID)으로 폴백
-    music_section = get_video_music_section(source_data["video_id"])
+    music_section = prefetched_music_section
     if music_section:
         section_songs = _music_section_to_songs(music_section)
         if section_songs:
