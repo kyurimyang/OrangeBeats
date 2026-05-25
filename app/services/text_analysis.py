@@ -109,9 +109,18 @@ def _annotate_song_evidence(
 
 def _build_song_metrics(songs: list[dict]) -> dict:
     total_count = len(songs)
-    complete_count = sum(1 for song in songs if song.get('is_complete'))
+    complete_count = sum(
+        1
+        for song in songs
+        if song.get('is_complete') or (song.get('title') and (song.get('artist') or song.get('artist_hint')))
+    )
     avg_completeness = (
-        sum(song.get('completeness_score', 0.0) for song in songs) / total_count
+        sum(
+            max(float(song.get('completeness_score') or 0.0), 0.75)
+            if song.get('title') and song.get('artist_hint') and not song.get('artist')
+            else float(song.get('completeness_score') or 0.0)
+            for song in songs
+        ) / total_count
         if total_count > 0 else 0.0
     )
 

@@ -62,16 +62,17 @@ class SingleArtistContextTests(unittest.TestCase):
         self.assertFalse(enriched[1]["music_section_confirmed"])
         self.assertEqual(enriched[1]["confidence"], "low")
 
-    def test_normalize_song_candidates_fills_missing_artist_from_context(self):
+    def test_normalize_song_candidates_keeps_single_artist_as_hint(self):
         result = normalize_song_candidates(
             {"songs": [{"artist": "", "title": "Celebrity"}]},
             inferred_artist="IU",
         )
 
-        self.assertEqual(result["songs"][0]["artist"], "IU")
+        self.assertEqual(result["songs"][0]["artist"], "")
+        self.assertEqual(result["songs"][0]["artist_hint"], "IU")
         self.assertEqual(result["songs"][0]["title"], "Celebrity")
         self.assertTrue(result["songs"][0]["artist_inferred"])
-        self.assertTrue(result["songs"][0]["is_complete"])
+        self.assertFalse(result["songs"][0]["is_complete"])
 
     @patch("app.services.pipeline_service.analyze_comments_prioritized")
     @patch("app.services.pipeline_service.analyze_description")
@@ -148,7 +149,8 @@ class SingleArtistContextTests(unittest.TestCase):
 
         self.assertTrue(result["is_single_artist"])
         self.assertEqual(result["inferred_artist"], "IU")
-        self.assertEqual(result["songs"][2]["artist"], "IU")
+        self.assertEqual(result["songs"][2]["artist"], "")
+        self.assertEqual(result["songs"][2]["artist_hint"], "IU")
         self.assertTrue(result["songs"][2]["artist_inferred"])
         self.assertEqual(result["single_artist_detection"]["source"], "extracted_songs")
         analyze_comments_mock.assert_not_called()

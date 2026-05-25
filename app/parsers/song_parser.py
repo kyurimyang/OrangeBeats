@@ -1366,21 +1366,36 @@ def _direction_vote(parts: dict) -> str:
         return "title_artist"
     return "unknown"
 
+def _direction_vote_summary(parsed_pairs: list[dict]) -> dict:
+    votes = [_direction_vote(parts) for parts in parsed_pairs]
+    decisive_votes = [vote for vote in votes if vote in {"artist_title", "title_artist"}]
+    artist_title_count = decisive_votes.count("artist_title")
+    title_artist_count = decisive_votes.count("title_artist")
+    total = len(decisive_votes)
+    dominant_count = max(artist_title_count, title_artist_count) if total else 0
+    return {
+        "votes": votes,
+        "decisive_votes": decisive_votes,
+        "artist_title_count": artist_title_count,
+        "title_artist_count": title_artist_count,
+        "total": total,
+        "dominant_count": dominant_count,
+        "dominant_ratio": dominant_count / total if total else 0.0,
+    }
+
+
 def _infer_global_direction(parsed_pairs: list[dict]) -> tuple[str, str]:
     if not parsed_pairs:
         return "per_line", "low"
 
-    votes = [_direction_vote(parts) for parts in parsed_pairs]
-    decisive_votes = [vote for vote in votes if vote in {"artist_title", "title_artist"}]
-    if not decisive_votes:
+    summary = _direction_vote_summary(parsed_pairs)
+    if not summary["decisive_votes"]:
         return "per_line", "low"
 
-    artist_title_count = decisive_votes.count("artist_title")
-    title_artist_count = decisive_votes.count("title_artist")
-    total = len(decisive_votes)
-
-    dominant_count = max(artist_title_count, title_artist_count)
-    ratio = dominant_count / total
+    artist_title_count = summary["artist_title_count"]
+    title_artist_count = summary["title_artist_count"]
+    total = summary["total"]
+    ratio = summary["dominant_ratio"]
 
     if ratio >= 0.90 and total >= 3:
         rule_confidence = "high"
@@ -1394,6 +1409,18 @@ def _infer_global_direction(parsed_pairs: list[dict]) -> tuple[str, str]:
     if title_artist_count / total >= DOMINANT_DIRECTION_RATIO:
         return "title_artist", rule_confidence
     return "per_line", "low"
+
+
+def _should_skip_direction_llm(parsed_pairs: list[dict], rule_direction: str, rule_confidence: str) -> tuple[bool, str]:
+    if rule_confidence == "high":
+        return True, "rule_high_confidence_skipped_llm"
+    if rule_confidence != "medium" or rule_direction not in {"artist_title", "title_artist"}:
+        return False, ""
+
+    summary = _direction_vote_summary(parsed_pairs)
+    if summary["total"] >= 4 and summary["dominant_ratio"] >= 0.75:
+        return True, "rule_medium_sufficient_sample_skipped_llm"
+    return False, ""
 
 
 def _detect_llm_global_direction(parsed_pairs: list[dict]) -> dict:
@@ -1445,15 +1472,16 @@ def _detect_llm_global_direction(parsed_pairs: list[dict]) -> dict:
 def _resolve_global_direction(parsed_pairs: list[dict]) -> tuple[str, dict]:
     rule_direction, rule_confidence = _infer_global_direction(parsed_pairs)
 
-    if rule_confidence == "high":
+    skip_llm, skip_reason = _should_skip_direction_llm(parsed_pairs, rule_direction, rule_confidence)
+    if skip_llm:
         global_direction = rule_direction
         print(
-            f"[direction] rule={rule_direction} confidence=high → llm skipped"
+            f"[direction] rule={rule_direction} confidence={rule_confidence} llm skipped reason={skip_reason}"
         )
         return global_direction, {
             "llm_global_direction": rule_direction,
-            "llm_direction_confidence": "high",
-            "llm_direction_reason": "rule_high_confidence_skipped_llm",
+            "llm_direction_confidence": rule_confidence,
+            "llm_direction_reason": skip_reason,
             "direction_source": "rule_only",
             "rule_global_direction": rule_direction,
             "rule_confidence": rule_confidence,
@@ -1589,6 +1617,9 @@ def _append_song(results: list[dict], artist: str, title: str, meta: dict | None
         "normalized_by",
         "artist_inferred",
         "inferred_artist_source",
+        "artist_hint",
+        "artist_hint_source",
+        "artist_inference_confidence",
         "title_metadata_hints",
         "title_feature_artists",
         "title_producer_artists",
@@ -1811,9 +1842,11 @@ def normalize_song_candidates(data: Any, inferred_artist: str = "", skip_directi
             meta["score"] = max(meta["score"], 0.5 if title else 0.0)
 
         if not artist and inferred_artist:
-            artist = inferred_artist
+            meta["artist_hint"] = inferred_artist
+            meta["artist_hint_source"] = str(item.get("inferred_artist_source") or "single_artist_context")
             meta["artist_inferred"] = True
             meta["inferred_artist_source"] = str(item.get("inferred_artist_source") or "single_artist_context")
+            meta["artist_inference_confidence"] = str(item.get("artist_inference_confidence") or "high")
             meta["reason"] = str(meta.get("reason") or "provided_artist_title")
 
         if not _is_meaningful_text(title):
@@ -1885,6 +1918,9 @@ def deduplicate_songs(songs: list[dict]) -> list[dict]:
             "normalized_by",
             "artist_inferred",
             "inferred_artist_source",
+            "artist_hint",
+            "artist_hint_source",
+            "artist_inference_confidence",
             "title_metadata_hints",
             "title_feature_artists",
             "title_producer_artists",
@@ -1940,7 +1976,12 @@ def is_text_stage_success(source_text: str, confirmed_tracks: list[dict]) -> boo
 
 def assess_text_stage_validity(source_text: str, confirmed_tracks: list[dict]) -> dict:
     total = len(confirmed_tracks)
-    complete = sum(1 for song in confirmed_tracks if song.get("is_complete"))
+    complete = sum(
+        1
+        for song in confirmed_tracks
+        if song.get("is_complete")
+        or (song.get("title") and (song.get("artist") or song.get("artist_hint")))
+    )
     average = (
         sum(song.get("completeness_score", 0.0) for song in confirmed_tracks) / total
         if total

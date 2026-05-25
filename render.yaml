@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: paran-playlist-ai
+    runtime: python
+    buildCommand: >
+      cd frontend/site && npm install && npm run build && cd ../.. &&
+      pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    nativePackages:
+      - ffmpeg
+    envVars:
+      - key: YTDLP_COOKIE_CONTENT
+        sync: false

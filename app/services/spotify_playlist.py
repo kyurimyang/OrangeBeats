@@ -43,14 +43,14 @@ def _single_artist_name_from_songs(songs: List[Dict[str, Any]]) -> str:
         return ""
 
     names = {
-        str(song.get("artist") or "").strip()
+        str(song.get("artist_hint") or song.get("artist") or "").strip()
         for song in songs
         if (
             isinstance(song, dict)
             and song.get("artist_inferred")
             and str(song.get("artist_inference_confidence") or "").strip().lower() == "high"
             and not song.get("music_section_confirmed")
-            and str(song.get("artist") or "").strip()
+            and str(song.get("artist_hint") or song.get("artist") or "").strip()
         )
     }
     if len(names) == 1:
@@ -115,19 +115,13 @@ def _single_artist_filter_decision(song: Dict[str, Any], single_artist_context: 
             "reason": "no_single_artist_context",
             "context": {},
         }
-    if not song.get("artist_inferred"):
+    if not song.get("artist_inferred") and not song.get("artist_hint"):
         return {
             "applied": False,
             "reason": "artist_not_inferred",
             "context": {},
         }
     inferred_source = str(song.get("inferred_artist_source") or "").strip()
-    if inferred_source and inferred_source in {"description_hashtag", "title_description", "single_artist_context"}:
-        return {
-            "applied": False,
-            "reason": f"weak_inferred_artist_source:{inferred_source or 'unknown'}",
-            "context": {},
-        }
     inference_confidence = str(song.get("artist_inference_confidence") or "").strip().lower()
     if inference_confidence != "high":
         return {
@@ -526,6 +520,8 @@ def analyze_spotify_candidates(
             "acr_evidence": song.get("acr_evidence", {}),
             "music_section_title_hint": song.get("music_section_title_hint", ""),
             "music_section_artist_hint": song.get("music_section_artist_hint", ""),
+            "artist_hint": song.get("artist_hint", ""),
+            "artist_hint_source": song.get("artist_hint_source", ""),
             **song_single_artist_context,
         }
         cache_key = build_match_cache_key(
@@ -760,6 +756,10 @@ def create_playlist_from_songs(
             'evidence_type': song.get('evidence_type', ''),
             'ocr_evidence': song.get('ocr_evidence', {}),
             'acr_evidence': song.get('acr_evidence', {}),
+            'music_section_title_hint': song.get('music_section_title_hint', ''),
+            'music_section_artist_hint': song.get('music_section_artist_hint', ''),
+            'artist_hint': song.get('artist_hint', ''),
+            'artist_hint_source': song.get('artist_hint_source', ''),
             **song_single_artist_context,
         }
         cache_key = build_match_cache_key(
