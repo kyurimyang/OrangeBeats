@@ -2,6 +2,7 @@ import time
 import math
 import json
 import re
+import traceback
 from pathlib import Path
 from typing import Annotated, Any, Dict, List
 
@@ -693,7 +694,12 @@ def analyze_youtube_for_playlist(
     print("[playlist/analyze-youtube] analysis start mode =", mode)
     access_token = _require_spotify_access_token(request, session_service)
     analysis_started_at = time.perf_counter()
-    youtube_result = run_youtube_pipeline(youtube_url, mode=mode)
+    try:
+        youtube_result = run_youtube_pipeline(youtube_url, mode=mode)
+    except Exception as exc:
+        print("[playlist/analyze-youtube] pipeline error:", type(exc).__name__, str(exc))
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"분석 파이프라인 오류: {type(exc).__name__}: {str(exc)}") from exc
     analysis_elapsed_ms = int((time.perf_counter() - analysis_started_at) * 1000)
     songs = _fuzzy_dedup_songs(_dedupe_pipeline_songs(youtube_result.get("songs", [])))
     for song in songs:
@@ -797,6 +803,10 @@ def analyze_youtube_for_playlist(
         safe_payload = _json_safe(response_payload)
         print("[playlist/analyze-youtube] after json_safe (spotify error)")
         return safe_payload
+    except Exception as exc:
+        print("[playlist/analyze-youtube] unexpected error:", type(exc).__name__, str(exc))
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"{type(exc).__name__}: {str(exc)}") from exc
 
     total_elapsed_ms = int((time.perf_counter() - total_started_at) * 1000)
     response_payload = _build_analysis_response(
