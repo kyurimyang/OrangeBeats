@@ -5036,13 +5036,10 @@ a.figma-spotify-connect {
     flex: 1 1 100%;
     order: 3;
     justify-content: center;
-    align-items: center;
     flex-wrap: wrap;
     gap: clamp(12px, 3.5vw, 24px);
     padding: 4px 0 0;
     margin-left: 0;
-    margin-right: 0;
-    width: 100%;
   }
 
   /* ── /result — 곡 목록 ── */
