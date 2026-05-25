@@ -1,0 +1,368 @@
+/**
+ * 반응형 오버라이드 (Figma 고정 레이아웃 보완)
+ * 1단계: 960~1280px (분할·태블릿 가로)
+ * 2단계: 768px 이하 보강
+ * 3단계: 결과·분석 페이지 scale/zoom
+ */
+
+/* ── 1단계: ≤1280px — 홈 히어로 flex, absolute 해제 ── */
+@media (max-width: 1280px) {
+  .home-shell {
+    padding-left: clamp(16px, 3vw, 40px);
+    padding-right: clamp(16px, 3vw, 40px);
+  }
+
+  .home-hero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    min-height: 0;
+    padding: clamp(16px, 3vw, 32px) 0 clamp(24px, 4vw, 40px);
+    gap: clamp(20px, 4vw, 36px);
+  }
+
+  .home-hero__copy {
+    position: relative;
+    top: auto;
+    left: auto;
+    order: 1;
+    width: 100%;
+    gap: clamp(20px, 4vw, 40px);
+    padding-top: 0;
+  }
+
+  .home-hero__cta {
+    order: 2;
+    position: relative;
+    z-index: 1;
+  }
+
+  .home-hero__spacer {
+    display: none;
+  }
+
+  .home-hero__title {
+    font-size: clamp(40px, 7.5vw, 80px);
+    line-height: 1.05;
+    white-space: normal;
+  }
+
+  .home-hero__subtitle {
+    white-space: normal;
+  }
+
+  .home-hero__subtitle-wrap {
+    width: 100%;
+  }
+
+  .home-howto-shot,
+  .home-howto-shot--step1,
+  .home-howto-shot--title,
+  .home-howto-shot--tracklist,
+  .home-howto-shot--ocr-acr,
+  .home-howto-shot--candidates,
+  .home-howto-shot--ratings {
+    width: min(100%, var(--home-howto-w, 1024px));
+    height: auto;
+  }
+}
+
+/* (헤더 1행 규칙은 파일 맨 아래 641px+ 블록 — site.css 768px 2행보다 나중에 적용) */
+
+@media (max-width: 1100px) {
+  .result-analysis-page__intro {
+    white-space: normal;
+    width: 100%;
+    max-width: min(720px, calc(100vw - 32px));
+  }
+
+  .result-analysis-page__intro-line {
+    white-space: normal;
+  }
+}
+
+
+/* ── 3단계: 결과·분석 — 중간 뷰포트 scale/zoom ── */
+@media (max-width: 1280px) {
+  .result-list-page,
+  .playlist-created-page {
+    --result-scale: 0.82;
+  }
+
+}
+
+@media (max-width: 1100px) {
+  .result-list-page,
+  .playlist-created-page {
+    --result-scale: 0.85;
+  }
+
+  .playlist-url-page .figma-url-input,
+  .playlist-url-page .figma-url-input__shell,
+  .playlist-url-page .figma-url-input__field {
+    width: 100%;
+    max-width: min(900px, calc(100vw - 32px));
+  }
+}
+
+/* OCR/ACR 카드 — 분할·좁은 화면에서도 2열 나란히 */
+@media (max-width: 1280px) {
+  .result-analysis-page__cards {
+    flex-wrap: nowrap;
+    justify-content: center;
+    gap: clamp(12px, 2.5vw, 40px);
+    max-width: 100%;
+  }
+
+  .result-analysis-card {
+    flex: 1 1 0;
+    min-width: 0;
+    width: auto;
+    max-width: none;
+    min-height: 0;
+  }
+}
+
+/* site.css 1024px 블록(0.88) · 768px(1)과 연속 */
+
+/* ── 2단계: ≤768px 보강 (기존 MQ 보완) ── */
+@media (max-width: 768px) {
+  .home-hero__cta {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+  }
+
+  .home-hero__cta .figma-spotify-connect {
+    max-width: 100%;
+  }
+
+  .home-hero__title-wrap {
+    max-width: 100%;
+  }
+
+  .playlist-url-page__main {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .result-analysis-page__main {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .result-analysis-page__cards {
+    width: 100%;
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .site-header__spotify-trigger-label {
+    max-width: 42vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+/*
+ * 분할 화면(~640–900px)은 뷰포트가 768 이하라 site.css 모바일 헤더(2행)가 걸림.
+ * 641px 이상에서는 전체 화면과 동일한 1행·로고 233px 유지 (파일 맨 마지막 = 우선).
+ */
+@media (min-width: 641px) {
+  .site-header {
+    height: 68px;
+  }
+
+  .site-header__inner {
+    display: flex;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    justify-content: space-between;
+    height: 100% !important;
+    min-height: 68px !important;
+    padding: 0 clamp(16px, 3vw, 48px) !important;
+    gap: 8px 12px;
+  }
+
+  .site-header__start {
+    display: flex;
+    flex: 0 1 auto;
+    flex-wrap: nowrap !important;
+    align-items: center;
+    gap: clamp(10px, 2vw, 28px);
+    min-width: 0;
+  }
+
+  .site-header__logo {
+    flex-shrink: 0;
+    width: 233px !important;
+    height: 42px !important;
+    max-width: none;
+    aspect-ratio: auto;
+    overflow: hidden;
+  }
+
+  .site-header__logo img {
+    position: absolute !important;
+    width: 124.61% !important;
+    height: 327.62% !important;
+    left: -13.94% !important;
+    top: -111.43% !important;
+    object-fit: unset;
+  }
+
+  .site-header__spotify,
+  .site-header__spotify-connect,
+  .site-header__spotify-trigger {
+    flex-shrink: 0;
+  }
+
+  .site-header__nav {
+    display: flex;
+    flex: 0 0 auto !important;
+    flex-wrap: nowrap !important;
+    order: unset !important;
+    width: auto !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    margin-left: auto !important;
+    padding: 0 !important;
+    gap: clamp(12px, 2.2vw, 36px) !important;
+  }
+
+  /* /create — 641px+ 분할·태블릿: Figma 가로 URL 입력 유지 */
+  .playlist-url-page .figma-url-input__field {
+    position: relative;
+    flex-wrap: nowrap !important;
+    align-items: center;
+    height: 90px !important;
+    min-height: 90px;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  .playlist-url-page .figma-url-input__native {
+    position: absolute !important;
+    top: 0;
+    bottom: 0;
+    left: clamp(28px, 4vw, 42px);
+    right: calc(var(--url-input-btn-right, 20.3px) + var(--url-input-btn-width, 177.7px) + 12px);
+    width: auto !important;
+    height: 100% !important;
+    min-height: 0;
+    flex: none !important;
+    margin: 0;
+    padding: 0;
+    font-size: clamp(16px, 2vw, 20px);
+  }
+
+  .playlist-url-page .figma-url-input__action {
+    position: absolute !important;
+    top: 20px;
+    right: var(--url-input-btn-right, 20.3px);
+    margin-left: 0;
+    flex-shrink: 0;
+  }
+
+  .playlist-url-page .figma-url-input--default {
+    height: 128px;
+  }
+
+  .playlist-url-page .figma-url-input--error {
+    height: 190px;
+  }
+}
+
+/* 641~720px: nav 간격만 더 줄임 (한 줄 유지) */
+@media (min-width: 641px) and (max-width: 720px) {
+  .site-header__inner {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+    gap: 6px 8px;
+  }
+
+  .site-header__start {
+    gap: 8px 12px;
+  }
+
+  .site-header__nav {
+    gap: 10px 14px !important;
+  }
+
+  .site-header__spotify-trigger-label,
+  .site-header__spotify-connect-label {
+    font-size: 14px;
+  }
+}
+
+/* Help / FAQ / Contact — 좁은 화면에서 본문 가운데 (Figma 좌측 여백 212px 해제) */
+@media (max-width: 1100px) {
+  .help-page__main,
+  .faq-page__main,
+  .contact-page__main {
+    padding-left: clamp(16px, 4vw, 48px);
+    padding-right: clamp(16px, 4vw, 48px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .help-page__title,
+  .faq-page__title,
+  .contact-page__title {
+    text-align: center;
+  }
+
+  .contact-page__intro,
+  .help-page__sections,
+  .faq-page__list,
+  .contact-page__section,
+  .contact-page__form,
+  .contact-page__footer {
+    width: 100%;
+    max-width: min(1009px, 100%);
+    margin-left: auto;
+    margin-right: auto;
+    box-sizing: border-box;
+  }
+
+  .help-page__section,
+  .faq-page__item {
+    width: 100%;
+  }
+
+  .faq-page__question,
+  .faq-page__answer {
+    gap: clamp(16px, 4vw, 32px);
+  }
+
+  .faq-page__question-text,
+  .faq-page__answer-body {
+    text-align: left;
+    width: 100%;
+  }
+}
+
+/* 진짜 모바일(≤640px)만 2행 — 로고는 과도 축소 방지 */
+@media (max-width: 640px) {
+  .site-header__logo {
+    width: min(200px, 58vw) !important;
+    height: auto;
+    aspect-ratio: 233 / 42;
+  }
+
+  .site-header__logo img {
+    position: static !important;
+    width: 100% !important;
+    height: 100% !important;
+    left: auto !important;
+    top: auto !important;
+    object-fit: contain;
+  }
+}
