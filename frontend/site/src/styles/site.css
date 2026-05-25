@@ -2080,7 +2080,7 @@ a.figma-spotify-connect {
 /* Secondary — 원하는 노래가 없어요 (Figma figma-rematch--pressed) */
 .result-list-page__actions button.figma-rematch.figma-rematch--pressed {
   width: auto;
-  max-width: 100%;
+  max-width: min(calc(440px * var(--result-scale, 1)), calc(100vw - 32px));
   border: 0;
   background: rgba(217, 217, 217, 0.6);
   box-shadow: none;
@@ -3318,7 +3318,7 @@ a.figma-spotify-connect {
 
 .result-analysis-page__cards {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: center;
   align-items: stretch;
   gap: 65px;
@@ -3582,15 +3582,24 @@ a.figma-spotify-connect {
   }
 
   .result-analysis-page__cards {
-    gap: 32px;
+    flex-wrap: nowrap;
+    gap: clamp(12px, 2.5vw, 32px);
     margin-top: 0;
   }
 
   .result-analysis-card {
-    width: 100%;
+    flex: 1 1 0;
+    min-width: 0;
+    width: auto;
+    max-width: none;
     min-height: 0;
-    padding: 48px 20px 28px;
-    gap: 40px;
+    padding: clamp(28px, 5vw, 48px) clamp(12px, 2.5vw, 20px) clamp(20px, 4vw, 28px);
+    gap: clamp(24px, 4vw, 40px);
+  }
+
+  .result-analysis-card__title-pill {
+    width: 100%;
+    max-width: 464px;
   }
 
   .result-analysis-card__title-pill {
@@ -3729,15 +3738,22 @@ a.figma-spotify-connect {
 
   .result-list-page__actions {
     flex-direction: column;
+    align-items: stretch;
+    align-self: center;
+    width: fit-content;
+    max-width: calc(100vw - 32px);
+    margin-inline: auto;
     gap: 14px;
   }
 
   .result-list-page__actions .figma-playlist-create,
-  .result-list-page__actions .figma-rematch {
+  .result-list-page__actions .figma-rematch,
+  .result-list-page__actions button.figma-rematch.figma-rematch--pressed {
     width: 100%;
     max-width: 100%;
     padding: clamp(12px, 3.5vw, 22px) clamp(16px, 5vw, 49px);
     gap: 8px;
+    box-sizing: border-box;
   }
 
   .result-list-page__actions .figma-playlist-create__label,
@@ -3759,11 +3775,6 @@ a.figma-spotify-connect {
     left: 28px;
     right: 160px;
     font-size: 16px;
-  }
-
-  .playlist-url-page .figma-playlist-create {
-    transform: scale(0.88);
-    transform-origin: right center;
   }
 }
 
@@ -5031,84 +5042,6 @@ a.figma-spotify-connect {
     margin-left: 0;
   }
 
-  /* ── /create — URL 입력 ── */
-  .playlist-url-page__main {
-    padding: 20px 16px 56px;
-    justify-content: flex-start;
-    padding-top: clamp(32px, 8vh, 64px);
-  }
-
-  .playlist-url-page__heading {
-    margin-bottom: 28px;
-    font-size: clamp(20px, 5.2vw, 26px);
-    padding: 0 4px;
-  }
-
-  .playlist-url-page .figma-url-input,
-  .figma-url-input {
-    width: 100%;
-    max-width: 100%;
-  }
-
-  .figma-url-input__shell {
-    width: 100%;
-  }
-
-  .figma-url-input__field {
-    width: 100%;
-    max-width: 100%;
-    height: auto;
-    min-height: 52px;
-    flex-wrap: wrap;
-    align-items: center;
-    padding: 10px 12px 10px 16px;
-    box-sizing: border-box;
-  }
-
-  .figma-url-input__native {
-    position: static;
-    flex: 1 1 auto;
-    min-width: 0;
-    width: 100%;
-    height: auto;
-    min-height: 36px;
-    left: auto;
-    right: auto;
-    padding: 4px 0;
-    font-size: clamp(15px, 4vw, 18px);
-  }
-
-  .figma-url-input__action {
-    position: static;
-    flex-shrink: 0;
-    margin-top: 0;
-    margin-left: auto;
-  }
-
-  .figma-url-input--default,
-  .figma-url-input--error {
-    height: auto;
-  }
-
-  .figma-url-input__glow {
-    display: none;
-  }
-
-  .figma-url-input__error {
-    font-size: clamp(14px, 3.8vw, 18px);
-    line-height: 1.4;
-    margin-top: 10px;
-  }
-
-  .playlist-url-page__radios {
-    gap: 16px 28px;
-    margin-top: 24px;
-  }
-
-  .playlist-url-page__title-field {
-    max-width: 100%;
-  }
-
   /* ── /result — 곡 목록 ── */
   .result-list-page {
     --result-scale: 1;
@@ -5129,15 +5062,20 @@ a.figma-spotify-connect {
   .result-list-page__actions {
     flex-direction: column;
     align-items: stretch;
+    align-self: center;
+    width: fit-content;
+    max-width: calc(100vw - 32px);
+    margin-inline: auto;
     gap: 12px;
-    max-width: 100%;
   }
 
   .result-list-page__actions .figma-playlist-create,
-  .result-list-page__actions .figma-rematch {
+  .result-list-page__actions .figma-rematch,
+  .result-list-page__actions button.figma-rematch.figma-rematch--pressed {
     width: 100%;
     max-width: 100%;
     justify-content: center;
+    box-sizing: border-box;
   }
 
   .result-list-page__actions .figma-playlist-create__label,
@@ -5338,6 +5276,86 @@ a.figma-spotify-connect {
 
   .admin-qa-item__meta {
     flex-wrap: wrap;
+  }
+}
+
+/* /create URL — 모바일 레이아웃은 640px 이하만 (641~ 분할 화면은 데스크톱 가로 입력 유지) */
+@media (max-width: 640px) {
+  .playlist-url-page__main {
+    padding: 20px 16px 56px;
+    justify-content: flex-start;
+    padding-top: clamp(32px, 8vh, 64px);
+  }
+
+  .playlist-url-page__heading {
+    margin-bottom: 28px;
+    font-size: clamp(20px, 5.2vw, 26px);
+    padding: 0 4px;
+  }
+
+  .playlist-url-page .figma-url-input,
+  .figma-url-input {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .figma-url-input__shell {
+    width: 100%;
+  }
+
+  .figma-url-input__field {
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    min-height: 52px;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 10px 12px 10px 16px;
+    box-sizing: border-box;
+  }
+
+  .figma-url-input__native {
+    position: static;
+    flex: 1 1 auto;
+    min-width: 0;
+    width: 100%;
+    height: auto;
+    min-height: 36px;
+    left: auto;
+    right: auto;
+    padding: 4px 0;
+    font-size: clamp(15px, 4vw, 18px);
+  }
+
+  .figma-url-input__action {
+    position: static;
+    flex-shrink: 0;
+    margin-top: 0;
+    margin-left: auto;
+  }
+
+  .figma-url-input--default,
+  .figma-url-input--error {
+    height: auto;
+  }
+
+  .figma-url-input__glow {
+    display: none;
+  }
+
+  .figma-url-input__error {
+    font-size: clamp(14px, 3.8vw, 18px);
+    line-height: 1.4;
+    margin-top: 10px;
+  }
+
+  .playlist-url-page__radios {
+    gap: 16px 28px;
+    margin-top: 24px;
+  }
+
+  .playlist-url-page__title-field {
+    max-width: 100%;
   }
 }
 
