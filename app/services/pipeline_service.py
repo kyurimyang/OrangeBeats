@@ -1,13 +1,14 @@
+import difflib
 import re
 import unicodedata
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 
 from app.clients.youtube_client import collect_text_sources, get_video_music_section
 from app.acr.acr_pipeline import extract_songs_with_acr
 from app.services.analysis_flow import merge_song_sources
 from app.services.fallback_extraction import extract_songs_with_ocr
 from app.services.text_analysis import analyze_comments_prioritized, analyze_description
-from app.parsers.song_parser import is_known_artist
 
 _AI_PLAYLIST_KEYWORDS = [
     # 한국어
@@ -95,13 +96,6 @@ _ARTIST_CONTEXT_STOPWORDS = {
     "\uD50C\uB808\uC774\uB9AC\uC2A4\uD2B8",
     "\uC804\uACE1",
     "\uC74C\uC545",
-    # \uD55C\uAD6D\uC5B4 \uC7A5\uB974\u00B7\uBAA8\uC74C \uBCF5\uD569 \uD45C\uD604 \u2014 \uC544\uD2F0\uC2A4\uD2B8\uBA85\uC774 \uC544\uB2D8
-    "\uB178\uB798\uBAA8\uC74C",
-    "\uCF00\uC774\uD31D",
-    "\uD31D\uC1A1",
-    "\uBAA8\uC74C\uACE1",
-    "\uCD94\uCC9C\uACE1",
-    "\uC778\uAE30\uACE1",
 }
 
 
@@ -128,17 +122,12 @@ def _is_plausible_artist_context(value: str) -> bool:
     return bool(re.search(r"[A-Za-z0-9\uAC00-\uD7A3]", normalized))
 
 
-_HASHTAG_GENRE_SUFFIX = re.compile(r"(\uD50C\uB9AC|\uB144\uC0DD|\uC138\uB300|\uD799\uD569|\uC7A5\uB974|\uBBA4\uC9C1)$")
-
-
 def _extract_hashtag_artists(description: str) -> list[str]:
     """\uC124\uBA85\uB780 \uD574\uC2DC\uD0DC\uADF8\uC5D0\uC11C \uC544\uD2F0\uC2A4\uD2B8 \uD6C4\uBCF4 \uCD94\uCD9C. stopword\u00B7\uBB38\uC7A5\uD615 \uD544\uD130 \uC801\uC6A9."""
     candidates = []
     for match in _HASHTAG_PATTERN.finditer(description or ""):
         tag = match.group(1).replace("_", " ").strip()
         if tag.lower() in _HASHTAG_STOPWORDS:
-            continue
-        if _HASHTAG_GENRE_SUFFIX.search(tag):
             continue
         if _is_plausible_artist_context(tag):
             candidates.append(tag)
@@ -151,53 +140,30 @@ def _normalize_unicode_text(text: str) -> str:
     return re.sub(r"\s+", " ", normalized).strip()
 
 
-def _find_known_artist_in_candidates(candidates: list[str]) -> str:
-    """후보 목록에서 알려진 아티스트를 우선 반환. 없으면 빈 문자열."""
-    for candidate in candidates:
-        if is_known_artist(candidate):
-            return candidate
-    return ""
-
-
-def _trim_to_known_artist_suffix(text: str) -> str:
-    """'이 계절엔 샤이니' → '샤이니' 처럼, 알려진 아티스트가 뒤에 있으면 그 부분만 반환."""
-    words = text.split()
-    for start in range(1, len(words)):
-        suffix = " ".join(words[start:])
-        if is_known_artist(suffix):
-            return suffix
-    return text
-
-
 def _detect_single_artist_from_text(title: str, description: str) -> dict:
     # 설명란 해시태그가 있으면 title-pattern보다 우선 사용
     hashtag_candidates = _extract_hashtag_artists(description)
     if hashtag_candidates:
-        # 알려진 아티스트(known group·alias) 태그만 신뢰 — 장르·플레이리스트 태그 오감지 방지
-        known = _find_known_artist_in_candidates(hashtag_candidates)
-        if known:
-            return {"is_single_artist": True, "inferred_artist": known, "source": "description_hashtag"}
-        # 알려진 아티스트 없으면 해시태그로 단일 아티스트 추론하지 않음
+        counter = Counter(c.lower() for c in hashtag_candidates)
+        winner_key, _ = counter.most_common(1)[0]
+        inferred_artist = next(c for c in hashtag_candidates if c.lower() == winner_key)
+        return {"is_single_artist": True, "inferred_artist": inferred_artist, "source": "description_hashtag"}
 
     candidates = []
     for text in [_normalize_unicode_text(title), _normalize_unicode_text(description)]:
         for pattern in _SINGLE_ARTIST_PATTERNS:
             for match in pattern.finditer(text):
                 artist = _clean_artist_context(match.group("artist"))
-                # "이 계절엔 샤이니" 같이 앞에 맥락 단어가 붙은 경우 알려진 아티스트 suffix 추출
-                artist = _trim_to_known_artist_suffix(artist)
                 if _is_plausible_artist_context(artist):
                     candidates.append(artist)
 
     if not candidates:
         return {"is_single_artist": False, "inferred_artist": "", "source": ""}
 
-    # 알려진 아티스트가 후보에 있으면 반환 — 패턴 매칭은 known artist만 신뢰 (오감지 방지)
-    known = _find_known_artist_in_candidates(candidates)
-    if known:
-        return {"is_single_artist": True, "inferred_artist": known, "source": "title_description"}
-
-    return {"is_single_artist": False, "inferred_artist": "", "source": ""}
+    counter = Counter(candidate.lower() for candidate in candidates)
+    winner_key, _ = counter.most_common(1)[0]
+    inferred_artist = next(candidate for candidate in candidates if candidate.lower() == winner_key)
+    return {"is_single_artist": True, "inferred_artist": inferred_artist, "source": "title_description"}
 
 
 def _detect_single_artist_from_songs(songs: list[dict]) -> dict:
@@ -240,29 +206,13 @@ def _apply_single_artist_context(result: dict, detection: dict) -> dict:
         title = (item.get("title") or "").strip()
         artist_missing = not artist and title
         artist_same_as_title = bool(artist and title and artist.lower() == title.lower())
-        # 파서가 버전/앨범 주석을 아티스트로 잘못 분류한 경우 교정
-        # (예: "So Amazing - Special Track" → artist="Special Track" → inferred_artist로 교체)
-        # 단, "기리보이 & 키드밀리 & NO:EL & 스윙스" 같은 멀티 아티스트 문자열은 교체하지 않음
-        _artist_looks_multi = bool(re.search(r"[&,]|\bfeat\b|\bft\b", artist, re.IGNORECASE))
-        artist_is_spurious = bool(
-            artist
-            and inferred_artist
-            and not item.get("artist_inferred", False)
-            and artist.lower() != inferred_artist.lower()
-            and not is_known_artist(artist)
-            and not _artist_looks_multi
-            and not _has_strong_text_evidence(item)
-        )
-        if artist_missing or artist_same_as_title or artist_is_spurious:
+        if artist_missing or artist_same_as_title:
             item["artist"] = inferred_artist
             item["artist_exists"] = True
             item["is_complete"] = True
             item["completeness_score"] = max(float(item.get("completeness_score") or 0.0), 1.0)
             item["artist_inferred"] = True
             item["inferred_artist_source"] = (detection or {}).get("source") or "single_artist_context"
-            item["artist_inference_confidence"] = (
-                "high" if (detection or {}).get("source") == "extracted_songs" else "low"
-            )
             changed = True
         updated_songs.append(item)
 
@@ -436,28 +386,24 @@ def _normalize_title_for_match(title: str) -> str:
 
 
 def _extract_base_title(title: str) -> str:
-    """괄호 내 부가 정보(Prod., Feat., 원제 등)를 제거한 기본 제목."""
     t = re.sub(r"\s*\([^)]*\)", "", title or "").strip()
     return _normalize_title_for_match(t)
 
 
 def _titles_match(text_title: str, section_title: str) -> bool:
-    """정규화된 제목 매칭. 음악 섹션이 '곡명 (Sung by ...)' 형태일 때도 허용."""
     t = _normalize_title_for_match(text_title)
     s = _normalize_title_for_match(section_title)
     if t == s or s.startswith(t + " ") or t.startswith(s + " ") or t.endswith(" " + s) or s.endswith(" " + t):
         return True
-    # 괄호 부가 정보 제거 후 기본 제목만 비교 (예: "flex (Prod. by 기리보이)" ↔ "flex (Prod. By GIRIBOY(기리보이))")
     bt = _extract_base_title(text_title)
     bs = _extract_base_title(section_title)
     if bt and bs and len(bt) >= 2 and (bt == bs or bs.startswith(bt + " ") or bt.startswith(bs + " ")):
         return True
-    # 한국어↔영어 혼용 제목 처리 (예: "비워 (Prod...)" ↔ "Beer(비워) (Prod...)")
-    # 한쪽 base 제목이 상대방 full normalized 제목 내에 포함되는 경우
     has_korean_base = bool(re.search(r"[\uAC00-\uD7A3]", bt + bs))
     if has_korean_base and bt and bs and len(bt) >= 2 and len(bs) >= 2 and (bt in s or bs in t):
         return True
     return False
+
 
 
 def _has_strong_text_evidence(song: dict) -> bool:
@@ -512,8 +458,41 @@ def _should_apply_positional_music_section(
     return matched_count > 0
 
 
+def _find_best_music_section_match(
+    title: str, music_section: list[dict], matched_indices: set[int]
+) -> tuple[int | None, dict | None]:
+    normalized = _normalize_title_for_match(title)
+    if not normalized:
+        return None, None
+
+    best_score = 0.0
+    best_idx: int | None = None
+    best_entry: dict | None = None
+
+    for i, ms in enumerate(music_section):
+        if i in matched_indices:
+            continue
+        candidate = _normalize_title_for_match(ms.get("title", ""))
+        if not candidate:
+            continue
+
+        if _titles_match(title, ms.get("title", "")):
+            return i, ms
+
+        if len(normalized) >= 4 and len(candidate) >= 4:
+            score = difflib.SequenceMatcher(None, normalized, candidate).ratio()
+            if score > best_score:
+                best_score = score
+                best_idx = i
+                best_entry = ms
+
+    if best_score >= 0.82 and best_idx is not None:
+        return best_idx, best_entry
+    return None, None
+
+
 def _enrich_songs_with_music_section(
-    songs: list[dict], video_id: str
+    songs: list[dict], music_section: list[dict]
 ) -> tuple[list[dict], list[dict]]:
     """텍스트 추출 곡과 YouTube 음악 섹션을 교차 검증.
 
@@ -521,7 +500,9 @@ def _enrich_songs_with_music_section(
         enriched: 신뢰도·아티스트가 보강된 원본 곡 목록
         extras:   음악 섹션에만 있는 곡 (미확인 후보)
     """
-    music_section = get_video_music_section(video_id)
+    if isinstance(music_section, str):
+        music_section = get_video_music_section(music_section)
+
     if not music_section:
         return songs, []
 
@@ -529,9 +510,8 @@ def _enrich_songs_with_music_section(
     enriched: list[dict] = []
 
     for song in songs:
-        match_idx, match = next(
-            ((i, ms) for i, ms in enumerate(music_section) if _titles_match(song.get("title", ""), ms["title"])),
-            (None, None),
+        match_idx, match = _find_best_music_section_match(
+            song.get("title", ""), music_section, matched_section_idx
         )
 
         song = dict(song)
@@ -560,8 +540,6 @@ def _enrich_songs_with_music_section(
 
         enriched.append(song)
 
-    # 포지션 기반 보강: 제목 매칭 실패한 곡 ↔ 미매칭 음악 섹션 항목을 순서로 연결
-    # "메아리"(챕터 0번) ↔ "Love Me Now - NCT 127"(음악 섹션 0번) 케이스 처리
     unmatched_section = [
         (i, ms) for i, ms in enumerate(music_section) if i not in matched_section_idx
     ]
@@ -594,8 +572,8 @@ def _enrich_songs_with_music_section(
                 "source": "youtube_music_section",
                 "match_type": "order_only",
             }
-            song["music_section_title_hint"] = sec["title"]
-            song["music_section_artist_hint"] = sec["artist"]
+            song["music_section_title_hint"] = sec.get("title", "")
+            song["music_section_artist_hint"] = sec.get("artist", "")
             song["confidence"] = "low" if song.get("artist_inferred") else _confidence_for_unmatched_music_section(song)
             song["review_reason"] = "music_section_order_only_hint"
             enriched[song_idx] = song
@@ -805,8 +783,13 @@ def run_youtube_text_pipeline(url: str) -> dict:
             **_single_artist_payload(title_artist_detection),
         }
 
-    # Phase 1: 설명란 파싱
-    description_result = analyze_description(description_text, inferred_artist=title_inferred_artist)
+    # Phase 1: 설명란 파싱 + 음악 섹션 조회 병렬 실행
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        desc_future  = ex.submit(analyze_description, description_text, inferred_artist=title_inferred_artist)
+        music_future = ex.submit(get_video_music_section, source_data["video_id"])
+
+    description_result = desc_future.result()
+    prefetched_music_section = music_future.result() or []
     description_ok = bool(description_result.get("success"))
 
     # Phase 2: 설명란이 충분하면 댓글 스킵, 부족하면 댓글 파싱
@@ -868,7 +851,7 @@ def run_youtube_text_pipeline(url: str) -> dict:
 
         # Phase 4: 음악 섹션으로 보강 (enrichment only — music_extras는 songs에 합산하지 않음)
         enriched_songs, music_extras = _enrich_songs_with_music_section(
-            primary_result["songs"], source_data["video_id"]
+            primary_result["songs"], prefetched_music_section
         )
         primary_result["songs"] = enriched_songs
 
@@ -932,7 +915,7 @@ def run_youtube_text_pipeline(url: str) -> dict:
         }
 
     # 텍스트에서 곡을 못 찾으면 YouTube 음악 섹션(Content ID)으로 폴백
-    music_section = get_video_music_section(source_data["video_id"])
+    music_section = prefetched_music_section
     if music_section:
         section_songs = _music_section_to_songs(music_section)
         if section_songs:

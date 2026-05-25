@@ -28,16 +28,6 @@ _MATCH_CACHE: OrderedDict[Tuple[str, str], Optional[Dict[str, Any]]] = OrderedDi
 _MATCH_DEBUG: OrderedDict[Tuple[str, str], Dict[str, Any]] = OrderedDict()
 
 
-def _cache_put(key: Tuple[str, str], value: Optional[Dict[str, Any]]) -> None:
-    if key in _MATCH_CACHE:
-        _MATCH_CACHE.move_to_end(key)
-    _MATCH_CACHE[key] = value
-    if len(_MATCH_CACHE) > MAX_CACHE_SIZE:
-        evicted = next(iter(_MATCH_CACHE))
-        _MATCH_CACHE.pop(evicted)
-        _MATCH_DEBUG.pop(evicted, None)
-
-
 EARLY_RETURN_SCORE = 0.85
 DIRECT_ACCEPT_SCORE = 0.80
 MIN_ACCEPT_SCORE = 0.80
@@ -608,9 +598,13 @@ def _is_short_title_false_positive(input_title: str, candidate_title: str, title
     candidate_tokens = normalize_title(candidate_title).split()
     if not input_tokens or len(input_tokens) > 2:
         return False
-    # 후보가 입력보다 훨씬 길 때(+3토큰)만 false positive 판정.
-    # 동일 길이의 완벽 매칭("봄" vs "봄")이 과도하게 페널티를 받는 문제 수정.
+    collision_risk = _title_collision_risk(input_title)
     much_longer = len(candidate_tokens) >= len(input_tokens) + 3
+    if collision_risk == "high":
+        # 1토큰 단일 단어: 충돌 위험 높음. 임계값 0.80으로 소폭 강화
+        return title_score >= 0.80
+    # 2토큰 medium risk: 후보가 훨씬 길 때(+3 토큰 이상)만 적용.
+    # "봄 하루", "밤 바다" 같은 정상 2단어 제목이 과도하게 페널티를 받던 문제 수정.
     return title_score >= 0.80 and much_longer
 
 
@@ -667,19 +661,7 @@ def classify_candidate_patterns(
         or bool(detail.get("artist_alias_matched"))
         or bool(detail.get("romanization_matched"))
     )
-    # 1글자 한국어 제목 + artist mismatch: 아티스트가 alias로 확인됐어도 강제 적용.
-    # "봐" → "봄인가 봐" substring 0.95 같은 케이스를 alias 우회 없이 차단.
-    _is_single_cjk_title = bool(
-        re.fullmatch(r"[가-힣一-鿿]", normalize_title(input_title).replace(" ", ""))
-        and len(normalize_title(input_title).split()) == 1
-    )
-    _force_short_fp = (
-        _is_single_cjk_title
-        and artist_variant_score < MIN_ARTIST_SCORE
-        and not bool(detail.get("artist_alias_matched"))
-        and _is_short_title_false_positive(input_title, candidate_title, title_variant_score)
-    )
-    if (not _artist_confirmed or _force_short_fp) and _is_short_title_false_positive(input_title, candidate_title, title_variant_score):
+    if not _artist_confirmed and _is_short_title_false_positive(input_title, candidate_title, title_variant_score):
         tags.append("short_title_false_positive_pattern")
 
     if title_variant_score < 0.40 and (not input_artist or artist_variant_score < 0.40):
@@ -1219,22 +1201,12 @@ def _collect_candidate_evidence(candidate: Dict[str, Any]) -> Dict[str, Any]:
         and bool(candidate_artists)
         and korean_to_english_metadata
         and album_image_exists
-        and not _has_korean(candidate_title)
     )
-    # official_metadata_signal alone must not declare artist "strong" when
-    # artist_similarity is in the partial-match danger zone (e.g. red velvet vs
-    # WENDY/Eric Nam = 0.23 — some string overlap but wrong artist).
-    # However, pure Korean→English notation differences produce similarity == 0.0
-    # (e.g. 뉴진스 vs NewJeans, 잔나비 vs JANNABI) and must still be allowed
-    # through official_metadata so those artists aren't collaterally blocked.
-    # Rule: allow if similarity is effectively 0 (notation gap) or strong (≥ 0.45);
-    # block the suspicious middle range (0.05–0.44) where partial string overlap
-    # suggests a genuinely different artist.
     artist_strong = (
         artist_similarity >= 0.8
         or artist_alias_matched
         or bool(detail.get("romanization_matched"))
-        or (official_metadata_signal and (artist_similarity < 0.05 or artist_similarity >= 0.45))
+        or official_metadata_signal
     )
     return {
         "api_rank": api_rank,
@@ -1275,8 +1247,9 @@ def _classify_evidence_pattern(evidence: Dict[str, Any]) -> Dict[str, Any]:
     query_has_both = bool(evidence["query_contains_title_and_artist"])
     version_candidate = bool(evidence.get("version_candidate"))
     artist_evidence_exists = bool(
-        evidence.get("artist_strong")
+        artist_similarity > 0
         or artist_alias_matched
+        or evidence.get("artist_strong")
     )
 
     if version_candidate:
@@ -1966,6 +1939,18 @@ def _log_match(
     )
 
 
+def _cache_put(key: Tuple[str, str], value: Optional[Dict[str, Any]], debug: Optional[Dict[str, Any]] = None) -> None:
+    _MATCH_CACHE.pop(key, None)
+    _MATCH_CACHE[key] = value
+    if len(_MATCH_CACHE) > MAX_CACHE_SIZE:
+        _MATCH_CACHE.popitem(last=False)
+    if debug is not None:
+        _MATCH_DEBUG.pop(key, None)
+        _MATCH_DEBUG[key] = debug
+        if len(_MATCH_DEBUG) > MAX_CACHE_SIZE:
+            _MATCH_DEBUG.popitem(last=False)
+
+
 def _track_dedupe_key(track: Dict[str, Any]) -> Tuple[Any, ...]:
     return (track.get("id") or track.get("uri") or "",)
 
@@ -2058,10 +2043,9 @@ def _build_case_queries(title: str, artist: str) -> List[Dict[str, str]]:
                 }
             )
 
-    allow_title_only = _title_collision_risk(primary_title) == "low"
     if (
         primary_title
-        and allow_title_only
+        and not primary_artist
         and len(queries) < MAX_QUERY_COUNT
         and all(query["query"] != primary_title for query in queries)
     ):
@@ -2478,16 +2462,12 @@ def _store_match_debug(
     unmatched_reason: str,
     top_candidates: List[Dict[str, Any]],
     case_results: List[Dict[str, Any]],
-    queries: Optional[List[str]] = None,
-    fallback_used: bool = False,
 ) -> None:
     _MATCH_DEBUG[cache_key] = {
         "selected_case": selected_case,
         "search_title": search_title,
         "search_artist": search_artist,
         "unmatched_reason": unmatched_reason,
-        "queries": queries or [],
-        "fallback_used": fallback_used,
         "case_results": [_summarize_case_result(case_result) for case_result in case_results],
         "top_candidates": [
             {
@@ -2846,10 +2826,9 @@ def pick_best_track_match(
         "title_producer_artists": song_meta.get("title_producer_artists", []),
     }
 
-    _CACHE_MISS = object()
-    cached = _MATCH_CACHE.get(cache_key, _CACHE_MISS)
-    if cached is not _CACHE_MISS:
+    if cache_key in _MATCH_CACHE:
         _MATCH_CACHE.move_to_end(cache_key)
+        cached = _MATCH_CACHE[cache_key]
         cached_debug = _MATCH_DEBUG.get(cache_key, {})
         selected = "none"
         candidate_count = 0
@@ -3043,9 +3022,10 @@ def pick_best_track_match(
         unmatched_reason=unmatched_reason,
         top_candidates=selected_case_result.get("scored_candidates", []),
         case_results=case_results,
-        queries=selected_queries,
-        fallback_used=fallback_used,
     )
+
+    _MATCH_DEBUG[cache_key]["queries"] = selected_queries
+    _MATCH_DEBUG[cache_key]["fallback_used"] = fallback_used
 
     _log_match(
         input_title=input_title,

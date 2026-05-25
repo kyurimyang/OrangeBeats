@@ -122,6 +122,47 @@ def _build_song_metrics(songs: list[dict]) -> dict:
     }
 
 
+def _run_llm_parse(text: str, llm_blocks: list[str] | None, stage: str, inferred_artist: str, rule_signals: dict) -> dict:
+    llm_raw = extract_songs_with_llm(llm_blocks if llm_blocks is not None else [text])
+    llm_json = parse_json_from_text(llm_raw)
+    llm_result = normalize_song_candidates(llm_json, inferred_artist=inferred_artist, skip_direction_detection=True)
+    llm_result['songs'] = _annotate_song_evidence(
+        llm_result['songs'], source_text=text, source_name=stage, method='llm', require_raw_line=False,
+    )
+    validity = assess_text_stage_validity(text, llm_result['songs'])
+    return {
+        'stage': stage,
+        'success': validity['success'],
+        'method': 'llm',
+        'signals': rule_signals,
+        'metrics': _build_song_metrics(llm_result['songs']),
+        'failure_reason': '' if validity['success'] else validity['failure_reason'],
+        'is_partial_but_valid': validity['is_partial_but_valid'],
+        'validity_reason': validity['validity_reason'],
+        'songs': llm_result['songs'],
+    }
+
+
+def _run_rule_parse(text: str, stage: str, inferred_artist: str, rule_signals: dict) -> dict:
+    rule_result = parse_unstructured_lines_to_json(text)
+    rule_result = normalize_song_candidates(rule_result, inferred_artist=inferred_artist)
+    rule_result['songs'] = _annotate_song_evidence(
+        rule_result['songs'], source_text=text, source_name=stage, method='rule_based',
+    )
+    validity = assess_text_stage_validity(text, rule_result['songs'])
+    return {
+        'stage': stage,
+        'success': validity['success'],
+        'method': 'rule_based',
+        'signals': rule_signals,
+        'metrics': _build_song_metrics(rule_result['songs']),
+        'failure_reason': '' if validity['success'] else validity['failure_reason'],
+        'is_partial_but_valid': validity['is_partial_but_valid'],
+        'validity_reason': validity['validity_reason'],
+        'songs': rule_result['songs'],
+    }
+
+
 def analyze_text_block(
     text: str,
     *,
@@ -132,60 +173,11 @@ def analyze_text_block(
     text = text or ""
     rule_signals = count_text_signals(text)
 
-    # LLM 우선: artist/title 분리 오탐을 줄이고 edge case 처리
-    llm_raw = extract_songs_with_llm(llm_blocks if llm_blocks is not None else [text])
-    llm_json = parse_json_from_text(llm_raw)
-    llm_result = normalize_song_candidates(llm_json, inferred_artist=inferred_artist)
-    llm_result['songs'] = _annotate_song_evidence(
-        llm_result['songs'],
-        source_text=text,
-        source_name=stage,
-        method='llm',
-        require_raw_line=False,
-    )
-
-    llm_validity = assess_text_stage_validity(text, llm_result['songs'])
-    llm_success = llm_validity["success"]
-    llm_metrics = _build_song_metrics(llm_result['songs'])
-
-    if llm_success:
-        return {
-            'stage': stage,
-            'success': True,
-            'method': 'llm',
-            'signals': rule_signals,
-            'metrics': llm_metrics,
-            'failure_reason': '',
-            'is_partial_but_valid': llm_validity['is_partial_but_valid'],
-            'validity_reason': llm_validity['validity_reason'],
-            'songs': llm_result['songs'],
-        }
-
-    # LLM 실패 시 규칙 기반 fallback (API 장애, 빈 결과 등)
-    rule_based = parse_unstructured_lines_to_json(text)
-    rule_based = normalize_song_candidates(rule_based, inferred_artist=inferred_artist)
-    rule_based['songs'] = _annotate_song_evidence(
-        rule_based['songs'],
-        source_text=text,
-        source_name=stage,
-        method='rule_based',
-    )
-
-    rule_validity = assess_text_stage_validity(text, rule_based['songs'])
-    rule_success = rule_validity["success"]
-    rule_metrics = _build_song_metrics(rule_based['songs'])
-
-    return {
-        'stage': stage,
-        'success': rule_success,
-        'method': 'rule_based',
-        'signals': rule_signals,
-        'metrics': rule_metrics,
-        'failure_reason': '' if rule_success else rule_validity['failure_reason'],
-        'is_partial_but_valid': rule_validity['is_partial_but_valid'],
-        'validity_reason': rule_validity['validity_reason'],
-        'songs': rule_based['songs'],
-    }
+    # 규칙 기반 + direction LLM 우선, 실패 시 LLM full parsing fallback
+    result = _run_rule_parse(text, stage, inferred_artist, rule_signals)
+    if result['success']:
+        return result
+    return _run_llm_parse(text, llm_blocks, stage, inferred_artist, rule_signals)
 
 
 def analyze_description(description: str, inferred_artist: str = "") -> dict:
@@ -272,8 +264,13 @@ def _ordered_comment_sources(comments: list[str | dict]) -> list[tuple[str, list
 def analyze_comments_prioritized(comments: list[str | dict], inferred_artist: str = "") -> dict:
     attempts = []
     for source_priority, blocks in _ordered_comment_sources(comments):
+        combined = '\n'.join(blocks)
+        signals = count_text_signals(combined)
+        if not signals.get('has_tracklist_structure'):
+            continue
+
         result = analyze_text_block(
-            '\n'.join(blocks),
+            combined,
             stage='comments',
             llm_blocks=blocks[:20],
             inferred_artist=inferred_artist,
@@ -284,7 +281,24 @@ def analyze_comments_prioritized(comments: list[str | dict], inferred_artist: st
             result['debug_attempts'] = attempts
             return result
 
-    fallback = attempts[-1] if attempts else analyze_text_block('', stage='comments', llm_blocks=[], inferred_artist=inferred_artist)
+    if not attempts:
+        return {
+            'stage': 'comments',
+            'success': False,
+            'method': 'skipped',
+            'signals': count_text_signals('\n'.join(
+                _comment_text(c) for c in comments if _comment_text(c)
+            )),
+            'metrics': {},
+            'failure_reason': 'noisy_comments',
+            'is_partial_but_valid': False,
+            'validity_reason': '',
+            'songs': [],
+            'source_priority_used': 'expanded_comments' if comments else 'none',
+            'debug_attempts': [],
+        }
+
+    fallback = attempts[-1]
     if not fallback.get('songs') and len(comments) >= 10:
         signals = fallback.get('signals') or {}
         if not signals.get('timestamp_count') and not signals.get('pattern_count'):
