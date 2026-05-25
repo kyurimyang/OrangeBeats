@@ -251,6 +251,7 @@ def _apply_single_artist_context(result: dict, detection: dict) -> dict:
             and artist.lower() != inferred_artist.lower()
             and not is_known_artist(artist)
             and not _artist_looks_multi
+            and not _has_strong_text_evidence(item)
         )
         if artist_missing or artist_same_as_title or artist_is_spurious:
             item["artist"] = inferred_artist
@@ -453,7 +454,8 @@ def _titles_match(text_title: str, section_title: str) -> bool:
         return True
     # 한국어↔영어 혼용 제목 처리 (예: "비워 (Prod...)" ↔ "Beer(비워) (Prod...)")
     # 한쪽 base 제목이 상대방 full normalized 제목 내에 포함되는 경우
-    if bt and bs and len(bt) >= 2 and len(bs) >= 2 and (bt in s or bs in t):
+    has_korean_base = bool(re.search(r"[\uAC00-\uD7A3]", bt + bs))
+    if has_korean_base and bt and bs and len(bt) >= 2 and len(bs) >= 2 and (bt in s or bs in t):
         return True
     return False
 
@@ -478,6 +480,23 @@ def _confidence_for_unmatched_music_section(song: dict) -> str:
     if song.get("artist_inferred") and not _has_strong_text_evidence(song):
         return "low"
     return existing if existing in {"high", "medium", "low"} else "medium"
+
+
+def _is_title_only_timestamp_song(song: dict) -> bool:
+    """True when a timestamp line supplied a title but no reliable artist."""
+    evidence_type = str(song.get("evidence_type") or "").strip().lower()
+    if evidence_type == "title_only_timestamp":
+        return True
+
+    artist = str(song.get("artist") or "").strip()
+    title = str(song.get("title") or "").strip()
+    raw_line = str(song.get("raw_line") or song.get("raw") or "").strip()
+    return bool(
+        artist
+        and title
+        and artist.casefold() == title.casefold()
+        and re.search(r"\b\d{1,2}:\d{2}\b", raw_line)
+    )
 
 
 def _should_apply_positional_music_section(
@@ -520,7 +539,9 @@ def _enrich_songs_with_music_section(
         if match is not None:
             matched_section_idx.add(match_idx)
             # 아티스트 누락/추론 상태면 음악 섹션 값으로 교체
-            if not song.get("artist") or song.get("artist_inferred"):
+            if not song.get("artist") or song.get("artist_inferred") or _is_title_only_timestamp_song(song):
+                if _is_title_only_timestamp_song(song):
+                    song["original_text_artist"] = song.get("artist", "")
                 song["artist"] = match["artist"]
                 song["artist_exists"] = True
                 song["is_complete"] = True
@@ -553,6 +574,18 @@ def _enrich_songs_with_music_section(
                 break
             sec_idx, sec = unmatched_section[rank]
             song = dict(enriched[song_idx])
+            if _is_title_only_timestamp_song(song):
+                song["original_text_title"] = song.get("title", "")
+                song["original_text_artist"] = song.get("artist", "")
+                song["title"] = sec.get("title", "")
+                song["artist"] = sec.get("artist", "")
+                song["artist_exists"] = bool(song["artist"])
+                song["title_exists"] = bool(song["title"])
+                song["is_complete"] = bool(song["artist"] and song["title"])
+                song["completeness_score"] = 1.0 if song["is_complete"] else song.get("completeness_score", 0.0)
+                song["artist_inferred"] = False
+                song["inferred_artist_source"] = "youtube_music_section_order"
+                matched_section_idx.add(sec_idx)
             song["music_section_confirmed"] = "positional_suggestion"
             song["music_section_hint"] = {
                 "title": sec.get("title", ""),
@@ -576,7 +609,11 @@ def _enrich_songs_with_music_section(
     }
     if len(confirmed_artists) >= 2:
         for s in enriched:
-            if s.get("artist_inferred") and s.get("music_section_confirmed") is not True:
+            if (
+                s.get("artist_inferred")
+                and s.get("music_section_confirmed") is not True
+                and not _has_strong_text_evidence(s)
+            ):
                 s["artist"] = ""
                 s["artist_exists"] = False
                 s["is_complete"] = bool(s.get("title"))

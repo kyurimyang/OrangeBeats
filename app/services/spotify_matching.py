@@ -1219,6 +1219,7 @@ def _collect_candidate_evidence(candidate: Dict[str, Any]) -> Dict[str, Any]:
         and bool(candidate_artists)
         and korean_to_english_metadata
         and album_image_exists
+        and not _has_korean(candidate_title)
     )
     # official_metadata_signal alone must not declare artist "strong" when
     # artist_similarity is in the partial-match danger zone (e.g. red velvet vs
@@ -1274,9 +1275,8 @@ def _classify_evidence_pattern(evidence: Dict[str, Any]) -> Dict[str, Any]:
     query_has_both = bool(evidence["query_contains_title_and_artist"])
     version_candidate = bool(evidence.get("version_candidate"))
     artist_evidence_exists = bool(
-        artist_similarity > 0
+        evidence.get("artist_strong")
         or artist_alias_matched
-        or evidence.get("artist_strong")
     )
 
     if version_candidate:
@@ -2764,13 +2764,24 @@ def _extract_case_inputs(
     Parser owns orientation. Matching owns candidate scoring/classification.
     This keeps Spotify API calls from doubling.
     """
-    return [
+    cases = [
         {
             "case_name": str(song_meta.get("chosen_case") or "original"),
             "artist": artist or "",
             "title": title or "",
         }
     ]
+
+    hint_title = str(song_meta.get("music_section_title_hint") or "").strip()
+    hint_artist = str(song_meta.get("music_section_artist_hint") or "").strip()
+    if hint_title and hint_title.casefold() != (title or "").casefold():
+        cases.append({
+            "case_name": "music_section_hint",
+            "artist": hint_artist or artist or "",
+            "title": hint_title,
+        })
+
+    return cases
 
 def _case_score(case_result: Dict[str, Any]) -> float:
     candidate = case_result.get("chosen_candidate") or case_result.get("best_candidate") or {}
