@@ -230,50 +230,13 @@
     order: unset !important;
     width: auto !important;
     align-items: center !important;
-    justify-content: center !important;
-    margin-left: 0 !important;
-    margin-right: 0 !important;
+    justify-content: flex-end !important;
+    margin-left: auto !important;
     padding: 0 !important;
     gap: clamp(12px, 2.2vw, 36px) !important;
   }
-}
 
-/* 분할·태블릿: Help/FAQ/Contact 헤더 가운데 (로고·Spotify는 왼쪽 고정) */
-@media (min-width: 641px) and (max-width: 1100px) {
-  .site-header__inner {
-    position: relative;
-    justify-content: center !important;
-  }
-
-  .site-header__start {
-    position: absolute;
-    left: clamp(12px, 3vw, 48px);
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 1;
-  }
-}
-
-/* 넓은 화면: Figma처럼 nav 오른쪽 */
-@media (min-width: 1101px) {
-  .site-header__inner {
-    position: static;
-    justify-content: space-between !important;
-  }
-
-  .site-header__start {
-    position: static;
-    transform: none;
-  }
-
-  .site-header__nav {
-    justify-content: flex-end !important;
-    margin-left: auto !important;
-  }
-}
-
-/* /create — 641px+ 분할·태블릿: Figma 가로 URL 입력 유지 */
-@media (min-width: 641px) {
+  /* /create — 641px+ 분할·태블릿: Figma 가로 URL 입력 유지 */
   .playlist-url-page .figma-url-input__field {
     position: relative;
     flex-wrap: nowrap !important;
@@ -335,6 +298,54 @@
   .site-header__spotify-trigger-label,
   .site-header__spotify-connect-label {
     font-size: 14px;
+  }
+}
+
+/* Help / FAQ / Contact — 좁은 화면에서 본문 가운데 (Figma 좌측 여백 212px 해제) */
+@media (max-width: 1100px) {
+  .help-page__main,
+  .faq-page__main,
+  .contact-page__main {
+    padding-left: clamp(16px, 4vw, 48px);
+    padding-right: clamp(16px, 4vw, 48px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .help-page__title,
+  .faq-page__title,
+  .contact-page__title {
+    text-align: center;
+  }
+
+  .contact-page__intro,
+  .help-page__sections,
+  .faq-page__list,
+  .contact-page__section,
+  .contact-page__form,
+  .contact-page__footer {
+    width: 100%;
+    max-width: min(1009px, 100%);
+    margin-left: auto;
+    margin-right: auto;
+    box-sizing: border-box;
+  }
+
+  .help-page__section,
+  .faq-page__item {
+    width: 100%;
+  }
+
+  .faq-page__question,
+  .faq-page__answer {
+    gap: clamp(16px, 4vw, 32px);
+  }
+
+  .faq-page__question-text,
+  .faq-page__answer-body {
+    text-align: left;
+    width: 100%;
   }
 }
 
