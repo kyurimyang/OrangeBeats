@@ -1,10 +1,8 @@
 # 텍스트/JSON 파싱, 중복 제거, 유효성 판정
 # 파싱 방향은 전역 규칙 대신 라인별 dual-case(original/swapped)로 판단한다.
 
-import hashlib
 import json
 import re
-import threading
 from typing import Any
 
 from app.constants.pipeline_params import (
@@ -55,13 +53,6 @@ REPEATED_HANGUL_TITLE_REGEX = re.compile(r"^([\uAC00-\uD7A3]{1,2})\1{1,}$")
 
 SWAP_GUARD_PENALTY = 0.3
 DOMINANT_DIRECTION_RATIO = 0.65
-
-# LLM 방향 판정 캐시 — 동일 라인 쌍에 대해 OpenAI 재호출 방지
-_LLM_DIRECTION_CACHE: dict[str, dict] = {}
-_LLM_DIRECTION_CACHE_LOCK = threading.Lock()
-_LLM_DIRECTION_CACHE_MAX = 256
-# 규칙 확신도가 이 값 이상이면 LLM 호출 생략
-_RULE_SKIP_LLM_RATIO = 0.85
 SWAP_SCORE_MARGIN = 0.8
 GLOBAL_ARTIST_TITLE_SWAP_MARGIN = 1.2
 STRONG_GLOBAL_SWAP_MARGIN = 1.6
@@ -106,69 +97,22 @@ PLAYLIST_TITLE_METADATA_KEYWORDS = [
     "\uc5ec\ub3cc",
     "\ub178\ub3d9\uc694",
 ]
-# 타임스탬프+단어 형식에서 section 레이블로 간주해 곡 목록에서 제외할 단어
-# ex) "00:00 intro", "35:15 outro", "12:00 interlude"
-_SECTION_LABEL_WORDS: frozenset[str] = frozenset({
-    "intro", "outro", "interlude", "skit", "intermission",
-    "overture", "prelude", "epilogue", "prologue",
-    "credits", "end credits", "ending", "opening",
-    "인트로", "아웃트로", "인터루드",
-})
-
-NUMBERED_LIST_REGEX = re.compile(r"^\d{1,3}[.)]\s+(.+)$")
-
 TITLE_LEADING_WORDS_EN = {"the", "a", "an", "my", "your", "our", "this", "that"}
 TITLE_VERB_HINTS_EN = {"is", "are", "was", "were", "be", "build", "love", "hate", "need", "want"}
 TITLE_TRAILING_WORDS_EN = {"mine", "more", "sick", "dance", "umbrella", "vida"}
 KNOWN_GROUP_ARTISTS = {
-    # 1~3\uc138\ub300
-    "shinee", "\uc0e4\uc774\ub2c8",
-    "bigbang", "\ube45\ubc45",
-    "2ne1", "\ud22c\uc560\ub2c8\uc6d0",
-    "girls generation", "girls' generation", "snsd", "\uc18c\ub140\uc2dc\ub300",
-    "wonder girls", "\uc6d0\ub354\uac78\uc2a4",
-    "infinite", "\uc778\ud53c\ub2c8\ud2b8",
-    "beast", "highlight", "\ube44\uc2a4\ud2b8", "\ud558\uc774\ub77c\uc774\ud2b8",
-    "b1a4",
-    "block b", "\ube14\ub77d\ube44",
-    "got7",
-    "mamamoo", "\ub9c8\ub9c8\ubb34",
-    "apink", "\uc5d0\uc774\ud551\ud06c",
-    "gfriend", "\uc5ec\uc790\uce5c\uad6c",
-    "exo", "\uc5d1\uc18c",
-    "bts", "\ubc29\ud0c4\uc18c\ub144\ub2e8",
-    "seventeen", "\uc138\ube10\ud2f4",
-    "nct", "nct 127", "nct dream", "nct wish", "\uc5d4\uc2dc\ud2f0",
-    "monsta x", "\ubaac\uc2a4\ud0c0\uc5d1\uc2a4",
-    "day6", "\ub370\uc774\uc2dd\uc2a4",
-    "astro", "\uc544\uc2a4\ud2b8\ub85c",
-    # 4\uc138\ub300
-    "ateez", "\uc5d0\uc774\ud2f0\uc988",
-    "stray kids", "\uc2a4\ud2b8\ub808\uc774\ud0a4\uc988",
-    "txt", "tomorrow x together", "\ud22c\ubaa8\ub85c\uc6b0\ubc14\uc774\ud22c\uac8c\ub354",
-    "enhypen", "\uc5d4\ud558\uc774\ud508",
-    "the boyz", "\ub354\ubcf4\uc774\uc988",
-    "treasure", "\ud2b8\ub808\uc800",
-    "aespa", "\uc5d0\uc2a4\ud30c",
-    "itzy", "\uc788\uc9c0",
-    "ive", "\uc544\uc774\ube0c",
-    "newjeans", "\ub274\uc9c4\uc2a4",
-    "le sserafim", "\ub974\uc138\ub77c\ud54c",
-    "nmixx", "\uc5d4\ubbf9\uc2a4",
-    "kep1er", "\ucf00\ud50c\ub7ec",
-    "(g)i-dle", "gidle", "\uc5ec\uc790\uc544\uc774\ub4e4",
-    "riize", "\ub77c\uc774\uc988",
-    "oh my girl", "\uc624\ub9c8\uc774\uac78",
-    "dreamcatcher", "\ub4dc\ub9bc\uce90\uccd0",
-    "fromis 9", "fromis_9", "\ud504\ub85c\ubbf8\uc2a4\ub098\uc778",
-    "pentagon", "\ud39c\ud0c0\uace4",
-    "sf9",
-    "verivery", "\ubca0\ub9ac\ubca0\ub9ac",
-    "cravity", "\ud06c\ub798\ube44\ud2f0",
-    "drippin", "\ub4dc\ub9ac\ud540",
-    "mirae",
-    "xikers",
-    "zerobaseone", "zb1",
+    "shinee",
+    "bigbang",
+    "2ne1",
+    "girls generation",
+    "girls' generation",
+    "snsd",
+    "wonder girls",
+    "\uc18c\ub140\uc2dc\ub300",
+    "\uc778\ud53c\ub2c8\ud2b8",
+    "\ube44\uc2a4\ud2b8",
+    "beast",
+    "highlight",
 }
 
 
@@ -252,16 +196,24 @@ def _strip_bracketed_metadata(value: str) -> str:
 
 
 def _strip_title_metadata_phrases(value: str) -> str:
-    return TITLE_METADATA_HINT_REGEX.sub(" ", value or "")
+    def replace(match: re.Match) -> str:
+        kind = MULTISPACE_REGEX.sub(" ", match.group("kind").lower()).strip()
+        raw_value = _clean_text(match.group("value"))
+        if kind == "with" and raw_value.lower() in {
+            "me",
+            "you",
+            "us",
+            "him",
+            "her",
+            "them",
+            "it",
+            "myself",
+            "yourself",
+        }:
+            return match.group(0)
+        return " "
 
-
-def _strip_feature_metadata_phrases(value: str) -> str:
-    return re.sub(
-        r"[\(\[\{]?\s*(?:feat|ft|featuring|prod(?:uced)?\s+by)\.?\s+[^\)\]\}\-_/|]{1,80}[\)\]\}]?",
-        " ",
-        value or "",
-        flags=re.IGNORECASE,
-    )
+    return TITLE_METADATA_HINT_REGEX.sub(replace, value or "")
 
 
 def _extract_title_metadata_hints(value: str) -> dict:
@@ -313,7 +265,7 @@ def _clean_text(value: str) -> str:
     value = str(value or "")
     value = value.replace("\u2018", "'").replace("\u2019", "'")
     value = value.replace("\u201c", '"').replace("\u201d", '"')
-    value = _strip_feature_metadata_phrases(value)
+    value = _strip_title_metadata_phrases(value)
     value = _strip_bracketed_metadata(value)
     value = TIME_PREFIX_REGEX.sub("", value)
     value = _strip_timestamps(value)
@@ -324,17 +276,11 @@ def _clean_text(value: str) -> str:
 
 
 def _clean_pair_side(value: str) -> str:
-    """Like _clean_text but preserves multi-word parenthetical content.
-
-    Used when splitting delimiter pairs so that song titles like '404 (new era)'
-    or '\ubd10 (look)' are not collapsed to just '404' / '\ubd10' before direction scoring.
-    feat/prod phrases are still stripped; bracket-stripping is skipped.
-    """
+    """Like _clean_text, but preserves descriptive title parentheticals."""
     value = str(value or "")
     value = value.replace("\u2018", "'").replace("\u2019", "'")
     value = value.replace("\u201c", '"').replace("\u201d", '"')
-    value = _strip_feature_metadata_phrases(value)
-    # Do NOT call _strip_bracketed_metadata \u2014 preserve '(new era)', '(look)', etc.
+    value = _strip_title_metadata_phrases(value)
     value = TIME_PREFIX_REGEX.sub("", value)
     value = _strip_timestamps(value)
     value = LEADING_DECORATION_REGEX.sub("", value)
@@ -441,17 +387,16 @@ def _is_valid_music_line(line: str) -> bool:
 
 
 def _is_meaningful_text(text: str) -> bool:
-    original = str(text or "")
-    cleaned = _clean_text(original)
-    if not cleaned:
+    text = _clean_text(text)
+    if not text:
         return False
-    if PURE_PUNCT_REGEX.fullmatch(cleaned):
+    if PURE_PUNCT_REGEX.fullmatch(text):
         return False
-    if re.fullmatch(r"[\d\s]+", cleaned):
-        digit_only = re.sub(r"\s+", "", cleaned)
+    if re.fullmatch(r"[\d\s]+", text):
+        digit_only = re.sub(r"\s+", "", text)
         if len(digit_only) >= 3:
             return True  # 3자리 이상 숫자는 곡 제목일 수 있음 (404, 777, 2020 등)
-        return bool(re.search(r"[A-Za-z가-힣]", original))
+        return False
     return True
 
 
@@ -599,18 +544,6 @@ def looks_like_artist(text: str) -> bool:
     return False
 
 
-def is_known_artist(text: str) -> bool:
-    """알려진 아티스트 목록(그룹·앨리어스)에 정확히 매칭되면 True."""
-    cleaned = _clean_text(text)
-    if not cleaned:
-        return False
-    return (
-        _known_group_artist_hit(cleaned)
-        or _artist_alias_hit(cleaned)
-        or _shared_artist_alias_hit(cleaned)
-    )
-
-
 def looks_like_title(text: str) -> bool:
     cleaned = _clean_text(text)
     if not cleaned:
@@ -723,17 +656,11 @@ def _extract_pair_parts(text: str) -> dict | None:
         original_left, original_right = (
             text.split(sep, 1) if sep in text else (raw_left, raw_right)
         )
-        # Use original split sides to preserve title parentheticals like
-        # '(new era)' or '(look)' that _clean_text would strip.
-        left = _clean_pair_side(original_left)
-        right = _clean_pair_side(original_right)
-        # ` : ` / `: ` 구분자는 'Answer : Love Myself' 같이 콜론이 제목 일부인 경우가 많다.
-        # 양쪽 모두 alias/known-group 수준의 강한 아티스트 근거가 없으면 제목 내 콜론으로 보존.
-        if sep in (" : ", ": ") and (
-            _strong_artist_identity_evidence(left) < 1.0
-            and _strong_artist_identity_evidence(right) < 1.0
-        ):
-            continue
+        left, right = raw_left, raw_right
+        left = _clean_text(left)
+        right = _clean_text(right)
+        if re.search(r"^\s*\d+\s*\([^)]+\)", original_left or ""):
+            left = _clean_pair_side(original_left)
         # '<' 구분자 처리: '[현재아티스트] - [다음아티스트] <[다음곡제목]>' 형식
         # 예: 'BTS - BIGBANG <뱅뱅뱅>' → left='BIGBANG', right='뱅뱅뱅'
         if " <" in right:
@@ -750,41 +677,35 @@ def _extract_pair_parts(text: str) -> dict | None:
         #   (2) cand_artist가 2개 이상의 대문자/숫자 토큰 AND cand_title이 CJK 시작이거나 2단어 이상
         # 이 조건 없이 재분리하면 'TREASURE - KING KONG' → artist=KING, title=KONG 같은 오탐 발생.
         elif looks_like_artist(left):
-            # right 전체가 알려진 그룹/아티스트면 재분리 금지
-            # ex) "Blue Orangeade - TOMORROW X TOGETHER" → right="TOMORROW X TOGETHER"이 KNOWN_GROUP_ARTISTS에 있으므로 스킵
-            _right_whole = _clean_text(right)
-            if not (_known_group_artist_hit(_right_whole) or _artist_alias_hit(_right_whole)):
-                masked_right, _masks = _mask_bracket_spans(right)
-                tokens = masked_right.split()
-                for end in range(min(len(tokens) - 1, 4), 0, -1):
-                    cand_artist = _unmask_bracket_spans(" ".join(tokens[:end]), _masks)
-                    cand_title = _unmask_bracket_spans(" ".join(tokens[end:]), _masks)
-                    cand_artist_clean = _clean_text(cand_artist)
-                    cand_title_clean = _clean_text(cand_title)
-                    if _has_dangling_title_connector(cand_artist_clean):
-                        continue
+            masked_right, _masks = _mask_bracket_spans(right)
+            tokens = masked_right.split()
+            for end in range(min(len(tokens) - 1, 4), 0, -1):
+                cand_artist = _unmask_bracket_spans(" ".join(tokens[:end]), _masks)
+                cand_title = _unmask_bracket_spans(" ".join(tokens[end:]), _masks)
+                cand_artist_clean = _clean_text(cand_artist)
+                cand_title_clean = _clean_text(cand_title)
 
-                    cand_artist_known = _strong_artist_identity_evidence(cand_artist_clean) >= 2.5
-                    cand_artist_multi_caps = (
-                        _count_words(cand_artist_clean) >= 2
-                        and all(re.match(r'^[A-Z0-9]+$', t) for t in cand_artist_clean.split()[:2])
-                    )
-                    cand_title_strong = bool(
-                        cand_title_clean
-                        and re.match(r"[가-힣一-鿿぀-ヿ]", cand_title_clean)
-                    ) or _count_words(cand_title_clean) >= 2
+                cand_artist_known = _strong_artist_identity_evidence(cand_artist_clean) >= 2.5
+                cand_artist_multi_caps = (
+                    _count_words(cand_artist_clean) >= 2
+                    and all(re.match(r'^[A-Z0-9]+$', t) for t in cand_artist_clean.split()[:2])
+                )
+                cand_title_strong = bool(
+                    cand_title_clean
+                    and re.match(r"[가-힣一-鿿぀-ヿ]", cand_title_clean)
+                ) or _count_words(cand_title_clean) >= 2
 
-                    if not (cand_title_strong and (cand_artist_known or cand_artist_multi_caps)):
-                        continue
+                if not (cand_artist_known or (cand_artist_multi_caps and cand_title_strong)):
+                    continue
 
-                    if (cand_title
-                            and looks_like_artist(cand_artist)
-                            and cand_artist[0].isascii()
-                            and cand_artist[0].isalpha()
-                            and looks_like_title(cand_title)):
-                        left = cand_artist
-                        right = cand_title
-                        break
+                if (cand_title
+                        and looks_like_artist(cand_artist)
+                        and cand_artist[0].isascii()
+                        and cand_artist[0].isalpha()
+                        and looks_like_title(cand_title)):
+                    left = cand_artist
+                    right = cand_title
+                    break
         # 복합 라인 처리: primary separator가 '_' 아닌데 right에 '_ annotation'이 남은 경우 제거
         # 예: '아티스트 - 제목 _ 원곡아티스트' → right='제목'
         if sep != " _ ":
@@ -982,11 +903,6 @@ def _looks_like_artist_list(text: str) -> bool:
         return False
 
     return all(_looks_like_artist_name_phrase(chunk) for chunk in chunks)
-
-
-def _has_dangling_title_connector(text: str) -> bool:
-    cleaned = _clean_text(text)
-    return bool(cleaned and re.search(r"(?:&|,|\+|\band\b)\s*$", cleaned, re.IGNORECASE))
 
 
 def _looks_like_title_with_feature_artist(text: str) -> bool:
@@ -1426,7 +1342,7 @@ def _direction_vote(parts: dict) -> str:
     left = parts.get("left", "")
     right = parts.get("right", "")
 
-    if re.match(r"^\d+\s*[\(\[\{][^\)\]\}]*[A-Za-z\uAC00-\uD7A3]", left or "") and looks_like_artist(right):
+    if re.search(r"^\s*\d+\s*\([^)]+\)", left or "") and looks_like_english_artist(right):
         return "title_artist"
 
     # title - artist 패턴을 먼저 감지한다.
@@ -1450,24 +1366,34 @@ def _direction_vote(parts: dict) -> str:
         return "title_artist"
     return "unknown"
 
-def _infer_global_direction(parsed_pairs: list[dict]) -> str:
+def _infer_global_direction(parsed_pairs: list[dict]) -> tuple[str, str]:
     if not parsed_pairs:
-        return "per_line"
+        return "per_line", "low"
 
     votes = [_direction_vote(parts) for parts in parsed_pairs]
     decisive_votes = [vote for vote in votes if vote in {"artist_title", "title_artist"}]
     if not decisive_votes:
-        return "per_line"
+        return "per_line", "low"
 
     artist_title_count = decisive_votes.count("artist_title")
     title_artist_count = decisive_votes.count("title_artist")
     total = len(decisive_votes)
 
+    dominant_count = max(artist_title_count, title_artist_count)
+    ratio = dominant_count / total
+
+    if ratio >= 0.90 and total >= 3:
+        rule_confidence = "high"
+    elif ratio >= DOMINANT_DIRECTION_RATIO and total >= 2:
+        rule_confidence = "medium"
+    else:
+        rule_confidence = "low"
+
     if artist_title_count / total >= DOMINANT_DIRECTION_RATIO:
-        return "artist_title"
+        return "artist_title", rule_confidence
     if title_artist_count / total >= DOMINANT_DIRECTION_RATIO:
-        return "title_artist"
-    return "per_line"
+        return "title_artist", rule_confidence
+    return "per_line", "low"
 
 
 def _detect_llm_global_direction(parsed_pairs: list[dict]) -> dict:
@@ -1516,72 +1442,38 @@ def _detect_llm_global_direction(parsed_pairs: list[dict]) -> dict:
     }
 
 
-def _llm_cache_key(parsed_pairs: list[dict]) -> str:
-    blob = str([(p.get("left", ""), p.get("right", "")) for p in parsed_pairs])
-    return hashlib.md5(blob.encode(), usedforsecurity=False).hexdigest()
-
-
-def _rule_is_decisive(rule_direction: str, parsed_pairs: list[dict]) -> bool:
-    """규칙 기반 방향이 _RULE_SKIP_LLM_RATIO 이상 확신도이면 True.
-
-    라인 수가 적으면 규칙 혼자로는 신뢰할 수 없으므로 최소 3개의
-    decisive vote가 있어야 LLM 호출을 생략한다.
-    """
-    if rule_direction not in {"artist_title", "title_artist"}:
-        return False
-    votes = [_direction_vote(p) for p in parsed_pairs]
-    decisive = [v for v in votes if v in {"artist_title", "title_artist"}]
-    if len(decisive) < 3:
-        return False
-    ratio = decisive.count(rule_direction) / len(decisive)
-    return ratio >= _RULE_SKIP_LLM_RATIO
-
-
 def _resolve_global_direction(parsed_pairs: list[dict]) -> tuple[str, dict]:
-    rule_direction = _infer_global_direction(parsed_pairs)
+    rule_direction, rule_confidence = _infer_global_direction(parsed_pairs)
 
-    # 규칙 확신도가 충분히 높으면 LLM 호출 생략
-    if _rule_is_decisive(rule_direction, parsed_pairs):
-        print(f"[direction] rule={rule_direction} llm=skipped source=rule_decisive")
-        return rule_direction, {
-            "llm_global_direction": "mixed",
-            "llm_direction_confidence": "low",
-            "llm_direction_reason": "",
-            "direction_source": "rule_decisive",
+    if rule_confidence == "high":
+        global_direction = rule_direction
+        print(
+            f"[direction] rule={rule_direction} confidence=high → llm skipped"
+        )
+        return global_direction, {
+            "llm_global_direction": rule_direction,
+            "llm_direction_confidence": "high",
+            "llm_direction_reason": "rule_high_confidence_skipped_llm",
+            "direction_source": "rule_only",
             "rule_global_direction": rule_direction,
+            "rule_confidence": rule_confidence,
         }
 
-    # LLM 캐시 확인
-    cache_key = _llm_cache_key(parsed_pairs)
-    with _LLM_DIRECTION_CACHE_LOCK:
-        cached = _LLM_DIRECTION_CACHE.get(cache_key)
-
-    if cached is not None:
-        llm_direction = cached
-        cache_hit = True
-    else:
-        llm_direction = _detect_llm_global_direction(parsed_pairs)
-        cache_hit = False
-        with _LLM_DIRECTION_CACHE_LOCK:
-            if len(_LLM_DIRECTION_CACHE) >= _LLM_DIRECTION_CACHE_MAX:
-                # 가장 오래된 항목 제거 (삽입 순서 유지 dict 활용)
-                _LLM_DIRECTION_CACHE.pop(next(iter(_LLM_DIRECTION_CACHE)))
-            _LLM_DIRECTION_CACHE[cache_key] = llm_direction
-
+    llm_direction = _detect_llm_global_direction(parsed_pairs)
     llm_global_direction = llm_direction.get("global_direction", "mixed")
     llm_confidence = llm_direction.get("confidence", "low")
 
     if llm_confidence in {"high", "medium"} and llm_global_direction in {"artist_title", "title_artist"}:
         global_direction = llm_global_direction
-        source = "llm_cached" if cache_hit else "llm"
+        source = "llm"
     else:
         global_direction = rule_direction if rule_direction in {"artist_title", "title_artist"} else "per_line"
         source = "rule_fallback"
 
     print(
-        f"[direction] rule={rule_direction} llm={llm_global_direction} "
-        f"confidence={llm_confidence} chosen={global_direction} source={source} "
-        f"cache_hit={cache_hit} "
+        f"[direction] rule={rule_direction} rule_confidence={rule_confidence} "
+        f"llm={llm_global_direction} llm_confidence={llm_confidence} "
+        f"chosen={global_direction} source={source} "
         f"reason='{_safe_log_value(llm_direction.get('reason', ''))}'"
     )
 
@@ -1591,6 +1483,7 @@ def _resolve_global_direction(parsed_pairs: list[dict]) -> tuple[str, dict]:
         "llm_direction_reason": llm_direction.get("reason", ""),
         "direction_source": source,
         "rule_global_direction": rule_direction,
+        "rule_confidence": rule_confidence,
     }
 
 
@@ -1796,6 +1689,10 @@ def parse_unstructured_lines_to_json(text: str) -> dict:
             continue
 
         line_direction = "title_artist" if parts.get("nested_pair_extracted") else global_direction
+        if line_direction == "per_line":
+            per_line_vote = _direction_vote(parts)
+            if per_line_vote in {"artist_title", "title_artist"}:
+                line_direction = per_line_vote
         parsed = _resolve_orientation(parts, line_direction)
         parsed.update(direction_meta)
         if parts.get("nested_pair_extracted"):
@@ -1812,7 +1709,7 @@ def parse_unstructured_lines_to_json(text: str) -> dict:
     return {"songs": deduplicate_songs(results)}
 
 
-def normalize_song_candidates(data: Any, inferred_artist: str = "") -> dict:
+def normalize_song_candidates(data: Any, inferred_artist: str = "", skip_direction_detection: bool = False) -> dict:
     if not data:
         return {"songs": []}
 
@@ -1833,11 +1730,22 @@ def normalize_song_candidates(data: Any, inferred_artist: str = "") -> dict:
         if left and right:
             pair_candidates.append({"raw": raw, "left": left, "right": right})
 
-    reused_direction = _reuse_existing_direction_meta(songs)
-    if reused_direction:
-        global_direction, direction_meta = reused_direction
+    if skip_direction_detection:
+        # LLM이 이미 artist/title을 분리했으므로 방향 재결정 스킵
+        global_direction = "artist_title"
+        direction_meta = {
+            "llm_global_direction": "artist_title",
+            "llm_direction_confidence": "high",
+            "llm_direction_reason": "llm_parsed_trust",
+            "direction_source": "llm_parse",
+            "rule_global_direction": "artist_title",
+        }
     else:
-        global_direction, direction_meta = _resolve_global_direction(pair_candidates)
+        reused_direction = _reuse_existing_direction_meta(songs)
+        if reused_direction:
+            global_direction, direction_meta = reused_direction
+        else:
+            global_direction, direction_meta = _resolve_global_direction(pair_candidates)
 
     for item in songs:
         if not isinstance(item, dict):

@@ -2,7 +2,7 @@
 # Youtube에서 텍스트 긁어오기
 
 import time
-from functools import lru_cache
+from collections import OrderedDict
 from urllib.parse import parse_qs, urlparse
 
 import requests
@@ -13,7 +13,8 @@ from app.config import YOUTUBE_API_KEY
 YOUTUBE_API_BASE = "https://www.googleapis.com/youtube/v3"
 _INNERTUBE_BASE = "https://www.youtube.com/youtubei/v1"
 _INNERTUBE_CLIENT = {"clientName": "WEB", "clientVersion": "2.20240101.00.00", "hl": "ko", "gl": "KR"}
-_TEXT_SOURCE_CACHE: dict[str, tuple[dict, float]] = {}
+_MAX_CACHE_SIZE = 100
+_TEXT_SOURCE_CACHE: OrderedDict[str, tuple[dict, float]] = OrderedDict()
 _CACHE_TTL_SECONDS = 3600
 
 
@@ -164,6 +165,7 @@ def collect_text_sources(url: str) -> dict:
         data, cached_at = cached
         if time.time() - cached_at < _CACHE_TTL_SECONDS:
             print(f"[youtube_client] cache hit for {url}")
+            _TEXT_SOURCE_CACHE.move_to_end(url)
             return data
 
     target = parse_youtube_target(url)
@@ -205,7 +207,10 @@ def collect_text_sources(url: str) -> dict:
         "author_comment_items": author_comment_items,
         "author_comments": author_comments,
     }
+    _TEXT_SOURCE_CACHE.pop(url, None)
     _TEXT_SOURCE_CACHE[url] = (result, time.time())
+    if len(_TEXT_SOURCE_CACHE) > _MAX_CACHE_SIZE:
+        _TEXT_SOURCE_CACHE.popitem(last=False)
     return result
     
 # youtube 영상 title 가져오기
@@ -297,7 +302,6 @@ def _extract_cards_from_hcl(hcl: dict) -> list[dict]:
     return songs
 
 
-@lru_cache(maxsize=256)
 def get_video_music_section(video_id: str) -> list[dict]:
     """YouTube InnerTube API로 영상의 '음악' 섹션(Content ID 매칭) 추출.
     반환: [{"title": ..., "artist": ..., "album": ...}, ...]
