@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import get_allowed_frontend_origins
 from app.routers import feedback, playlist, qa, spotify, youtube
 from app.services.spotify_session_service import SpotifySessionService
-from app.sessions.file_store import FileOAuthStateStore, FileSpotifyTokenStore
+from app.sessions.memory import InMemoryOAuthStateStore, InMemorySpotifyTokenStore
 
 app = FastAPI(title="Orange Beats")
 
@@ -32,8 +32,8 @@ async def _unhandled_exception_handler(request: Request, exc: Exception) -> JSON
 
 
 app.state.spotify_session_service = SpotifySessionService(
-    token_store=FileSpotifyTokenStore(),
-    state_store=FileOAuthStateStore(),
+    token_store=InMemorySpotifyTokenStore(),
+    state_store=InMemoryOAuthStateStore(),
 )
 
 app.add_middleware(
