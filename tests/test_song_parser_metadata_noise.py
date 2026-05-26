@@ -57,6 +57,18 @@ class SongParserMetadataNoiseTests(unittest.TestCase):
         "app.parsers.song_parser._detect_llm_global_direction",
         return_value={"global_direction": "artist_title", "confidence": "high", "reason": ""},
     )
+    def test_original_song_parenthetical_is_removed_from_title(self, _direction_mock):
+        result = parse_unstructured_lines_to_json(
+            "32:45 SUPER JUNIOR - \ud589\ubcf5 (\uc6d0\uace1 : H.O.T. - \ud589\ubcf5)"
+        )
+
+        self.assertEqual(result["songs"][0]["artist"], "SUPER JUNIOR")
+        self.assertEqual(result["songs"][0]["title"], "\ud589\ubcf5")
+
+    @patch(
+        "app.parsers.song_parser._detect_llm_global_direction",
+        return_value={"global_direction": "artist_title", "confidence": "high", "reason": ""},
+    )
     def test_social_handle_pairs_are_not_song_candidates(self, _direction_mock):
         result = parse_unstructured_lines_to_json(
             "\n".join(

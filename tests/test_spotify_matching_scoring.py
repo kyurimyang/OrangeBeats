@@ -5,6 +5,7 @@ from app.services.spotify_matching import (
     _apply_ocr_matching_policy,
     _build_case_queries,
     _classify_candidate,
+    _pick_best_acceptable_candidate,
     _score_tracks,
     _track_has_artist_id,
     _track_dedupe_key,
@@ -340,6 +341,24 @@ class SpotifyMatchingScoringTests(unittest.TestCase):
         self.assertEqual(detail["applied_pattern"], "TRANSLATED_TITLE_ARTIST_STRONG")
         self.assertEqual(detail["evidence_confidence"]["decision"], "auto_select_recommended")
 
+    def test_fallback_artist_only_metadata_candidate_needs_review(self):
+        candidate = track(
+            "View",
+            ["SHINee"],
+            popularity=70,
+            album_images=[{"url": "https://example.test/album.jpg"}],
+        )
+        scored = _score_tracks(
+            [candidate],
+            fallback_source(candidate, "\ubcf4\ub514\uac00\ub4dc (\uc560\ub2c8\ucf5c CF\uc1a1 - \uc0e4\ubc29 \ubcf4\ub514\uac00\ub4dc\ud3f0)", "SHINee"),
+            input_title="\ubcf4\ub514\uac00\ub4dc (\uc560\ub2c8\ucf5c CF\uc1a1 - \uc0e4\ubc29 \ubcf4\ub514\uac00\ub4dc\ud3f0)",
+            input_artist="SHINee",
+            chosen_case="original",
+        )
+
+        self.assertNotEqual(scored[0]["match_status"], "matched")
+        self.assertEqual(scored[0]["score_detail"]["applied_pattern"], "ARTIST_STRONG_TITLE_WEAK")
+
     def test_pattern_b_keeps_korean_title_english_spotify_title_for_review(self):
         cases = [
             ("\uc785\ucd98", "\ud55c\ub85c\ub85c", "Let Me Love My Youth", "HANRORO"),
@@ -405,6 +424,21 @@ class SpotifyMatchingScoringTests(unittest.TestCase):
         self.assertFalse(detail["search_engine_signal"])
         self.assertEqual(detail["search_engine_signal_blocked_reason"], "non_original_or_version_candidate")
         self.assertLess(scored[0]["score"], 0.55)
+
+    def test_zero_score_version_candidates_are_not_selected_as_best(self):
+        candidate = track("Milky Way - Club Remix", ["BoA"])
+        scored = _score_tracks(
+            [candidate],
+            primary_source(candidate, "Milky Way", "\ubcf4\uc544"),
+            input_title="Milky Way",
+            input_artist="\ubcf4\uc544",
+            chosen_case="original",
+        )
+        scored[0]["score"] = 0.0
+
+        self.assertIsNone(
+            _pick_best_acceptable_candidate(scored, has_artist=True, input_artist="\ubcf4\uc544")
+        )
 
     def test_candidates_are_resorted_by_final_score_not_spotify_rank(self):
         bad_rank1 = track("Shape of You", ["Ed Sheeran"], popularity=90)

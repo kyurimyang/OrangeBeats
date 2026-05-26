@@ -26,6 +26,7 @@ def _title_from_timestamp_only_line(raw_line: str) -> str:
 
     value = str(raw_line or "").strip()
     value = re.sub(r'^\s*(?:\d{1,2}:)?\d{1,2}:\d{2}\s*[-–—]?\s*', '', value)
+    value = re.sub(r'^\s*(?:[-*#>\u2022\u00b7\u2023\u2013\u2014]\s*)?(?:\d{1,2}:)?\d{1,2}:\d{2}\s*[-|~>*\s]*', '', value)
     return value.strip()
 
 
@@ -211,8 +212,9 @@ def analyze_text_block(
     text = text or ""
     rule_signals = count_text_signals(text)
 
-    # 타임스탬프 목록이거나 delimiter 쌍이 밀집 → rule first. 그 외 → LLM → rule fallback.
-    if _is_clean_timestamp_fast_path(rule_signals) or _is_strong_delimiter_signal(rule_signals):
+    # Clean timestamp tracklists are deterministic enough for the rule parser.
+    # Other structured text goes through LLM first, then rule fallback.
+    if _is_clean_timestamp_fast_path(rule_signals):
         result = _run_rule_parse(text, stage, inferred_artist, rule_signals)
         if result['success']:
             return result
