@@ -9,6 +9,7 @@ from typing import Dict
 from app.ocr.ocr_pipeline import merge_near_duplicate_songs, run_ocr_pipeline
 from app.services.text_analysis import analyze_text_block
 from app.services.youtube_downloader import download_youtube_video
+from app.utils.ytdlp_opts import ytdlp_base_opts as _ytdlp_base_opts
 
 OCR_INTERVAL_SECONDS = 40  # extract one frame every N seconds, full video
 
@@ -27,7 +28,7 @@ def _get_youtube_info(youtube_url: str) -> Dict:
     try:
         import yt_dlp
 
-        with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "noplaylist": True}) as ydl:
+        with yt_dlp.YoutubeDL(_ytdlp_base_opts()) as ydl:
             info = ydl.extract_info(youtube_url, download=False)
             return {
                 "duration": int(info.get("duration") or 0),
