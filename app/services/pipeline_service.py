@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from app.clients.youtube_client import collect_text_sources, get_video_music_section
 from app.acr.acr_pipeline import extract_songs_with_acr
+from app.constants.pipeline_params import CORE_ARTIST_ALIAS_MAP
 from app.services.analysis_flow import merge_song_sources
 from app.services.fallback_extraction import extract_songs_with_ocr
 from app.services.text_analysis import analyze_comments_prioritized, analyze_description
@@ -397,6 +398,24 @@ def _normalize_title_for_match(title: str) -> str:
     return re.sub(r"\s+", " ", t).strip()
 
 
+def _artist_variants_for_match(artist: str) -> set[str]:
+    normalized = _normalize_title_for_match(artist)
+    variants = {normalized} if normalized else set()
+    for base, aliases in CORE_ARTIST_ALIAS_MAP.items():
+        family = {_normalize_title_for_match(base)}
+        family.update(_normalize_title_for_match(alias) for alias in aliases)
+        family.discard("")
+        if normalized in family:
+            variants.update(family)
+    return variants
+
+
+def _artists_match_for_music_section(left: str, right: str) -> bool:
+    left_variants = _artist_variants_for_match(left)
+    right_variants = _artist_variants_for_match(right)
+    return bool(left_variants and right_variants and left_variants & right_variants)
+
+
 def _extract_base_title(title: str) -> str:
     t = re.sub(r"\s*\([^)]*\)", "", title or "").strip()
     return _normalize_title_for_match(t)
@@ -616,6 +635,7 @@ def _enrich_songs_with_music_section(
             "title": ms["title"],
             "artist": ms["artist"],
             "album": ms.get("album", ""),
+            "section_index": i,
             "source": "music_section_only",
             "match_type": "section_only",
         }
@@ -662,8 +682,17 @@ def _supplement_songs_from_candidates(
 
         duplicate_reason = ""
         normalized_artist = _normalize_title_for_match(artist)
-        for song in updated:
+        section_index = cand.get("section_index")
+        for index, song in enumerate(updated):
             if not _titles_match(str(song.get("title") or ""), title):
+                if (
+                    isinstance(section_index, int)
+                    and section_index == index
+                    and _has_strong_text_evidence(song)
+                    and _artists_match_for_music_section(str(song.get("artist") or ""), artist)
+                ):
+                    duplicate_reason = "duplicate_music_section_artist_position"
+                    break
                 continue
             song_artist = _normalize_title_for_match(str(song.get("artist") or ""))
             if normalized_artist and normalized_artist == song_artist:
@@ -861,11 +890,12 @@ def run_youtube_text_pipeline(url: str) -> dict:
         }
         primary_result = _apply_single_artist_context(primary_result, artist_detection)
 
-        # Phase 4: 음악 섹션으로 보강 (enrichment only — music_extras는 songs에 합산하지 않음)
+        # Phase 4: 음악 섹션으로 보강 + 텍스트 미추출 곡 자동 추가
         enriched_songs, music_extras = _enrich_songs_with_music_section(
             primary_result["songs"], prefetched_music_section
         )
-        primary_result["songs"] = enriched_songs
+        supplemented_songs, supplement_log = _supplement_songs_from_candidates(enriched_songs, music_extras)
+        primary_result["songs"] = supplemented_songs
 
         artist_detection = _override_single_artist_detection_with_music_section(
             artist_detection,
@@ -885,7 +915,7 @@ def run_youtube_text_pipeline(url: str) -> dict:
             "source_quality_summary": source_quality_summary,
             "success": True,
             "songs": primary_result["songs"],
-            "music_section_candidates": music_extras,
+            "music_section_candidates": supplement_log,
             "ocr_used": False,
             "acr_used": False,
             "signals": {

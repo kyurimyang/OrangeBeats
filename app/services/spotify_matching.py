@@ -1108,6 +1108,7 @@ def _classify_evidence_pattern(evidence: Dict[str, Any]) -> Dict[str, Any]:
     if artist_strong and title_similarity < 0.75 and rank1 and high_or_alias_medium and query_has_both:
         confident_metadata = bool(
             evidence["official_metadata_signal"]
+            and high_query
             and (artist_alias_matched or artist_similarity >= 0.70 or bool(evidence.get("artist_romanization_matched")))
             and not version_candidate
         )
@@ -2145,6 +2146,12 @@ def _candidate_is_acceptable(candidate: Dict[str, Any], *, has_artist: bool, inp
 
 
 def _candidate_is_recoverable(candidate: Dict[str, Any], *, has_artist: bool, input_artist: str = "") -> bool:
+    score = float(candidate.get("score", 0.0))
+    if score <= 0:
+        return False
+    pattern_tags = set(candidate.get("score_detail", {}).get("pattern_tags", []))
+    if "version_candidate_pattern" in pattern_tags and score < REVIEW_NEEDED_SCORE:
+        return False
     return _classify_candidate(candidate, has_artist=has_artist, input_artist=input_artist) in {
         "review_needed",
         "low_confidence",
@@ -2232,13 +2239,6 @@ def _pick_best_acceptable_candidate(
         if _candidate_is_recoverable(candidate, has_artist=has_artist, input_artist=input_artist)
     ]
     if not recoverable:
-        invalid = [
-            _attach_candidate_status(candidate, has_artist=has_artist, input_artist=input_artist)
-            for candidate in scored_candidates
-            if _classify_candidate(candidate, has_artist=has_artist, input_artist=input_artist) == "invalid_candidate"
-        ]
-        if invalid:
-            return invalid[0]
         return None
 
     status_priority = {

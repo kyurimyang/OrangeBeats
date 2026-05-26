@@ -27,6 +27,27 @@ class TextPipelineValidityTests(unittest.TestCase):
         self.assertEqual(result["method"], "rule_based")
         _llm_mock.assert_not_called()
 
+    @patch("app.services.text_analysis.extract_songs_with_llm", return_value='{"songs":[]}')
+    @patch(
+        "app.parsers.song_parser._detect_llm_global_direction",
+        return_value={"global_direction": "artist_title", "confidence": "low", "reason": ""},
+    )
+    def test_bulleted_timestamp_tracklist_uses_rule_fast_path(self, _direction_mock, _llm_mock):
+        result = analyze_text_block(
+            "\n".join(
+                [
+                    "- 3:47 BoA - Atlantis Princess",
+                    "- 7:05 BoA - Milky Way",
+                    "- 11:03 SMTOWN - Hot Mail",
+                ]
+            ),
+            stage="description",
+        )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["method"], "rule_based")
+        _llm_mock.assert_not_called()
+
     @patch(
         "app.services.text_analysis.extract_songs_with_llm",
         return_value='{"songs":[{"artist":"Mitski","title":"My Love Mine All Mine"},{"artist":"d4vd","title":"Here With Me"}]}',
@@ -37,6 +58,26 @@ class TextPipelineValidityTests(unittest.TestCase):
                 [
                     "Mitski - My Love Mine All Mine",
                     "d4vd - Here With Me",
+                ]
+            ),
+            stage="description",
+        )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["method"], "llm")
+        _llm_mock.assert_called_once()
+
+    @patch(
+        "app.services.text_analysis.extract_songs_with_llm",
+        return_value='{"songs":[{"artist":"Mitski","title":"My Love Mine All Mine"},{"artist":"d4vd","title":"Here With Me"},{"artist":"IU","title":"Good Day"}]}',
+    )
+    def test_strong_delimiter_text_still_uses_llm_first(self, _llm_mock):
+        result = analyze_text_block(
+            "\n".join(
+                [
+                    "Mitski - My Love Mine All Mine",
+                    "d4vd - Here With Me",
+                    "IU - Good Day",
                 ]
             ),
             stage="description",

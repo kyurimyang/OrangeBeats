@@ -1,37 +1,54 @@
 import base64
 import os
+from functools import lru_cache
 from pathlib import Path
 
-_COOKIE_FILE = os.getenv("YTDLP_COOKIE_FILE", "").strip()
-_COOKIE_CONTENT = os.getenv("YTDLP_COOKIE_CONTENT", "").strip()
 
-_resolved_cookie_path: str = ""
+def _resolve_cookie_path() -> str:
+    cookie_content = os.getenv("YTDLP_COOKIE_CONTENT", "").strip()
+    cookie_file = os.getenv("YTDLP_COOKIE_FILE", "").strip()
 
-if _COOKIE_CONTENT:
-    _tmp_path = Path("/tmp/yt_cookies.txt")
-    try:
-        decoded = base64.b64decode(_COOKIE_CONTENT)
-        _tmp_path.write_bytes(decoded)
-        _resolved_cookie_path = str(_tmp_path)
-        print(f"[ytdlp-opts] cookie loaded from YTDLP_COOKIE_CONTENT ({len(decoded)} bytes → {_tmp_path})")
-    except Exception as e:
-        print(f"[ytdlp-opts] YTDLP_COOKIE_CONTENT decode failed: {e}")
-elif _COOKIE_FILE:
-    _resolved_cookie_path = _COOKIE_FILE
-    print(f"[ytdlp-opts] cookie loaded from YTDLP_COOKIE_FILE: {_COOKIE_FILE}")
-else:
+    if cookie_content:
+        tmp_path = Path("/tmp/yt_cookies.txt")
+        try:
+            decoded = base64.b64decode(cookie_content)
+            tmp_path.write_bytes(decoded)
+            print(f"[ytdlp-opts] cookie loaded from YTDLP_COOKIE_CONTENT ({len(decoded)} bytes → {tmp_path})")
+            return str(tmp_path)
+        except Exception as e:
+            print(f"[ytdlp-opts] YTDLP_COOKIE_CONTENT decode failed: {e}")
+            return ""
+
+    if cookie_file:
+        if Path(cookie_file).is_file():
+            print(f"[ytdlp-opts] cookie loaded from YTDLP_COOKIE_FILE: {cookie_file}")
+            return cookie_file
+        print(f"[ytdlp-opts] YTDLP_COOKIE_FILE not found (skipping): {cookie_file}")
+        return ""
+
     print("[ytdlp-opts] no cookie configured — using tv_embedded client only")
+    return ""
+
+
+@lru_cache(maxsize=1)
+def _get_cookie_path() -> str:
+    return _resolve_cookie_path()
 
 
 def ytdlp_base_opts() -> dict:
-    # tv_embedded: YouTube TV 클라이언트. 데이터센터 IP에서도 쿠키 없이 동작하는 경우 많음.
-    # web: 일반 웹 클라이언트 (fallback). 쿠키가 있으면 bot 우회에 도움.
+    # 쿠키 있을 때: web 클라이언트를 우선 사용 (포맷 가용성 최대)
+    # 쿠키 없을 때: tv_embedded/android/ios로 봇 감지 우회
+    path = _get_cookie_path()
+    if path:
+        player_clients = ["web", "tv_embedded"]
+    else:
+        player_clients = ["android", "ios", "tv_embedded"]
     opts: dict = {
         "quiet": True,
         "no_warnings": True,
         "noplaylist": True,
-        "extractor_args": {"youtube": {"player_client": ["android", "ios", "tv_embedded"]}},
+        "extractor_args": {"youtube": {"player_client": player_clients}},
     }
-    if _resolved_cookie_path:
-        opts["cookiefile"] = _resolved_cookie_path
+    if path:
+        opts["cookiefile"] = path
     return opts
