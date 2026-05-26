@@ -861,11 +861,12 @@ def run_youtube_text_pipeline(url: str) -> dict:
         }
         primary_result = _apply_single_artist_context(primary_result, artist_detection)
 
-        # Phase 4: 음악 섹션으로 보강 (enrichment only — music_extras는 songs에 합산하지 않음)
+        # Phase 4: 음악 섹션으로 보강 + 텍스트 미추출 곡 자동 추가
         enriched_songs, music_extras = _enrich_songs_with_music_section(
             primary_result["songs"], prefetched_music_section
         )
-        primary_result["songs"] = enriched_songs
+        supplemented_songs, supplement_log = _supplement_songs_from_candidates(enriched_songs, music_extras)
+        primary_result["songs"] = supplemented_songs
 
         artist_detection = _override_single_artist_detection_with_music_section(
             artist_detection,
@@ -885,7 +886,7 @@ def run_youtube_text_pipeline(url: str) -> dict:
             "source_quality_summary": source_quality_summary,
             "success": True,
             "songs": primary_result["songs"],
-            "music_section_candidates": music_extras,
+            "music_section_candidates": supplement_log,
             "ocr_used": False,
             "acr_used": False,
             "signals": {
