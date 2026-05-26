@@ -20,11 +20,18 @@ elif _COOKIE_FILE:
     _resolved_cookie_path = _COOKIE_FILE
     print(f"[ytdlp-opts] cookie loaded from YTDLP_COOKIE_FILE: {_COOKIE_FILE}")
 else:
-    print("[ytdlp-opts] no cookie configured (YTDLP_COOKIE_CONTENT and YTDLP_COOKIE_FILE both empty)")
+    print("[ytdlp-opts] no cookie configured — using tv_embedded client only")
 
 
 def ytdlp_base_opts() -> dict:
-    opts: dict = {"quiet": True, "no_warnings": True, "noplaylist": True}
+    # tv_embedded: YouTube TV 클라이언트. 데이터센터 IP에서도 쿠키 없이 동작하는 경우 많음.
+    # web: 일반 웹 클라이언트 (fallback). 쿠키가 있으면 bot 우회에 도움.
+    opts: dict = {
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+        "extractor_args": {"youtube": {"player_client": ["tv_embedded", "web"]}},
+    }
     if _resolved_cookie_path:
         opts["cookiefile"] = _resolved_cookie_path
     return opts
