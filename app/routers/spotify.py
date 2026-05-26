@@ -1,3 +1,4 @@
+import os
 import secrets
 import time
 from typing import Annotated, Dict, List
@@ -269,6 +270,9 @@ def match_spotify_candidates(
     request: Request,
     session_service: SpotifySessionDep,
 ):
+    if os.getenv("SPOTIFY_MATCHING_DISABLED", "").strip().lower() in {"1", "true", "yes"}:
+        raise HTTPException(status_code=503, detail="Spotify 매칭이 일시적으로 비활성화되었습니다. 잠시 후 다시 시도해주세요.")
+
     session_id = get_session_id(request)
     if not session_id:
         raise HTTPException(status_code=401, detail="Spotify 로그인이 필요합니다.")
