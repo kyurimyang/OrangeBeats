@@ -37,7 +37,7 @@ def _timestamp_line_lacks_pair_delimiter(raw_line: str) -> bool:
     tail = _title_from_timestamp_only_line(raw_line)
     if not tail:
         return False
-    return not bool(re.search(r"\s[-–—~|/]\s|:\s", tail))
+    return not bool(re.search(r"\s[-–—~|/]\s|:\s|,\s", tail))
 
 
 def _source_lines(text: str) -> list[str]:
