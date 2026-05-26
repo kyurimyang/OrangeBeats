@@ -10,12 +10,17 @@ _resolved_cookie_path: str = ""
 if _COOKIE_CONTENT:
     _tmp_path = Path("/tmp/yt_cookies.txt")
     try:
-        _tmp_path.write_bytes(base64.b64decode(_COOKIE_CONTENT))
+        decoded = base64.b64decode(_COOKIE_CONTENT)
+        _tmp_path.write_bytes(decoded)
         _resolved_cookie_path = str(_tmp_path)
-    except Exception:
-        pass
+        print(f"[ytdlp-opts] cookie loaded from YTDLP_COOKIE_CONTENT ({len(decoded)} bytes → {_tmp_path})")
+    except Exception as e:
+        print(f"[ytdlp-opts] YTDLP_COOKIE_CONTENT decode failed: {e}")
 elif _COOKIE_FILE:
     _resolved_cookie_path = _COOKIE_FILE
+    print(f"[ytdlp-opts] cookie loaded from YTDLP_COOKIE_FILE: {_COOKIE_FILE}")
+else:
+    print("[ytdlp-opts] no cookie configured (YTDLP_COOKIE_CONTENT and YTDLP_COOKIE_FILE both empty)")
 
 
 def ytdlp_base_opts() -> dict:
