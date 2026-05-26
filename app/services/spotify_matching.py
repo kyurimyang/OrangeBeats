@@ -929,183 +929,6 @@ def _mark_invalid_candidate(
     return invalid
 
 
-def _legacy_evidence_score_detail(candidate: Dict[str, Any]) -> Dict[str, Any]:
-    detail = candidate.get("score_detail", {}) or {}
-    pattern_tags = set(detail.get("pattern_tags", []))
-    title_score = float(detail.get("title_variant_score", detail.get("title_score", 0.0)) or 0.0)
-    artist_score = float(detail.get("artist_variant_score", detail.get("artist_score", 0.0)) or 0.0)
-    token_score = float(detail.get("input_candidate_token_overlap", detail.get("token_score", 0.0)) or 0.0)
-    api_rank = int(detail.get("api_rank", 999) or 999)
-    query_reliability = str(detail.get("query_reliability") or "low")
-    title_alias = bool(detail.get("title_alias_matched"))
-    artist_alias = bool(detail.get("artist_alias_matched"))
-    romanization = bool(detail.get("romanization_matched")) or "artist_romanization_match" in detail.get("matched_evidence", [])
-    official_metadata = bool(detail.get("official_metadata_candidate"))
-
-    if detail.get("pattern") == "invalid_candidate":
-        return {
-            "title_evidence": {
-                "type": "mismatch",
-                "score": 0.0,
-                "reason": "제목 유사도 또는 별칭 근거가 없습니다.",
-            },
-            "artist_evidence": {
-                "type": "mismatch",
-                "score": 0.0,
-                "reason": "가수 별칭/로마자 근거가 없습니다.",
-            },
-            "query_evidence": {
-                "type": "none",
-                "score": 0.0,
-                "reason": "기본 근거가 없어 검색 순위 근거를 적용하지 않았습니다.",
-                "applied": False,
-            },
-            "metadata_evidence": {
-                "album_image": bool(candidate.get("album_image")),
-                "duration_close": None,
-                "score": 0.0,
-            },
-            "risk_penalty": {
-                "score": 0.0,
-                "reasons": [],
-            },
-            "pattern": "invalid_candidate",
-            "score_cap": 0.0,
-            "final_score": 0.0,
-            "decision": "rejected",
-        }
-
-    if title_alias:
-        title_evidence = {"type": "alias", "score": 0.45, "reason": "곡명이 title alias로 일치합니다."}
-    elif official_metadata:
-        title_evidence = {
-            "type": "translation_alias",
-            "score": 0.25,
-            "reason": "Spotify API에서 영어/로마자 공식 제목으로 반환된 후보입니다.",
-        }
-    elif title_score >= 0.95:
-        title_evidence = {"type": "exact", "score": 0.45, "reason": "곡명이 정확히 일치합니다."}
-    elif title_score >= 0.55:
-        title_evidence = {
-            "type": "partial",
-            "score": round(min(0.32, title_score * 0.32), 4),
-            "reason": "곡명 일부가 유사합니다.",
-        }
-    else:
-        title_evidence = {"type": "mismatch", "score": 0.0, "reason": "곡명 유사도가 낮습니다."}
-
-    if artist_alias:
-        artist_evidence = {"type": "alias", "score": 0.35, "reason": "가수명이 artist alias로 일치합니다."}
-    elif romanization:
-        artist_evidence = {"type": "romanization", "score": 0.33, "reason": "가수명이 로마자 표기상 일치합니다."}
-    elif artist_score >= 0.95:
-        artist_evidence = {"type": "exact", "score": 0.35, "reason": "가수명이 정확히 일치합니다."}
-    elif artist_score >= 0.55:
-        artist_evidence = {
-            "type": "partial",
-            "score": round(min(0.25, artist_score * 0.25), 4),
-            "reason": "가수명 일부가 유사합니다.",
-        }
-    else:
-        artist_evidence = {"type": "mismatch", "score": 0.0, "reason": "가수명 유사도가 낮습니다."}
-
-    base_evidence_exists = not (
-        title_evidence["type"] == "mismatch"
-        and artist_evidence["type"] == "mismatch"
-    )
-    query_applied = (
-        base_evidence_exists
-        and api_rank == 1
-        and query_reliability in {"high", "medium"}
-    )
-    if query_applied:
-        query_type = "rank1_alias_query" if (title_alias or artist_alias or romanization) else "rank1_original_query"
-        query_evidence = {
-            "type": query_type,
-            "score": 0.15 if query_reliability == "high" else 0.10,
-            "reason": "검색 1위 후보이며 기본 매칭 근거가 있어 보조 근거로 반영했습니다.",
-            "applied": True,
-        }
-    else:
-        query_evidence = {
-            "type": "none",
-            "score": 0.0,
-            "reason": "검색 순위는 단독 근거로 사용하지 않습니다.",
-            "applied": False,
-        }
-
-    metadata_score = 0.03 if candidate.get("album_image") else 0.0
-    metadata_evidence = {
-        "album_image": bool(candidate.get("album_image")),
-        "duration_close": None,
-        "score": metadata_score,
-    }
-
-    penalty_reasons: List[str] = []
-    penalty_score = 0.0
-    if "non_original_audio_pattern" in pattern_tags:
-        penalty_score += 0.35
-        penalty_reasons.append("원곡이 아닌 버전일 가능성이 있습니다.")
-    if "short_title_false_positive_pattern" in pattern_tags:
-        penalty_score += 0.20
-        penalty_reasons.append("짧은 제목으로 인한 오탐 가능성이 있습니다.")
-    if "title_only_overconfidence_pattern" in pattern_tags:
-        penalty_score += 0.12
-        penalty_reasons.append("제목만 유사하고 가수 근거가 약합니다.")
-    if "artist_only_overconfidence_pattern" in pattern_tags:
-        penalty_score += 0.12
-        penalty_reasons.append("가수만 유사하고 제목 근거가 약합니다.")
-
-    raw_score = (
-        float(title_evidence["score"])
-        + float(artist_evidence["score"])
-        + float(query_evidence["score"])
-        + metadata_score
-        - penalty_score
-    )
-
-    if title_evidence["type"] in {"exact", "alias"} and artist_evidence["type"] in {"exact", "alias", "romanization"}:
-        pattern = "strong_match"
-        score_cap = 1.0
-    elif official_metadata and artist_evidence["type"] in {"alias", "romanization", "exact"}:
-        pattern = "official_metadata_candidate"
-        score_cap = 0.79
-    elif title_evidence["type"] != "mismatch" and artist_evidence["type"] != "mismatch":
-        pattern = "probable_match"
-        score_cap = 0.86
-    elif title_evidence["type"] != "mismatch" or artist_evidence["type"] != "mismatch":
-        pattern = "weak_evidence"
-        score_cap = 0.74 if query_applied else 0.60
-    else:
-        pattern = "invalid_candidate"
-        score_cap = 0.0
-
-    final_score = max(0.0, min(round(raw_score, 4), score_cap))
-    if pattern == "strong_match" and final_score >= 0.78:
-        decision = "auto_select_recommended"
-    elif pattern in {"probable_match", "official_metadata_candidate"} and final_score >= 0.55:
-        decision = "confirm_before_select"
-    elif pattern == "weak_evidence" and final_score > 0:
-        decision = "warning"
-    else:
-        decision = "rejected"
-
-    return {
-        "title_evidence": title_evidence,
-        "artist_evidence": artist_evidence,
-        "query_evidence": query_evidence,
-        "metadata_evidence": metadata_evidence,
-        "risk_penalty": {
-            "score": round(penalty_score, 4),
-            "reasons": penalty_reasons,
-        },
-        "pattern": pattern,
-        "score_cap": score_cap,
-        "final_score": final_score,
-        "decision": decision,
-    }
-
-
 def _spotify_rank_score(api_rank: int) -> float:
     if api_rank <= 0 or api_rank > SEARCH_LIMIT:
         return 0.0
@@ -2209,13 +2032,33 @@ def _classify_candidate(candidate: Dict[str, Any], *, has_artist: bool, input_ar
     """Classify a Spotify candidate without making extra searches."""
     score = float(candidate.get("score", 0.0))
     detail = candidate.get("score_detail", {})
+    pattern_tags = set(detail.get("pattern_tags", []))
+    version_hits = {
+        str(hit or "").casefold()
+        for hit in detail.get("version_keyword_hits", [])
+    }
     evidence = detail.get("evidence_confidence") or {}
+    if isinstance(evidence, dict):
+        version_hits.update(
+            str(hit or "").casefold()
+            for hit in evidence.get("version_keyword_hits", [])
+        )
+    hard_non_original = bool(version_hits & {"karaoke", "instrumental", "piano"})
+    if detail.get("pattern") == "invalid_candidate" or "invalid_candidate" in pattern_tags:
+        return "invalid_candidate"
+    if "non_original_audio_pattern" in pattern_tags and (
+        hard_non_original or "acceptable_version_pattern" not in pattern_tags
+    ):
+        return "unmatched"
+    if (
+        "version_candidate_pattern" in pattern_tags
+        and "acceptable_version_pattern" not in pattern_tags
+        and score < REVIEW_NEEDED_SCORE
+    ):
+        return "unmatched"
     evidence_status = str(evidence.get("match_status") or detail.get("match_status") or "")
     if evidence_status in {"matched", "review_needed", "low_confidence", "invalid_candidate"}:
         return evidence_status
-    pattern_tags = set(detail.get("pattern_tags", []))
-    if detail.get("pattern") == "invalid_candidate" or "invalid_candidate" in pattern_tags:
-        return "invalid_candidate"
     decision = evidence.get("decision") or detail.get("candidate_decision")
     pattern = evidence.get("pattern") or detail.get("pattern")
     if decision == "auto_select_recommended":

@@ -24,6 +24,27 @@ class TextPipelineValidityTests(unittest.TestCase):
         self.assertTrue(result["success"])
         self.assertTrue(result["is_partial_but_valid"])
         self.assertEqual(result["validity_reason"], "timestamp_pattern_detected")
+        self.assertEqual(result["method"], "rule_based")
+        _llm_mock.assert_not_called()
+
+    @patch(
+        "app.services.text_analysis.extract_songs_with_llm",
+        return_value='{"songs":[{"artist":"Mitski","title":"My Love Mine All Mine"},{"artist":"d4vd","title":"Here With Me"}]}',
+    )
+    def test_general_text_uses_llm_before_rule_success(self, _llm_mock):
+        result = analyze_text_block(
+            "\n".join(
+                [
+                    "Mitski - My Love Mine All Mine",
+                    "d4vd - Here With Me",
+                ]
+            ),
+            stage="description",
+        )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["method"], "llm")
+        _llm_mock.assert_called_once()
 
     @patch("app.services.text_analysis.extract_songs_with_llm", return_value='{"songs":[]}')
     def test_noisy_comments_are_classified_without_extracting_songs(self, _llm_mock):

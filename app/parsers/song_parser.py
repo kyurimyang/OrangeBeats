@@ -21,6 +21,7 @@ from app.constants.pipeline_params import (
 TIME_PREFIX_REGEX = re.compile(r"^\s*(?:\d{1,2}:\d{2}(?::\d{2})?)\s*[-|~>*]*\s*")
 TIMESTAMP_TOKEN_REGEX = re.compile(r"(?<!\d)(?:\d{1,2}:\d{2}(?::\d{2})?)(?!\d)")
 TIMESTAMP_LINE_REGEX = re.compile(r"^(?P<ts>\d{1,2}:\d{2}(?::\d{2})?)\s+(?P<body>.+)$")
+TRAILING_TIMESTAMP_LINE_REGEX = re.compile(r"^(?P<body>.{2,60}?)\s+(?P<ts>\d{1,2}:\d{2}(?::\d{2})?)$")
 TIMESTAMP_PREFIX_ONLY_REGEX = re.compile(r"^\d{1,2}:\d{2}(?::\d{2})?\s+")
 NUMBERED_HYPHEN_TRACK_REGEX = re.compile(r"^\d{1,3}-(.+?)-(.+)$")
 TRACK_NUMBER_ONLY_REGEX = re.compile(r"^\s*(?:\d{1,3}|[A-Za-z])[\.)]?\s*$")
@@ -1366,21 +1367,36 @@ def _direction_vote(parts: dict) -> str:
         return "title_artist"
     return "unknown"
 
+def _direction_vote_summary(parsed_pairs: list[dict]) -> dict:
+    votes = [_direction_vote(parts) for parts in parsed_pairs]
+    decisive_votes = [vote for vote in votes if vote in {"artist_title", "title_artist"}]
+    artist_title_count = decisive_votes.count("artist_title")
+    title_artist_count = decisive_votes.count("title_artist")
+    total = len(decisive_votes)
+    dominant_count = max(artist_title_count, title_artist_count) if total else 0
+    return {
+        "votes": votes,
+        "decisive_votes": decisive_votes,
+        "artist_title_count": artist_title_count,
+        "title_artist_count": title_artist_count,
+        "total": total,
+        "dominant_count": dominant_count,
+        "dominant_ratio": dominant_count / total if total else 0.0,
+    }
+
+
 def _infer_global_direction(parsed_pairs: list[dict]) -> tuple[str, str]:
     if not parsed_pairs:
         return "per_line", "low"
 
-    votes = [_direction_vote(parts) for parts in parsed_pairs]
-    decisive_votes = [vote for vote in votes if vote in {"artist_title", "title_artist"}]
-    if not decisive_votes:
+    summary = _direction_vote_summary(parsed_pairs)
+    if not summary["decisive_votes"]:
         return "per_line", "low"
 
-    artist_title_count = decisive_votes.count("artist_title")
-    title_artist_count = decisive_votes.count("title_artist")
-    total = len(decisive_votes)
-
-    dominant_count = max(artist_title_count, title_artist_count)
-    ratio = dominant_count / total
+    artist_title_count = summary["artist_title_count"]
+    title_artist_count = summary["title_artist_count"]
+    total = summary["total"]
+    ratio = summary["dominant_ratio"]
 
     if ratio >= 0.90 and total >= 3:
         rule_confidence = "high"
@@ -1394,6 +1410,12 @@ def _infer_global_direction(parsed_pairs: list[dict]) -> tuple[str, str]:
     if title_artist_count / total >= DOMINANT_DIRECTION_RATIO:
         return "title_artist", rule_confidence
     return "per_line", "low"
+
+
+def _should_skip_direction_llm(parsed_pairs: list[dict], rule_direction: str, rule_confidence: str) -> tuple[bool, str]:
+    if rule_confidence == "high":
+        return True, "rule_high_confidence_skipped_llm"
+    return False, ""
 
 
 def _detect_llm_global_direction(parsed_pairs: list[dict]) -> dict:
@@ -1445,15 +1467,16 @@ def _detect_llm_global_direction(parsed_pairs: list[dict]) -> dict:
 def _resolve_global_direction(parsed_pairs: list[dict]) -> tuple[str, dict]:
     rule_direction, rule_confidence = _infer_global_direction(parsed_pairs)
 
-    if rule_confidence == "high":
+    skip_llm, skip_reason = _should_skip_direction_llm(parsed_pairs, rule_direction, rule_confidence)
+    if skip_llm:
         global_direction = rule_direction
         print(
-            f"[direction] rule={rule_direction} confidence=high → llm skipped"
+            f"[direction] rule={rule_direction} confidence={rule_confidence} llm skipped reason={skip_reason}"
         )
         return global_direction, {
             "llm_global_direction": rule_direction,
-            "llm_direction_confidence": "high",
-            "llm_direction_reason": "rule_high_confidence_skipped_llm",
+            "llm_direction_confidence": rule_confidence,
+            "llm_direction_reason": skip_reason,
             "direction_source": "rule_only",
             "rule_global_direction": rule_direction,
             "rule_confidence": rule_confidence,
@@ -1589,6 +1612,9 @@ def _append_song(results: list[dict], artist: str, title: str, meta: dict | None
         "normalized_by",
         "artist_inferred",
         "inferred_artist_source",
+        "artist_hint",
+        "artist_hint_source",
+        "artist_inference_confidence",
         "title_metadata_hints",
         "title_feature_artists",
         "title_producer_artists",
@@ -1604,6 +1630,21 @@ def _append_song(results: list[dict], artist: str, title: str, meta: dict | None
     results.append(song)
 
 
+def _split_missing_artist_from_comma_title(artist: str, title: str) -> tuple[str, str]:
+    if artist or "," not in title:
+        return artist, title
+    title_part, artist_part = [part.strip() for part in title.rsplit(",", 1)]
+    artist_part_clean = _clean_text(artist_part)
+    compact_artist = artist_part_clean.replace(" ", "")
+    right_looks_like_artist = (
+        _known_artist_evidence(artist_part_clean) >= 1.2
+        or (is_hangul_only(artist_part_clean) and 2 <= len(compact_artist) <= 12)
+    )
+    if title_part and artist_part_clean and right_looks_like_artist:
+        return _clean_text(artist_part), _clean_pair_side(title_part)
+    return artist, title
+
+
 def parse_unstructured_lines_to_json(text: str) -> dict:
     if not text:
         return {"songs": []}
@@ -1616,9 +1657,26 @@ def parse_unstructured_lines_to_json(text: str) -> dict:
             continue
 
         ts_match = TIMESTAMP_LINE_REGEX.match(line)
-        raw_target = ts_match.group("body") if ts_match else line
+        trailing_ts_match = None
+        if not ts_match:
+            m = TRAILING_TIMESTAMP_LINE_REGEX.match(line)
+            if m:
+                body = m.group("body").strip()
+                # 자연어 반응 댓글 필터: 말줄임표로 끝나거나 _is_valid_music_line을 통과 못하면 무시
+                if not body.endswith(("…", "...")) and _is_valid_music_line(body):
+                    trailing_ts_match = m
+
+        raw_target = (
+            ts_match.group("body") if ts_match
+            else trailing_ts_match.group("body").strip() if trailing_ts_match
+            else line
+        )
         target = _clean_text(raw_target)
         if not target or not _is_valid_music_line(target):
+            continue
+
+        # 타임스탬프 body가 말줄임표로 끝나면 오탐(팬 반응 댓글)으로 처리
+        if ts_match and raw_target.endswith(("…", "...")):
             continue
 
         # 앨범 섹션 마커 우선 처리: "Outro : House Of Cards" → 분리 차단, 전체가 곡명
@@ -1636,18 +1694,35 @@ def parse_unstructured_lines_to_json(text: str) -> dict:
             parts = _extract_pair_parts(raw_target)
             if not parts:
                 parts = _extract_numbered_hyphen_track(raw_target)
-            if not parts and ts_match:
+            if not parts and (ts_match or trailing_ts_match):
                 parts = _extract_bare_hyphen_pair(raw_target)
             if not parts:
                 # 타임스탬프가 있는데 구분자가 없으면 body 전체를 title-only로 보관
-                if ts_match:
+                if ts_match or trailing_ts_match:
                     parts = {"raw": raw_target, "left": "", "right": "", "_title_only": True}
                 else:
                     continue
 
-        if ts_match:
-            parts["_timestamp"] = ts_match.group("ts")
+        effective_ts = (
+            ts_match.group("ts") if ts_match
+            else trailing_ts_match.group("ts") if trailing_ts_match
+            else None
+        )
+        if effective_ts:
+            parts["_timestamp"] = effective_ts
         pair_candidates.append(parts)
+
+    timestamp_pair_count = sum(
+        1
+        for parts in pair_candidates
+        if parts.get("_timestamp") and not parts.get("_title_only")
+    )
+    if timestamp_pair_count >= 3:
+        pair_candidates = [
+            parts
+            for parts in pair_candidates
+            if parts.get("_timestamp") or parts.get("_numbered_track")
+        ]
 
     pair_candidates_with_sep = [
         p for p in pair_candidates
@@ -1724,6 +1799,7 @@ def normalize_song_candidates(data: Any, inferred_artist: str = "", skip_directi
 
         artist = _clean_text(item.get("artist", ""))
         title = _clean_text(item.get("title", ""))
+        artist, title = _split_missing_artist_from_comma_title(artist, title)
         raw = _clean_text(item.get("raw", "")) or f"{artist} - {title}".strip(" -")
         left = _clean_text(item.get("left", artist))
         right = _clean_text(item.get("right", title))
@@ -1753,6 +1829,7 @@ def normalize_song_candidates(data: Any, inferred_artist: str = "", skip_directi
 
         artist = _clean_text(item.get("artist", ""))
         title = _clean_text(item.get("title", ""))
+        artist, title = _split_missing_artist_from_comma_title(artist, title)
         raw = _clean_text(item.get("raw", "")) or f"{artist} - {title}".strip(" -")
         left = _clean_text(item.get("left", artist))
         right = _clean_text(item.get("right", title))
@@ -1780,7 +1857,12 @@ def normalize_song_candidates(data: Any, inferred_artist: str = "", skip_directi
             if evidence_key in item:
                 meta[evidence_key] = item.get(evidence_key)
 
-        if left and right:
+        if skip_direction_detection and "left" not in item:
+            # LLM이 직접 파싱한 artist/title → 방향 재평가 없이 그대로 신뢰
+            title = _clean_pair_side(title)
+            meta["reason"] = "llm_parsed_trust"
+            meta["score"] = max(float(item.get("score") or 0.0), 1.0)
+        elif left and right:
             line_direction = "title_artist" if item.get("nested_pair_extracted") else global_direction
             parsed = _resolve_orientation(
                 {
@@ -1811,9 +1893,11 @@ def normalize_song_candidates(data: Any, inferred_artist: str = "", skip_directi
             meta["score"] = max(meta["score"], 0.5 if title else 0.0)
 
         if not artist and inferred_artist:
-            artist = inferred_artist
+            meta["artist_hint"] = inferred_artist
+            meta["artist_hint_source"] = str(item.get("inferred_artist_source") or "single_artist_context")
             meta["artist_inferred"] = True
             meta["inferred_artist_source"] = str(item.get("inferred_artist_source") or "single_artist_context")
+            meta["artist_inference_confidence"] = str(item.get("artist_inference_confidence") or "high")
             meta["reason"] = str(meta.get("reason") or "provided_artist_title")
 
         if not _is_meaningful_text(title):
@@ -1885,6 +1969,9 @@ def deduplicate_songs(songs: list[dict]) -> list[dict]:
             "normalized_by",
             "artist_inferred",
             "inferred_artist_source",
+            "artist_hint",
+            "artist_hint_source",
+            "artist_inference_confidence",
             "title_metadata_hints",
             "title_feature_artists",
             "title_producer_artists",
@@ -1940,7 +2027,12 @@ def is_text_stage_success(source_text: str, confirmed_tracks: list[dict]) -> boo
 
 def assess_text_stage_validity(source_text: str, confirmed_tracks: list[dict]) -> dict:
     total = len(confirmed_tracks)
-    complete = sum(1 for song in confirmed_tracks if song.get("is_complete"))
+    complete = sum(
+        1
+        for song in confirmed_tracks
+        if song.get("is_complete")
+        or (song.get("title") and (song.get("artist") or song.get("artist_hint")))
+    )
     average = (
         sum(song.get("completeness_score", 0.0) for song in confirmed_tracks) / total
         if total
