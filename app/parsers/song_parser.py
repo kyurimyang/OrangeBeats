@@ -1834,7 +1834,12 @@ def normalize_song_candidates(data: Any, inferred_artist: str = "", skip_directi
             if evidence_key in item:
                 meta[evidence_key] = item.get(evidence_key)
 
-        if left and right:
+        if skip_direction_detection and "left" not in item:
+            # LLM이 직접 파싱한 artist/title → 방향 재평가 없이 그대로 신뢰
+            title = _clean_pair_side(title)
+            meta["reason"] = "llm_parsed_trust"
+            meta["score"] = max(float(item.get("score") or 0.0), 1.0)
+        elif left and right:
             line_direction = "title_artist" if item.get("nested_pair_extracted") else global_direction
             parsed = _resolve_orientation(
                 {
