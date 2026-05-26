@@ -1,10 +1,20 @@
 import unittest
 from unittest.mock import patch
 
-from app.parsers.song_parser import parse_unstructured_lines_to_json
+from app.parsers.song_parser import parse_unstructured_lines_to_json, _should_skip_direction_llm
 
 
 class SongParserMetadataNoiseTests(unittest.TestCase):
+    def test_medium_rule_confidence_does_not_skip_direction_llm(self):
+        should_skip, reason = _should_skip_direction_llm(
+            [{"left": "a", "right": "b"} for _ in range(4)],
+            "artist_title",
+            "medium",
+        )
+
+        self.assertFalse(should_skip)
+        self.assertEqual(reason, "")
+
     @patch(
         "app.parsers.song_parser._detect_llm_global_direction",
         return_value={"global_direction": "artist_title", "confidence": "high", "reason": ""},
@@ -82,6 +92,39 @@ class SongParserMetadataNoiseTests(unittest.TestCase):
         self.assertEqual(
             [(song["artist"], song["title"]) for song in result["songs"]],
             [("Hearts2Hearts", "RUDE!")],
+        )
+
+    @patch(
+        "app.parsers.song_parser._detect_llm_global_direction",
+        return_value={"global_direction": "title_artist", "confidence": "high", "reason": ""},
+    )
+    def test_timestamp_tracklist_ignores_prose_delimiter_lines(self, _direction_mock):
+        result = parse_unstructured_lines_to_json(
+            "\n".join(
+                [
+                    "\ubc30\uacbd - \ub9cc\uc57d\uc5d0 \uc6b0\ub9ac (2025)",
+                    "\ud83d\udc7e \ub9cc\uc57d\uc5d0 \uc6b0\ub9ac / \uba3c \ud6d7\ub0a0 \uc6b0\ub9ac \uc2a4\ud3ec \uc788\uc744 \uc218\ub3c4 \uc788\uc74c",
+                    "\uc81c \uc790\uc2e0\uc774 \ucd94\ud560 \ub54c\ub3c4 \ucc38 ~ \ub9ce\uc740 \uac83 \uac19\uc544\uc694.",
+                    "00:00 \uacf0\ud321\uc774 - \uacf5\uc6d0",
+                    "03:28 \ubaa8\ub798\uc131 - \uc2e0\uc778\ub958",
+                    "07:28 \uc774 \uc5ec\ub984\uc774 \ub05d\ub098\uace0 - \ubcf4\uc218\ub3d9\ucfe8\ub7ec",
+                    "10:47 \ud6e8\ud6e8 - \uae40\ub73b\ub3cc",
+                    "14:05 \ub05d - \ub098\uc0c1\ud604",
+                    "18:11 \ub108\ub9cc\ud07c - \uae40\uc0ac\uc6d4",
+                ]
+            )
+        )
+
+        self.assertEqual(
+            [(song["artist"], song["title"]) for song in result["songs"]],
+            [
+                ("\uacf5\uc6d0", "\uacf0\ud321\uc774"),
+                ("\uc2e0\uc778\ub958", "\ubaa8\ub798\uc131"),
+                ("\ubcf4\uc218\ub3d9\ucfe8\ub7ec", "\uc774 \uc5ec\ub984\uc774 \ub05d\ub098\uace0"),
+                ("\uae40\ub73b\ub3cc", "\ud6e8\ud6e8"),
+                ("\ub098\uc0c1\ud604", "\ub05d"),
+                ("\uae40\uc0ac\uc6d4", "\ub108\ub9cc\ud07c"),
+            ],
         )
 
 

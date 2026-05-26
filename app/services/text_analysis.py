@@ -57,7 +57,6 @@ def _annotate_song_evidence(
     source_text: str,
     source_name: str,
     method: str,
-    require_raw_line: bool = False,
 ) -> list[dict]:
     lines = _source_lines(source_text)
     annotated: list[dict] = []
@@ -67,6 +66,7 @@ def _annotate_song_evidence(
         if method == "llm" and raw_line and not _raw_line_in_source(raw_line, source_text):
             title = str(item.get("title") or "").strip()
             artist = str(item.get("artist") or "").strip()
+            original_raw_line = raw_line
             raw_line = next(
                 (
                     line
@@ -76,9 +76,12 @@ def _annotate_song_evidence(
                 "",
             )
             if not raw_line:
+                print(
+                    f"[annotate-evidence] llm_song_dropped source={source_name} "
+                    f"title='{title}' artist='{artist}' "
+                    f"llm_raw='{original_raw_line}'"
+                )
                 continue
-        if require_raw_line and not _raw_line_in_source(raw_line, source_text):
-            continue
         if not raw_line:
             title = str(item.get("title") or "").strip()
             raw_line = next((line for line in lines if title and title in line), "")
@@ -136,7 +139,7 @@ def _run_llm_parse(text: str, llm_blocks: list[str] | None, stage: str, inferred
     llm_json = parse_json_from_text(llm_raw)
     llm_result = normalize_song_candidates(llm_json, inferred_artist=inferred_artist, skip_direction_detection=True)
     llm_result['songs'] = _annotate_song_evidence(
-        llm_result['songs'], source_text=text, source_name=stage, method='llm', require_raw_line=False,
+        llm_result['songs'], source_text=text, source_name=stage, method='llm',
     )
     validity = assess_text_stage_validity(text, llm_result['songs'])
     return {
@@ -172,6 +175,32 @@ def _run_rule_parse(text: str, stage: str, inferred_artist: str, rule_signals: d
     }
 
 
+def _is_clean_timestamp_fast_path(rule_signals: dict) -> bool:
+    timestamp_count = int(rule_signals.get("timestamp_count") or 0)
+    candidate_line_count = int(rule_signals.get("candidate_line_count") or 0)
+    line_count = int(rule_signals.get("line_count") or 0)
+    candidate_line_ratio = float(rule_signals.get("candidate_line_ratio") or 0.0)
+    pattern_count = int(rule_signals.get("pattern_count") or 0)
+
+    if timestamp_count < 2:
+        return False
+    if candidate_line_count < timestamp_count:
+        return False
+    if line_count <= timestamp_count + 1:
+        return True
+    if candidate_line_ratio >= 0.60 and pattern_count <= timestamp_count + 1:
+        return True
+    return False
+
+
+def _is_strong_delimiter_signal(rule_signals: dict) -> bool:
+    """delimiter 쌍(artist-title)이 충분히 밀집된 경우 rule first."""
+    pattern_count = int(rule_signals.get("pattern_count") or 0)
+    candidate_line_ratio = float(rule_signals.get("candidate_line_ratio") or 0.0)
+    timestamp_count = int(rule_signals.get("timestamp_count") or 0)
+    return pattern_count >= 3 and candidate_line_ratio >= 0.60 and timestamp_count < 2
+
+
 def analyze_text_block(
     text: str,
     *,
@@ -182,11 +211,20 @@ def analyze_text_block(
     text = text or ""
     rule_signals = count_text_signals(text)
 
-    # 규칙 기반 + direction LLM 우선, 실패 시 LLM full parsing fallback
-    result = _run_rule_parse(text, stage, inferred_artist, rule_signals)
-    if result['success']:
-        return result
-    return _run_llm_parse(text, llm_blocks, stage, inferred_artist, rule_signals)
+    # 타임스탬프 목록이거나 delimiter 쌍이 밀집 → rule first. 그 외 → LLM → rule fallback.
+    if _is_clean_timestamp_fast_path(rule_signals) or _is_strong_delimiter_signal(rule_signals):
+        result = _run_rule_parse(text, stage, inferred_artist, rule_signals)
+        if result['success']:
+            return result
+
+    try:
+        result = _run_llm_parse(text, llm_blocks, stage, inferred_artist, rule_signals)
+        if result['success']:
+            return result
+    except Exception as exc:
+        print("[text-analysis] llm_first_failed fallback=rule_based error =", str(exc))
+
+    return _run_rule_parse(text, stage, inferred_artist, rule_signals)
 
 
 def analyze_description(description: str, inferred_artist: str = "") -> dict:
