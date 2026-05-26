@@ -36,15 +36,19 @@ def _get_cookie_path() -> str:
 
 
 def ytdlp_base_opts() -> dict:
-    # tv_embedded: YouTube TV 클라이언트. 데이터센터 IP에서도 쿠키 없이 동작하는 경우 많음.
-    # android/ios: 봇 감지 우회용 추가 클라이언트.
+    # 쿠키 있을 때: web 클라이언트를 우선 사용 (포맷 가용성 최대)
+    # 쿠키 없을 때: tv_embedded/android/ios로 봇 감지 우회
+    path = _get_cookie_path()
+    if path:
+        player_clients = ["web", "tv_embedded"]
+    else:
+        player_clients = ["android", "ios", "tv_embedded"]
     opts: dict = {
         "quiet": True,
         "no_warnings": True,
         "noplaylist": True,
-        "extractor_args": {"youtube": {"player_client": ["android", "ios", "tv_embedded"]}},
+        "extractor_args": {"youtube": {"player_client": player_clients}},
     }
-    path = _get_cookie_path()
     if path:
         opts["cookiefile"] = path
     return opts
