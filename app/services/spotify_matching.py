@@ -2209,13 +2209,33 @@ def _classify_candidate(candidate: Dict[str, Any], *, has_artist: bool, input_ar
     """Classify a Spotify candidate without making extra searches."""
     score = float(candidate.get("score", 0.0))
     detail = candidate.get("score_detail", {})
+    pattern_tags = set(detail.get("pattern_tags", []))
+    version_hits = {
+        str(hit or "").casefold()
+        for hit in detail.get("version_keyword_hits", [])
+    }
     evidence = detail.get("evidence_confidence") or {}
+    if isinstance(evidence, dict):
+        version_hits.update(
+            str(hit or "").casefold()
+            for hit in evidence.get("version_keyword_hits", [])
+        )
+    hard_non_original = bool(version_hits & {"karaoke", "instrumental", "piano"})
+    if detail.get("pattern") == "invalid_candidate" or "invalid_candidate" in pattern_tags:
+        return "invalid_candidate"
+    if "non_original_audio_pattern" in pattern_tags and (
+        hard_non_original or "acceptable_version_pattern" not in pattern_tags
+    ):
+        return "unmatched"
+    if (
+        "version_candidate_pattern" in pattern_tags
+        and "acceptable_version_pattern" not in pattern_tags
+        and score < REVIEW_NEEDED_SCORE
+    ):
+        return "unmatched"
     evidence_status = str(evidence.get("match_status") or detail.get("match_status") or "")
     if evidence_status in {"matched", "review_needed", "low_confidence", "invalid_candidate"}:
         return evidence_status
-    pattern_tags = set(detail.get("pattern_tags", []))
-    if detail.get("pattern") == "invalid_candidate" or "invalid_candidate" in pattern_tags:
-        return "invalid_candidate"
     decision = evidence.get("decision") or detail.get("candidate_decision")
     pattern = evidence.get("pattern") or detail.get("pattern")
     if decision == "auto_select_recommended":

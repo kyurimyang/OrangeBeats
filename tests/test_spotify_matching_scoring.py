@@ -134,6 +134,10 @@ class SpotifyMatchingScoringTests(unittest.TestCase):
 
         self.assertLess(scored[0]["score"], 0.50)
         self.assertIn("non_original_audio_pattern", scored[0]["score_detail"]["pattern_tags"])
+        self.assertEqual(
+            _classify_candidate(scored[0], has_artist=True, input_artist="Yoon Sang"),
+            "unmatched",
+        )
 
     def test_short_title_false_positive_is_penalized(self):
         scored = _score_tracks(

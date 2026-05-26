@@ -1636,6 +1636,21 @@ def _append_song(results: list[dict], artist: str, title: str, meta: dict | None
     results.append(song)
 
 
+def _split_missing_artist_from_comma_title(artist: str, title: str) -> tuple[str, str]:
+    if artist or "," not in title:
+        return artist, title
+    title_part, artist_part = [part.strip() for part in title.rsplit(",", 1)]
+    artist_part_clean = _clean_text(artist_part)
+    compact_artist = artist_part_clean.replace(" ", "")
+    right_looks_like_artist = (
+        _known_artist_evidence(artist_part_clean) >= 1.2
+        or (is_hangul_only(artist_part_clean) and 2 <= len(compact_artist) <= 12)
+    )
+    if title_part and artist_part_clean and right_looks_like_artist:
+        return _clean_text(artist_part), _clean_pair_side(title_part)
+    return artist, title
+
+
 def parse_unstructured_lines_to_json(text: str) -> dict:
     if not text:
         return {"songs": []}
@@ -1778,6 +1793,7 @@ def normalize_song_candidates(data: Any, inferred_artist: str = "", skip_directi
 
         artist = _clean_text(item.get("artist", ""))
         title = _clean_text(item.get("title", ""))
+        artist, title = _split_missing_artist_from_comma_title(artist, title)
         raw = _clean_text(item.get("raw", "")) or f"{artist} - {title}".strip(" -")
         left = _clean_text(item.get("left", artist))
         right = _clean_text(item.get("right", title))
@@ -1807,6 +1823,7 @@ def normalize_song_candidates(data: Any, inferred_artist: str = "", skip_directi
 
         artist = _clean_text(item.get("artist", ""))
         title = _clean_text(item.get("title", ""))
+        artist, title = _split_missing_artist_from_comma_title(artist, title)
         raw = _clean_text(item.get("raw", "")) or f"{artist} - {title}".strip(" -")
         left = _clean_text(item.get("left", artist))
         right = _clean_text(item.get("right", title))
