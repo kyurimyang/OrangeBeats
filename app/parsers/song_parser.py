@@ -18,11 +18,18 @@ from app.constants.pipeline_params import (
     TITLE_DELIMITERS,
 )
 
-TIME_PREFIX_REGEX = re.compile(r"^\s*(?:\d{1,2}:\d{2}(?::\d{2})?)\s*[-|~>*]*\s*")
+TIMESTAMP_LEADING_DECORATION = r"(?:[-*#>\u2022\u00b7\u2023\u2013\u2014]\s*)?"
+TIME_PREFIX_REGEX = re.compile(
+    rf"^\s*{TIMESTAMP_LEADING_DECORATION}(?:\d{{1,2}}:\d{{2}}(?::\d{{2}})?)\s*[-|~>*]*\s*"
+)
 TIMESTAMP_TOKEN_REGEX = re.compile(r"(?<!\d)(?:\d{1,2}:\d{2}(?::\d{2})?)(?!\d)")
-TIMESTAMP_LINE_REGEX = re.compile(r"^(?P<ts>\d{1,2}:\d{2}(?::\d{2})?)\s+(?P<body>.+)$")
+TIMESTAMP_LINE_REGEX = re.compile(
+    rf"^\s*{TIMESTAMP_LEADING_DECORATION}(?P<ts>\d{{1,2}}:\d{{2}}(?::\d{{2}})?)\s+(?P<body>.+)$"
+)
 TRAILING_TIMESTAMP_LINE_REGEX = re.compile(r"^(?P<body>.{2,60}?)\s+(?P<ts>\d{1,2}:\d{2}(?::\d{2})?)$")
-TIMESTAMP_PREFIX_ONLY_REGEX = re.compile(r"^\d{1,2}:\d{2}(?::\d{2})?\s+")
+TIMESTAMP_PREFIX_ONLY_REGEX = re.compile(
+    rf"^\s*{TIMESTAMP_LEADING_DECORATION}\d{{1,2}}:\d{{2}}(?::\d{{2}})?\s+"
+)
 NUMBERED_HYPHEN_TRACK_REGEX = re.compile(r"^\d{1,3}-(.+?)-(.+)$")
 TRACK_NUMBER_ONLY_REGEX = re.compile(r"^\s*(?:\d{1,3}|[A-Za-z])[\.)]?\s*$")
 TITLE_TRACK_NUMBER_PREFIX_REGEX = re.compile(r"^\s*(?:\d{1,3}|[A-Za-z])\s*[\.)|]\s+")
@@ -31,6 +38,10 @@ BRACKET_REGEX = re.compile(r"[\[\(\{].*?[\]\)\}]")
 PARENTHETICAL_REGEX = re.compile(r"[\(\[\{]([^\)\]\}]{1,12})[\)\]\}]")
 TITLE_METADATA_HINT_REGEX = re.compile(
     r"[\(\[\{]?\s*(?P<kind>feat|ft|featuring|with|prod(?:uced)?\s+by)\.?\s+(?P<value>[^\)\]\}_/|]{1,80})[\)\]\}]?",
+    re.IGNORECASE,
+)
+ORIGINAL_TITLE_METADATA_REGEX = re.compile(
+    r"\s*[\(\[\{]\s*(?:원곡|original(?:ly)?(?:\s+(?:performed|recorded)\s+by)?)\s*[:：-]\s*[^\)\]\}]{1,120}[\)\]\}]\s*",
     re.IGNORECASE,
 )
 PAIR_REGEX = re.compile(r".+\s[-–—|/:~_]\s.+")
@@ -197,6 +208,8 @@ def _strip_bracketed_metadata(value: str) -> str:
 
 
 def _strip_title_metadata_phrases(value: str) -> str:
+    value = ORIGINAL_TITLE_METADATA_REGEX.sub(" ", value or "")
+
     def replace(match: re.Match) -> str:
         kind = MULTISPACE_REGEX.sub(" ", match.group("kind").lower()).strip()
         raw_value = _clean_text(match.group("value"))

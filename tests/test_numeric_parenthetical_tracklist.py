@@ -42,6 +42,44 @@ class NumericParentheticalTracklistTests(unittest.TestCase):
         self.assertEqual(candidates[0]["merge_decision"], "excluded")
         self.assertEqual(candidates[0]["debug_reason"], "duplicate_title_artist")
 
+    def test_music_section_translation_duplicate_same_artist_position_is_excluded(self):
+        updated, candidates = _supplement_songs_from_candidates(
+            [
+                {
+                    "artist": "\uc870\uc720\ub9ac",
+                    "title": "\uc774\uc81c \uc548\ub155!",
+                    "raw_line": "\uc870\uc720\ub9ac - \uc774\uc81c \uc548\ub155!",
+                    "evidence_type": "delimiter_pair",
+                    "confidence": "high",
+                },
+                {
+                    "artist": "\ucd5c\uc608\ub098",
+                    "title": "\uadf8\uac74 \uc0ac\ub791\uc774\uc5c8\ub2e4\uace0",
+                    "raw_line": "\ucd5c\uc608\ub098 - \uadf8\uac74 \uc0ac\ub791\uc774\uc5c8\ub2e4\uace0",
+                    "evidence_type": "delimiter_pair",
+                    "confidence": "high",
+                },
+            ],
+            [
+                {
+                    "artist": "JO YURI",
+                    "title": "Farewell for now!",
+                    "source": "music_section_only",
+                    "section_index": 0,
+                },
+                {
+                    "artist": "YENA",
+                    "title": "It was love",
+                    "source": "music_section_only",
+                    "section_index": 1,
+                },
+            ],
+        )
+
+        self.assertEqual(len(updated), 2)
+        self.assertEqual([c["merge_decision"] for c in candidates], ["excluded", "excluded"])
+        self.assertEqual(candidates[0]["debug_reason"], "duplicate_music_section_artist_position")
+
 
 if __name__ == "__main__":
     unittest.main()
