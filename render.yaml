@@ -9,5 +9,25 @@ services:
     nativePackages:
       - ffmpeg
     envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ACRCLOUD_HOST
+        sync: false
+      - key: ACRCLOUD_ACCESS_KEY
+        sync: false
+      - key: ACRCLOUD_ACCESS_SECRET
+        sync: false
+      - key: SPOTIFY_CLIENT_ID
+        sync: false
+      - key: SPOTIFY_CLIENT_SECRET
+        sync: false
+      - key: SPOTIFY_REDIRECT_URI
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: FRONTEND_ALLOWED_ORIGINS
+        sync: false
+      - key: ADMIN_KEY
+        sync: false
       - key: YTDLP_COOKIE_CONTENT
         sync: false
