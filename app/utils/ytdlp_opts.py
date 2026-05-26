@@ -30,7 +30,7 @@ def ytdlp_base_opts() -> dict:
         "quiet": True,
         "no_warnings": True,
         "noplaylist": True,
-        "extractor_args": {"youtube": {"player_client": ["tv_embedded", "web"]}},
+        "extractor_args": {"youtube": {"player_client": ["android", "ios", "tv_embedded"]}},
     }
     if _resolved_cookie_path:
         opts["cookiefile"] = _resolved_cookie_path
