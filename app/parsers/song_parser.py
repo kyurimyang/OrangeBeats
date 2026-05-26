@@ -1415,12 +1415,6 @@ def _infer_global_direction(parsed_pairs: list[dict]) -> tuple[str, str]:
 def _should_skip_direction_llm(parsed_pairs: list[dict], rule_direction: str, rule_confidence: str) -> tuple[bool, str]:
     if rule_confidence == "high":
         return True, "rule_high_confidence_skipped_llm"
-    if rule_confidence != "medium" or rule_direction not in {"artist_title", "title_artist"}:
-        return False, ""
-
-    summary = _direction_vote_summary(parsed_pairs)
-    if summary["total"] >= 4 and summary["dominant_ratio"] >= 0.75:
-        return True, "rule_medium_sufficient_sample_skipped_llm"
     return False, ""
 
 
@@ -1717,6 +1711,18 @@ def parse_unstructured_lines_to_json(text: str) -> dict:
         if effective_ts:
             parts["_timestamp"] = effective_ts
         pair_candidates.append(parts)
+
+    timestamp_pair_count = sum(
+        1
+        for parts in pair_candidates
+        if parts.get("_timestamp") and not parts.get("_title_only")
+    )
+    if timestamp_pair_count >= 3:
+        pair_candidates = [
+            parts
+            for parts in pair_candidates
+            if parts.get("_timestamp") or parts.get("_numbered_track")
+        ]
 
     pair_candidates_with_sep = [
         p for p in pair_candidates
