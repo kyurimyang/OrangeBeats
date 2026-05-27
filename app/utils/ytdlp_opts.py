@@ -36,15 +36,15 @@ def _get_cookie_path() -> str:
 
 
 def ytdlp_base_opts() -> dict:
-    # tv_embedded/android/ios: 서버 환경에서 안정적, web은 실제 브라우저 필요
-    # 쿠키는 봇 감지 우회 목적으로만 사용 (클라이언트와 무관)
+    # ios → tv_embedded 순: 서버 환경에서 ios가 가장 안정적
+    # check_formats=False: 데이터센터 IP에서 CDN HEAD 요청이 차단될 때 우회
     path = _get_cookie_path()
-    player_clients = ["tv_embedded", "android", "ios"]
     opts: dict = {
         "quiet": True,
         "no_warnings": True,
         "noplaylist": True,
-        "extractor_args": {"youtube": {"player_client": player_clients}},
+        "check_formats": False,
+        "extractor_args": {"youtube": {"player_client": ["ios", "tv_embedded", "android"]}},
     }
     if path:
         opts["cookiefile"] = path
