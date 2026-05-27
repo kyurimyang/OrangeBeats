@@ -36,15 +36,29 @@ def _get_cookie_path() -> str:
 
 
 def ytdlp_base_opts() -> dict:
-    # ios → tv_embedded 순: 서버 환경에서 ios가 가장 안정적
-    # check_formats=False: 데이터센터 IP에서 CDN HEAD 요청이 차단될 때 우회
     path = _get_cookie_path()
+    po_token = os.getenv("YTDLP_PO_TOKEN", "").strip()
+    visitor_data = os.getenv("YTDLP_VISITOR_DATA", "").strip()
+
+    if po_token:
+        # PO token 있음: web 클라이언트 + 토큰으로 데이터센터 IP 우회
+        yt_args: dict = {
+            "player_client": ["web"],
+            "po_token": [f"web+{po_token}"],
+        }
+        if visitor_data:
+            yt_args["visitor_data"] = [visitor_data]
+        print(f"[ytdlp-opts] using PO token (visitor_data={'yes' if visitor_data else 'no'})")
+    else:
+        # PO token 없음: 모바일 클라이언트 fallback
+        yt_args = {"player_client": ["ios", "tv_embedded", "android"]}
+
     opts: dict = {
         "quiet": True,
         "no_warnings": True,
         "noplaylist": True,
         "check_formats": False,
-        "extractor_args": {"youtube": {"player_client": ["ios", "tv_embedded", "android"]}},
+        "extractor_args": {"youtube": yt_args},
     }
     if path:
         opts["cookiefile"] = path

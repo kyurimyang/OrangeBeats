@@ -31,3 +31,7 @@ services:
         sync: false
       - key: YTDLP_COOKIE_CONTENT
         sync: false
+      - key: YTDLP_PO_TOKEN
+        sync: false
+      - key: YTDLP_VISITOR_DATA
+        sync: false
