@@ -36,13 +36,10 @@ def _get_cookie_path() -> str:
 
 
 def ytdlp_base_opts() -> dict:
-    # 쿠키 있을 때: web 클라이언트를 우선 사용 (포맷 가용성 최대)
-    # 쿠키 없을 때: tv_embedded/android/ios로 봇 감지 우회
+    # tv_embedded/android/ios: 서버 환경에서 안정적, web은 실제 브라우저 필요
+    # 쿠키는 봇 감지 우회 목적으로만 사용 (클라이언트와 무관)
     path = _get_cookie_path()
-    if path:
-        player_clients = ["web", "tv_embedded"]
-    else:
-        player_clients = ["android", "ios", "tv_embedded"]
+    player_clients = ["tv_embedded", "android", "ios"]
     opts: dict = {
         "quiet": True,
         "no_warnings": True,
