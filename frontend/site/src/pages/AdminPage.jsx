@@ -94,8 +94,9 @@ function QaItem({ post, onAnswered, onDeleted }) {
     const adminKey = sessionStorage.getItem(SESSION_KEY_INNER) || "";
     setDeleting(true);
     try {
-      const res = await fetch(`/qa/${post.id}?admin_key=${encodeURIComponent(adminKey)}`, {
+      const res = await fetch(`/qa/${post.id}`, {
         method: "DELETE",
+        headers: { "X-Admin-Key": adminKey },
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -117,8 +118,8 @@ function QaItem({ post, onAnswered, onDeleted }) {
     try {
       const res = await fetch(`/qa/${post.id}/answer`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ answer, admin_key: adminKey }),
+        headers: { "Content-Type": "application/json", "X-Admin-Key": adminKey },
+        body: JSON.stringify({ answer }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.detail || "답변 등록에 실패했습니다.");
@@ -245,7 +246,7 @@ export default function AdminPage() {
       return;
     }
 
-    fetch(`/feedback/admin?key=${encodeURIComponent(key)}`, { credentials: "include" })
+    fetch(`/feedback/admin`, { credentials: "include", headers: { "X-Admin-Key": key } })
       .then(async (res) => {
         if (res.status === 401) throw new Error("인증 오류. 다시 로그인해주세요.");
         if (!res.ok) throw new Error("데이터를 불러오지 못했습니다.");

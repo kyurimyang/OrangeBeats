@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Dict
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 
 from app.clients.supabase_client import get_supabase
 
@@ -49,10 +49,10 @@ def create_rating(payload: Dict):
 
 
 @router.get("/admin")
-def admin_dashboard(key: str = ""):
+def admin_dashboard(x_admin_key: str = Header(default="")):
     from app.config import ADMIN_KEY
 
-    if not ADMIN_KEY or key != ADMIN_KEY:
+    if not ADMIN_KEY or x_admin_key != ADMIN_KEY:
         raise HTTPException(status_code=401, detail="인증이 필요합니다.")
 
     result = get_supabase().table("ratings").select("*").order("created_at", desc=True).execute()

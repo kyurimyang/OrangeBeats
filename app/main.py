@@ -27,8 +27,8 @@ app = FastAPI(title="Orange Beats")
 @app.exception_handler(Exception)
 async def _unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     tb = traceback.format_exc()
-    print(f"[500] {request.method} {request.url}\n{tb}")
-    return JSONResponse(status_code=500, content={"detail": str(exc), "traceback": tb})
+    print(f"[500] {request.method} {request.url} | {type(exc).__name__}: {exc}\n{tb}")
+    return JSONResponse(status_code=500, content={"detail": "서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요."})
 
 
 app.state.spotify_session_service = SpotifySessionService(

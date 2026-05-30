@@ -36,8 +36,9 @@ export default function HomePage() {
     setChecking(true);
     setKeyError("");
     try {
-      const res = await fetch(`/feedback/admin?key=${encodeURIComponent(adminKey.trim())}`, {
+      const res = await fetch(`/feedback/admin`, {
         credentials: "include",
+        headers: { "X-Admin-Key": adminKey.trim() },
       });
       if (res.status === 401) {
         setKeyError("잘못된 키입니다.");
