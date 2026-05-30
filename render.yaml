@@ -11,6 +11,12 @@ services:
     envVars:
       - key: OPENAI_API_KEY
         sync: false
+      - key: YOUTUBE_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
       - key: ACRCLOUD_HOST
         sync: false
       - key: ACRCLOUD_ACCESS_KEY

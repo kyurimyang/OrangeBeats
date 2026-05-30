@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Annotated, Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from app.limiter import limiter
 
 from app.dependencies.spotify_session import get_spotify_session_service
 from app.services.analysis_flow import classify_text_analysis
@@ -578,6 +579,7 @@ def _build_ocr_preview_response(
 
 
 @router.post("/from-youtube")
+@limiter.limit("10/minute")
 def create_playlist_from_youtube(
     payload: Dict,
     request: Request,
@@ -670,6 +672,7 @@ def create_playlist_from_youtube(
 
 
 @router.post("/analyze-youtube")
+@limiter.limit("10/minute")
 def analyze_youtube_for_playlist(
     payload: Dict,
     request: Request,
@@ -841,6 +844,7 @@ def analyze_youtube_for_playlist(
 
 
 @router.post("/create-selected")
+@limiter.limit("20/minute")
 def create_playlist_from_selected_tracks(
     payload: Dict,
     request: Request,
@@ -928,6 +932,7 @@ def create_playlist_from_selected_tracks_alias(
 
 
 @router.post("/match-songs")
+@limiter.limit("20/minute")
 def match_songs_with_spotify(
     payload: Dict,
     request: Request,
