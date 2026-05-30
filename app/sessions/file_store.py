@@ -15,7 +15,7 @@ class FileSpotifyTokenStore:
             .maybe_single()
             .execute()
         )
-        if not result.data:
+        if not result or not result.data:
             return None
         return SpotifyTokenRecord(**result.data)
 
@@ -56,7 +56,7 @@ class FileOAuthStateStore:
             .maybe_single()
             .execute()
         )
-        if not result.data:
+        if not result or not result.data:
             return None
         get_supabase().table("spotify_oauth_states").delete().eq("state", state).execute()
         return OAuthStateRecord(**result.data)
