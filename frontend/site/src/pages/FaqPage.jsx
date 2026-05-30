@@ -49,6 +49,45 @@ const FAQ_ITEMS = [
       },
     ],
   },
+  {
+    id: "best-video",
+    number: "05",
+    question: "어떤 유튜브 영상이 가장 잘 분석되나요?",
+    lines: [
+      {
+        type: "hang",
+        rows: [
+          "타임스탬프(00:00 형식)와 곡명이 함께 적힌 영상이 가장 정확합니다.",
+          "설명란에 곡 목록이 없는 영상은 댓글이나 썸네일 텍스트를 참고합니다.",
+        ],
+      },
+    ],
+  },
+  {
+    id: "spotify-safe",
+    number: "06",
+    question: "Spotify 로그인은 안전한가요?",
+    lines: [
+      {
+        type: "hang",
+        rows: [
+          "Spotify 공식 OAuth를 통해 로그인하며, 비밀번호는 저장하지 않습니다.",
+          "플레이리스트 생성에 필요한 권한만 요청합니다.",
+        ],
+      },
+    ],
+  },
+  {
+    id: "find-playlist",
+    number: "07",
+    question: "생성한 플레이리스트는 어디서 확인하나요?",
+    lines: [
+      {
+        type: "line",
+        text: "ㄴ Spotify 앱의 내 라이브러리 → 플레이리스트에서 확인하실 수 있습니다.",
+      },
+    ],
+  },
 ];
 
 function FaqAnswerHang({ rows }) {
