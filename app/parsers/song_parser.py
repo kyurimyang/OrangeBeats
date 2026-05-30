@@ -37,7 +37,7 @@ MULTISPACE_REGEX = re.compile(r"\s+")
 BRACKET_REGEX = re.compile(r"[\[\(\{].*?[\]\)\}]")
 PARENTHETICAL_REGEX = re.compile(r"[\(\[\{]([^\)\]\}]{1,12})[\)\]\}]")
 TITLE_METADATA_HINT_REGEX = re.compile(
-    r"[\(\[\{]?\s*(?P<kind>feat|ft|featuring|with|prod(?:uced)?\s+by)\.?\s+(?P<value>[^\)\]\}_/|]{1,80})[\)\]\}]?",
+    r"[\(\[\{]?\s*(?P<kind>feat|ft|featuring|with|prod(?:uced)?\s+by)\.?\s+(?P<value>[^\)\]\}_/|\-\u2013\u2014]{1,80})[\)\]\}]?",
     re.IGNORECASE,
 )
 ORIGINAL_TITLE_METADATA_REGEX = re.compile(
@@ -46,8 +46,8 @@ ORIGINAL_TITLE_METADATA_REGEX = re.compile(
 )
 PAIR_REGEX = re.compile(r".+\s[-–—|/:~_]\s.+")
 PURE_PUNCT_REGEX = re.compile(r"^[^\w\uAC00-\uD7A3]+$")
-LEADING_DECORATION_REGEX = re.compile(r"^[~*#>+\-\s]+")
-TRAILING_DECORATION_REGEX = re.compile(r"[~*#<>\-\s]+$")
+LEADING_DECORATION_REGEX = re.compile(r"^[~*#>+\-\u2013\u2014\u2022\u00b7\u2023\s]+")
+TRAILING_DECORATION_REGEX = re.compile(r"[~*#<>\-\u2013\u2014\u2022\u00b7\u2023\s]+$")
 # "Outro : House Of Cards", "EPILOGUE : Young Forever" 같은 앨범 섹션 마커 라인
 # → 마커는 버리고 뒤의 곡명만 title-only로 추출
 ALBUM_SECTION_MARKER_REGEX = re.compile(
@@ -238,6 +238,18 @@ def _extract_title_metadata_hints(value: str) -> dict:
     for match in TITLE_METADATA_HINT_REGEX.finditer(value):
         kind = MULTISPACE_REGEX.sub(" ", match.group("kind").lower()).strip()
         raw_value = _clean_text(match.group("value"))
+        if kind == "with" and raw_value.lower() in {
+            "me",
+            "you",
+            "us",
+            "him",
+            "her",
+            "them",
+            "it",
+            "myself",
+            "yourself",
+        }:
+            continue
         raw_value = re.split(
             r"\b(?:remix|instrumental|inst|live|remaster(?:ed)?|version|ver)\b",
             raw_value,
@@ -690,7 +702,7 @@ def _extract_pair_parts(text: str) -> dict | None:
         #   (1) cand_artist가 알려진 아티스트(strong evidence ≥ 2.5), 또는
         #   (2) cand_artist가 2개 이상의 대문자/숫자 토큰 AND cand_title이 CJK 시작이거나 2단어 이상
         # 이 조건 없이 재분리하면 'TREASURE - KING KONG' → artist=KING, title=KONG 같은 오탐 발생.
-        elif looks_like_artist(left):
+        elif _strong_artist_identity_evidence(left) >= 2.5:
             masked_right, _masks = _mask_bracket_spans(right)
             tokens = masked_right.split()
             for end in range(min(len(tokens) - 1, 4), 0, -1):

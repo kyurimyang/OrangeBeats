@@ -553,12 +553,13 @@ def _enrich_songs_with_music_section(
             if not song.get("artist") or song.get("artist_inferred") or _is_title_only_timestamp_song(song):
                 if _is_title_only_timestamp_song(song):
                     song["original_text_artist"] = song.get("artist", "")
-                song["artist"] = match["artist"]
-                song["artist_exists"] = True
-                song["is_complete"] = True
-                song["completeness_score"] = max(float(song.get("completeness_score") or 0.0), 1.0)
-                song["artist_inferred"] = False
-                song["inferred_artist_source"] = "youtube_music_section"
+                if match.get("artist"):
+                    song["artist"] = match["artist"]
+                    song["artist_exists"] = True
+                    song["is_complete"] = True
+                    song["completeness_score"] = max(float(song.get("completeness_score") or 0.0), 1.0)
+                    song["artist_inferred"] = False
+                    song["inferred_artist_source"] = "youtube_music_section"
             if match.get("album"):
                 song["album"] = match["album"]
             song["music_section_confirmed"] = True

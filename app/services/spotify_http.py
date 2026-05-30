@@ -1,4 +1,5 @@
 import json
+import random
 import threading
 import time
 from pathlib import Path
@@ -9,6 +10,9 @@ import requests
 from app.services.spotify_exceptions import SpotifyServiceError
 
 DEFAULT_TIMEOUT = 20
+_TRANSIENT_STATUS_CODES = {502, 503, 504}
+_MAX_RETRIES = 3
+_RETRY_BACKOFF_BASE = 0.5
 _RATE_LIMIT_FILE = Path(__file__).resolve().parents[2] / ".spotify_rate_limit.json"
 _rate_limited_until = 0.0
 _rate_limit_message: Optional[str] = None
@@ -129,29 +133,50 @@ def spotify_request(
     _throttle()
 
     headers = _auth_headers(access_token, content_type=content_type)
-    try:
-        response = requests.request(
-            method=method,
-            url=url,
-            headers=headers,
-            params=params,
-            json=json,
-            data=data,
-            timeout=timeout,
-        )
-    except requests.RequestException as exc:
-        raise SpotifyServiceError(f"Spotify 요청 실패: {str(exc)}") from exc
+    last_exc: Optional[Exception] = None
+    response = None
 
-    if response.status_code == 429:
-        retry_after_header = response.headers.get("Retry-After")
+    for attempt in range(_MAX_RETRIES + 1):
         try:
-            retry_after = max(1, int(retry_after_header or "60"))
-        except ValueError:
-            retry_after = 60
-        _save_rate_limit_state(retry_after)
-        raise SpotifyServiceError(_rate_limit_message or f"Spotify API rate limit active: 429 / Too many requests (retry_after={retry_after})")
+            response = requests.request(
+                method=method,
+                url=url,
+                headers=headers,
+                params=params,
+                json=json,
+                data=data,
+                timeout=timeout,
+            )
+        except requests.RequestException as exc:
+            last_exc = exc
+            if attempt < _MAX_RETRIES:
+                wait = _RETRY_BACKOFF_BASE * (2 ** attempt) + random.uniform(0, 0.3)
+                print(f"[spotify] request error on attempt {attempt + 1}, retrying in {wait:.1f}s: {exc}")
+                time.sleep(wait)
+                continue
+            raise SpotifyServiceError(f"Spotify 요청 실패: {str(exc)}") from exc
 
-    return response
+        if response.status_code == 429:
+            retry_after_header = response.headers.get("Retry-After")
+            try:
+                retry_after = max(1, int(retry_after_header or "60"))
+            except ValueError:
+                retry_after = 60
+            _save_rate_limit_state(retry_after)
+            raise SpotifyServiceError(_rate_limit_message or f"Spotify API rate limit active: 429 / Too many requests (retry_after={retry_after})")
+
+        if response.status_code in _TRANSIENT_STATUS_CODES and attempt < _MAX_RETRIES:
+            wait = _RETRY_BACKOFF_BASE * (2 ** attempt) + random.uniform(0, 0.3)
+            print(f"[spotify] {response.status_code} on attempt {attempt + 1}, retrying in {wait:.1f}s")
+            time.sleep(wait)
+            continue
+
+        return response
+
+    # 모든 재시도 소진 — 마지막 응답 반환 (호출부에서 상태코드 처리)
+    if response is not None:
+        return response
+    raise SpotifyServiceError(f"Spotify 요청 실패: {str(last_exc)}")
 
 
 _load_rate_limit_state()
