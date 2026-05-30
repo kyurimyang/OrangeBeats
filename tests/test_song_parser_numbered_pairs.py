@@ -70,6 +70,30 @@ class SongParserNumberedPairsTests(unittest.TestCase):
         self.assertEqual(songs[0]["artist"], "TWICE")
         self.assertEqual(songs[0]["title"], "YOUNG & WILD")
 
+    @patch(
+        "app.parsers.song_parser._detect_llm_global_direction",
+        return_value={"global_direction": "title_artist", "confidence": "high", "reason": ""},
+    )
+    def test_timestamp_bullet_title_artist_keeps_multiword_artist_and_with_title(self, _llm_mock):
+        result = parse_unstructured_lines_to_json(
+            "\n".join(
+                [
+                    "00:00 — Trigger the Fever - NCT DREAM",
+                    "13:15 — Rock with you - 세븐틴 (SEVENTEEN)",
+                ]
+            )
+        )
+
+        songs = result["songs"]
+        self.assertEqual(
+            [(song["artist"], song["title"]) for song in songs],
+            [
+                ("NCT DREAM", "Trigger the Fever"),
+                ("세븐틴", "Rock with you"),
+            ],
+        )
+        self.assertEqual([song.get("timestamp") for song in songs], ["00:00", "13:15"])
+
 
 if __name__ == "__main__":
     unittest.main()

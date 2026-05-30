@@ -62,4 +62,8 @@ def ytdlp_base_opts() -> dict:
     }
     if path:
         opts["cookiefile"] = path
+    proxy = os.getenv("YTDLP_PROXY", "").strip()
+    if proxy:
+        opts["proxy"] = proxy
+        print(f"[ytdlp-opts] using proxy: {proxy[:30]}...")
     return opts

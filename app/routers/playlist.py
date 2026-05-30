@@ -912,6 +912,7 @@ def create_playlist_from_selected_tracks(
             except (YouTubeThumbnailError, SpotifyCoverUploadError, Exception) as exc:
                 result["cover_upload_status"] = "failed"
                 result["cover_upload_error"] = str(exc)
+                print(f"[cover_upload] failed: {type(exc).__name__}: {exc}")
         return result
     except SpotifyServiceError as exc:
         raise HTTPException(status_code=_spotify_http_status(exc), detail=str(exc)) from exc

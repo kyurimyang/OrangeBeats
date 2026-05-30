@@ -1,0 +1,13 @@
+.git
+.venv
+venv
+__pycache__
+*.pyc
+*.pyo
+.env
+.env.*
+frontend/site/node_modules
+frontend/dist
+orangebeats/node_modules
+tmp/
+*.log

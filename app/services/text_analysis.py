@@ -91,7 +91,8 @@ def _annotate_song_evidence(
         item["source"] = item.get("source") or source_name
         item["source_mode"] = item.get("source_mode") or source_name
         item["evidence_type"] = item.get("evidence_type") or _infer_evidence_type(raw_line)
-        if _timestamp_line_lacks_pair_delimiter(raw_line):
+        llm_pair = method == "llm" and item.get("evidence_type") in {"timestamp_pair", "delimiter_pair"}
+        if _timestamp_line_lacks_pair_delimiter(raw_line) and not llm_pair:
             item["evidence_type"] = "title_only_timestamp"
         if item["evidence_type"] == "title_only_timestamp":
             timestamp_title = _title_from_timestamp_only_line(raw_line)
