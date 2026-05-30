@@ -128,7 +128,7 @@ button {
   align-items: center;
   gap: 8px;
   margin: 0;
-  padding: 0;
+  padding: 4px 12px;
   border: none;
   background: transparent;
   color: #ffffff;
@@ -140,6 +140,15 @@ button {
   letter-spacing: -0.32px;
   cursor: pointer;
   white-space: nowrap;
+  border-radius: 10px;
+  transition: background 0.15s ease, border-radius 0.15s ease;
+}
+
+.site-header__spotify-trigger[aria-expanded="true"] {
+  background: rgba(108, 108, 108, 0.35);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 10px 10px 0 0;
 }
 
 .site-header__spotify-trigger:hover .site-header__spotify-trigger-label {
@@ -163,12 +172,12 @@ button {
 
 .site-header__spotify-menu {
   position: absolute;
-  top: calc(100% + 10px);
+  top: 100%;
   left: 0;
   z-index: 50;
   min-width: 220px;
   padding: 12px 0;
-  border-radius: 15px;
+  border-radius: 0 10px 10px 10px;
   background: rgba(108, 108, 108, 0.35);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
   backdrop-filter: blur(12px);
