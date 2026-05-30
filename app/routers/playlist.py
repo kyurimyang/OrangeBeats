@@ -3,7 +3,6 @@ import time
 import math
 import json
 import re
-import traceback
 from pathlib import Path
 from typing import Annotated, Any, Dict, List
 
@@ -702,9 +701,8 @@ def analyze_youtube_for_playlist(
     try:
         youtube_result = run_youtube_pipeline(youtube_url, mode=mode)
     except Exception as exc:
-        logger.error("[playlist/analyze-youtube] pipeline error: %s: %s", type(exc).__name__, str(exc))
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"분석 파이프라인 오류: {type(exc).__name__}: {str(exc)}") from exc
+        logger.error("[playlist/analyze-youtube] pipeline error: %s: %s", type(exc).__name__, str(exc), exc_info=True)
+        raise HTTPException(status_code=500, detail="분석 파이프라인 오류가 발생했습니다. 잠시 후 다시 시도해주세요.") from exc
     analysis_elapsed_ms = int((time.perf_counter() - analysis_started_at) * 1000)
     songs = _fuzzy_dedup_songs(_dedupe_pipeline_songs(youtube_result.get("songs", [])))
     for song in songs:
@@ -793,9 +791,8 @@ def analyze_youtube_for_playlist(
         safe_payload = _json_safe(response_payload)
         return safe_payload
     except Exception as exc:
-        logger.error("[playlist/analyze-youtube] unexpected error: %s: %s", type(exc).__name__, str(exc))
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"{type(exc).__name__}: {str(exc)}") from exc
+        logger.error("[playlist/analyze-youtube] unexpected error: %s: %s", type(exc).__name__, str(exc), exc_info=True)
+        raise HTTPException(status_code=500, detail="서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.") from exc
 
     total_elapsed_ms = int((time.perf_counter() - total_started_at) * 1000)
     response_payload = _build_analysis_response(
