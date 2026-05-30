@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from app.clients.youtube_client import collect_text_sources, get_video_music_section
 from app.acr.acr_pipeline import extract_songs_with_acr
-from app.constants.pipeline_params import CORE_ARTIST_ALIAS_MAP
+from app.constants.pipeline_params import CORE_ARTIST_ALIAS_MAP, CORE_TITLE_ALIAS_MAP
 from app.services.analysis_flow import merge_song_sources
 from app.services.fallback_extraction import extract_songs_with_ocr
 from app.services.text_analysis import analyze_comments_prioritized, analyze_description
@@ -395,6 +395,7 @@ def _combined_text_result(
 def _normalize_title_for_match(title: str) -> str:
     t = (title or "").lower()
     t = re.sub(r"[^\w\s가-힣]", " ", t)
+    t = t.replace("_", " ")  # underscore → space: '02 miss A_Only You' → '02 miss a only you'
     return re.sub(r"\s+", " ", t).strip()
 
 
@@ -413,7 +414,14 @@ def _artist_variants_for_match(artist: str) -> set[str]:
 def _artists_match_for_music_section(left: str, right: str) -> bool:
     left_variants = _artist_variants_for_match(left)
     right_variants = _artist_variants_for_match(right)
-    return bool(left_variants and right_variants and left_variants & right_variants)
+    if left_variants and right_variants and left_variants & right_variants:
+        return True
+    # 피처링 포함 아티스트 처리: 'supreme team' in 'supreme team young jun'
+    for lv in left_variants:
+        for rv in right_variants:
+            if len(lv) >= 4 and len(rv) >= 4 and (lv in rv or rv in lv):
+                return True
+    return False
 
 
 def _extract_base_title(title: str) -> str:
@@ -426,13 +434,28 @@ def _titles_match(text_title: str, section_title: str) -> bool:
     s = _normalize_title_for_match(section_title)
     if t == s or s.startswith(t + " ") or t.startswith(s + " ") or t.endswith(" " + s) or s.endswith(" " + t):
         return True
+    # \uACF5\uBC31 \uC81C\uAC70 \uBE44\uAD50: '\uC8FD\uC77C\uB188' == '\uC8FD\uC77C \uB188' \uB4F1 \uACF5\uBC31 \uCC28\uC774 \uCC98\uB9AC
+    if t and s and t.replace(" ", "") == s.replace(" ", ""):
+        return True
     bt = _extract_base_title(text_title)
     bs = _extract_base_title(section_title)
     if bt and bs and len(bt) >= 2 and (bt == bs or bs.startswith(bt + " ") or bt.startswith(bs + " ")):
         return True
-    has_korean_base = bool(re.search(r"[\uAC00-\uD7A3]", bt + bs))
-    if has_korean_base and bt and bs and len(bt) >= 2 and len(bs) >= 2 and (bt in s or bs in t):
+    # base title\uB3C4 \uACF5\uBC31 \uC81C\uAC70 \uBE44\uAD50
+    if bt and bs and len(bt) >= 2 and bt.replace(" ", "") == bs.replace(" ", ""):
         return True
+    has_korean_base = bool(re.search(r"[\uAC00-\uD7A3]", bt + bs))
+    if bt and bs and len(bt) >= 2 and len(bs) >= 2 and (bt in s or bs in t):
+        return True
+    # CORE_TITLE_ALIAS_MAP \uAE30\uBC18 \uD55C/\uC601 \uC81C\uBAA9 \uB9E4\uCE6D: '\uB0B4\uAC00 \uC81C\uC77C \uC798 \uB098\uAC00' == 'I Am The Best'
+    for base, aliases in CORE_TITLE_ALIAS_MAP.items():
+        family = {_normalize_title_for_match(base)}
+        family.update(_normalize_title_for_match(a) for a in aliases)
+        family.discard("")
+        if t in family and s in family:
+            return True
+        if bt in family and bs in family:
+            return True
     return False
 
 
@@ -510,14 +533,14 @@ def _find_best_music_section_match(
         if _titles_match(title, ms.get("title", "")):
             return i, ms
 
-        if len(normalized) >= 4 and len(candidate) >= 4:
+        if len(normalized) >= 2 and len(candidate) >= 2:
             score = difflib.SequenceMatcher(None, normalized, candidate).ratio()
             if score > best_score:
                 best_score = score
                 best_idx = i
                 best_entry = ms
 
-    if best_score >= 0.82 and best_idx is not None:
+    if best_score >= 0.80 and best_idx is not None:
         return best_idx, best_entry
     return None, None
 

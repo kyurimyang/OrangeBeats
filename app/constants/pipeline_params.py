@@ -140,6 +140,18 @@ CORE_ARTIST_ALIAS_MAP.update({
     "미야오": ["MEOVV"],
     "베이비몬스터": ["BABYMONSTER"],
     "베몬": ["BABYMONSTER"],
+    # 한국 힙합/아이돌 한영 병기
+    "에픽하이": ["Epik High"],
+    "다이나믹듀오": ["Dynamic Duo", "Dynamicduo"],
+    "원타임": ["1TYM"],
+    "리쌍": ["LeeSSang", "리쌍 (LeeSSang)"],
+    "슈프림팀": ["Supreme Team"],
+    "싸이": ["PSY"],
+    "이효리": ["Lee Hyori"],
+    "선미": ["SUNMI"],
+    "브라운아이드걸스": ["Brown Eyed Girls"],
+    "화사": ["Hwasa", "HWASA"],
+    "윤미래": ["Yoonmirae", "T"],
 })
 
 CORE_TITLE_ALIAS_MAP = {
@@ -149,4 +161,5 @@ CORE_TITLE_ALIAS_MAP = {
     "취향저격": ["MY TYPE"],
     "오늘따라": ["TODAY"],
     "사랑의 인사": ["Lovely Sweet Heart"],
+    "내가 제일 잘 나가": ["I Am The Best"],
 }
