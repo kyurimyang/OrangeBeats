@@ -1,4 +1,5 @@
 import json
+import logging
 import random
 import threading
 import time
@@ -6,6 +7,8 @@ from pathlib import Path
 from typing import Dict, Optional
 
 import requests
+
+logger = logging.getLogger(__name__)
 
 from app.services.spotify_exceptions import SpotifyServiceError
 
@@ -151,7 +154,7 @@ def spotify_request(
             last_exc = exc
             if attempt < _MAX_RETRIES:
                 wait = _RETRY_BACKOFF_BASE * (2 ** attempt) + random.uniform(0, 0.3)
-                print(f"[spotify] request error on attempt {attempt + 1}, retrying in {wait:.1f}s: {exc}")
+                logger.warning("[spotify] request error on attempt %d, retrying in %.1fs: %s", attempt + 1, wait, exc)
                 time.sleep(wait)
                 continue
             raise SpotifyServiceError(f"Spotify 요청 실패: {str(exc)}") from exc
@@ -167,7 +170,7 @@ def spotify_request(
 
         if response.status_code in _TRANSIENT_STATUS_CODES and attempt < _MAX_RETRIES:
             wait = _RETRY_BACKOFF_BASE * (2 ** attempt) + random.uniform(0, 0.3)
-            print(f"[spotify] {response.status_code} on attempt {attempt + 1}, retrying in {wait:.1f}s")
+            logger.warning("[spotify] %d on attempt %d, retrying in %.1fs", response.status_code, attempt + 1, wait)
             time.sleep(wait)
             continue
 

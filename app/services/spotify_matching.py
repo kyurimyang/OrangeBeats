@@ -1,6 +1,9 @@
+import logging
 import re
 from collections import OrderedDict
 from typing import Any, Dict, List, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 from app.services.spotify_api import get_track, search_artists_query, search_track, search_tracks_query
 from app.services.spotify_exceptions import SpotifyServiceError
@@ -1754,12 +1757,11 @@ def _log_match(
     early_return: bool,
 ) -> None:
     extra = f" unmatched_reason='{unmatched_reason}'" if unmatched_reason else ""
-    print(
-        f"[spotify-match] input='{input_artist} - {input_title}' "
-        f"chosen_case={chosen_case} queries={queries} fallback_used={str(fallback_used).lower()} "
-        f"cache={cache_status} candidates={candidate_count} selected='{selected}' "
-        f"score={selected_score:.4f} reason='{reason}'{extra} "
-        f"early_return={str(early_return).lower()}"
+    logger.info(
+        "[spotify-match] input='%s - %s' chosen_case=%s queries=%s fallback_used=%s "
+        "cache=%s candidates=%s selected='%s' score=%.4f reason='%s'%s early_return=%s",
+        input_artist, input_title, chosen_case, queries, str(fallback_used).lower(),
+        cache_status, candidate_count, selected, selected_score, reason, extra, str(early_return).lower(),
     )
 
 
@@ -2400,12 +2402,10 @@ def _try_acr_direct_match(
     try:
         track = get_track(access_token, acr_spotify_track_id, market=market)
     except SpotifyServiceError as exc:
-        print(
-            f"[spotify-match:acr-direct] get_track failed track_id={acr_spotify_track_id}: {exc}"
-        )
+        logger.warning("[spotify-match:acr-direct] get_track failed track_id=%s: %s", acr_spotify_track_id, exc)
         return None
     if not track:
-        print(f"[spotify-match:acr-direct] track_id={acr_spotify_track_id} not_found")
+        logger.warning("[spotify-match:acr-direct] track_id=%s not_found", acr_spotify_track_id)
         return None
 
     track_name = track.get("name", "")
@@ -2439,13 +2439,13 @@ def _try_acr_direct_match(
                         candidate.get("score_detail", {}).get("title_score", 0.0)))
     artist_score = float(candidate.get("score_detail", {}).get("artist_variant_score",
                          candidate.get("score_detail", {}).get("artist_score", 0.0)))
-    print(
-        f"[spotify-match:acr-direct] input='{input_artist} - {input_title}' "
-        f"track_id={acr_spotify_track_id} "
-        f"found='{' '.join(track_artists)} - {track_name}' "
-        f"title={title_score:.2f} artist={artist_score:.2f} "
-        f"score={candidate['score']:.2f} status={candidate['match_status']} "
-        f"boost={candidate['acr_boost_reason']}"
+    logger.info(
+        "[spotify-match:acr-direct] input='%s - %s' track_id=%s found='%s - %s' "
+        "title=%.2f artist=%.2f score=%.2f status=%s boost=%s",
+        input_artist, input_title, acr_spotify_track_id,
+        " ".join(track_artists), track_name,
+        title_score, artist_score, candidate["score"],
+        candidate["match_status"], candidate["acr_boost_reason"],
     )
     return candidate
 
@@ -2563,11 +2563,10 @@ def _evaluate_case(
         result["search_title"] = result["best_candidate"].get("search_title", input_title)
         result["search_artist"] = result["best_candidate"].get("search_artist", input_artist)
 
-        print(
-            f"[spotify-match:candidates] input='{input_artist} - {input_title}' "
-            f"query='{strategy['query']}' candidates=["
-            + "; ".join(_candidate_score_log(candidate) for candidate in scored_candidates[:SEARCH_LIMIT])
-            + "]"
+        logger.debug(
+            "[spotify-match:candidates] input='%s - %s' query='%s' candidates=[%s]",
+            input_artist, input_title, strategy["query"],
+            "; ".join(_candidate_score_log(candidate) for candidate in scored_candidates[:SEARCH_LIMIT]),
         )
 
         chosen_candidate = result["chosen_candidate"]

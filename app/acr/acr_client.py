@@ -2,11 +2,14 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import time
 from pathlib import Path
 from typing import Dict
 
 import requests
+
+logger = logging.getLogger(__name__)
 
 from app.config import ACRCLOUD_ACCESS_KEY, ACRCLOUD_ACCESS_SECRET, ACRCLOUD_HOST
 
@@ -55,7 +58,7 @@ def recognize_acr_segment(segment_path: Path) -> Dict | None:
         response.raise_for_status()
         payload = response.json()
     except Exception as exc:
-        print("[acr] request_failed =", str(exc))
+        logger.warning("[acr] request_failed = %s", exc)
         return None
 
     music_items = payload.get("metadata", {}).get("music", [])

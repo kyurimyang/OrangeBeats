@@ -6,7 +6,6 @@ class SpotifyCoverUploadError(Exception):
 
 
 def upload_playlist_cover_image(access_token: str, playlist_id: str, image_base64: str) -> None:
-    print("### NEW spotify_cover.py loaded ###")
     if not access_token:
         raise SpotifyCoverUploadError("Spotify access token이 없습니다.")
     if not playlist_id:

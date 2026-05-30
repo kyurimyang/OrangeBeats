@@ -2,8 +2,11 @@
 # 파싱 방향은 전역 규칙 대신 라인별 dual-case(original/swapped)로 판단한다.
 
 import json
+import logging
 import re
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from app.constants.pipeline_params import (
     CORE_ARTIST_ALIAS_MAP,
@@ -1329,22 +1332,25 @@ def _safe_log_value(value: str) -> str:
 
 
 def _log_parse_line(parsed: dict) -> None:
-    print(
-        f"[parse-line] raw='{_safe_log_value(parsed.get('raw', ''))}' "
-        f"global={parsed.get('global_direction', 'per_line')} "
-        f"llm_global={parsed.get('llm_global_direction', 'mixed')} "
-        f"llm_confidence={parsed.get('llm_direction_confidence', 'low')} "
-        f"chosen_case={parsed.get('chosen_case', 'original')} "
-        f"score={float(parsed.get('score', 0.0)):.4f} "
-        f"normal={float(parsed.get('normal_score', 0.0)):.4f} "
-        f"swapped={float(parsed.get('swapped_score', 0.0)):.4f} "
-        f"margin={float(parsed.get('score_margin', 0.0)):.4f} "
-        f"swap_guard={str(parsed.get('swap_guard_applied', False)).lower()} "
-        f"left='{_safe_log_value(parsed.get('left', ''))}' "
-        f"right='{_safe_log_value(parsed.get('right', ''))}' "
-        f"artist='{_safe_log_value(parsed.get('artist', ''))}' "
-        f"title='{_safe_log_value(parsed.get('title', ''))}' "
-        f"reason='{_safe_log_value(parsed.get('reason', ''))}'"
+    logger.debug(
+        "[parse-line] raw='%s' global=%s llm_global=%s llm_confidence=%s chosen_case=%s "
+        "score=%.4f normal=%.4f swapped=%.4f margin=%.4f swap_guard=%s "
+        "left='%s' right='%s' artist='%s' title='%s' reason='%s'",
+        _safe_log_value(parsed.get("raw", "")),
+        parsed.get("global_direction", "per_line"),
+        parsed.get("llm_global_direction", "mixed"),
+        parsed.get("llm_direction_confidence", "low"),
+        parsed.get("chosen_case", "original"),
+        float(parsed.get("score", 0.0)),
+        float(parsed.get("normal_score", 0.0)),
+        float(parsed.get("swapped_score", 0.0)),
+        float(parsed.get("score_margin", 0.0)),
+        str(parsed.get("swap_guard_applied", False)).lower(),
+        _safe_log_value(parsed.get("left", "")),
+        _safe_log_value(parsed.get("right", "")),
+        _safe_log_value(parsed.get("artist", "")),
+        _safe_log_value(parsed.get("title", "")),
+        _safe_log_value(parsed.get("reason", "")),
     )
 
 
@@ -1455,7 +1461,7 @@ def _detect_llm_global_direction(parsed_pairs: list[dict]) -> dict:
     try:
         from app.services.openai_service import detect_direction_with_llm
     except Exception as exc:
-        print("[direction] llm_import_failed =", str(exc))
+        logger.warning("[direction] llm_import_failed=%s", str(exc))
         return fallback
 
     pairs = [
@@ -1467,7 +1473,7 @@ def _detect_llm_global_direction(parsed_pairs: list[dict]) -> dict:
     try:
         detected = detect_direction_with_llm(pairs)
     except Exception as exc:
-        print("[direction] llm_call_failed =", str(exc))
+        logger.warning("[direction] llm_call_failed=%s", str(exc))
         return fallback
 
     if not isinstance(detected, dict):
@@ -1495,9 +1501,7 @@ def _resolve_global_direction(parsed_pairs: list[dict]) -> tuple[str, dict]:
     skip_llm, skip_reason = _should_skip_direction_llm(parsed_pairs, rule_direction, rule_confidence)
     if skip_llm:
         global_direction = rule_direction
-        print(
-            f"[direction] rule={rule_direction} confidence={rule_confidence} llm skipped reason={skip_reason}"
-        )
+        logger.info("[direction] rule=%s confidence=%s llm skipped reason=%s", rule_direction, rule_confidence, skip_reason)
         return global_direction, {
             "llm_global_direction": rule_direction,
             "llm_direction_confidence": rule_confidence,
@@ -1518,11 +1522,10 @@ def _resolve_global_direction(parsed_pairs: list[dict]) -> tuple[str, dict]:
         global_direction = rule_direction if rule_direction in {"artist_title", "title_artist"} else "per_line"
         source = "rule_fallback"
 
-    print(
-        f"[direction] rule={rule_direction} rule_confidence={rule_confidence} "
-        f"llm={llm_global_direction} llm_confidence={llm_confidence} "
-        f"chosen={global_direction} source={source} "
-        f"reason='{_safe_log_value(llm_direction.get('reason', ''))}'"
+    logger.info(
+        "[direction] rule=%s rule_confidence=%s llm=%s llm_confidence=%s chosen=%s source=%s reason='%s'",
+        rule_direction, rule_confidence, llm_global_direction, llm_confidence,
+        global_direction, source, _safe_log_value(llm_direction.get("reason", "")),
     )
 
     return global_direction, {

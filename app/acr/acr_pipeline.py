@@ -1,8 +1,11 @@
 import difflib
+import logging
 import shutil
 import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 from typing import Dict, List, Optional, Tuple
 
 from app.acr.acr_client import acr_credentials_available, recognize_acr_segment
@@ -29,7 +32,7 @@ def _get_youtube_info(youtube_url: str) -> Dict:
                 "video_id": info.get("id") or "",
             }
     except Exception as exc:
-        print("[acr] youtube_info_failed =", str(exc))
+        logger.warning("[acr] youtube_info_failed = %s", exc)
         return {"duration": 0, "title": "", "video_id": ""}
 
 
@@ -176,7 +179,7 @@ def extract_songs_with_acr(youtube_url: str) -> Dict:
             },
         }
     except Exception as exc:
-        print("[acr] failed =", str(exc))
+        logger.error("[acr] failed = %s", exc)
         return {
             "stage": "acr",
             "selected_stage": "acr",

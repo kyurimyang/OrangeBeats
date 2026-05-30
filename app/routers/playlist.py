@@ -1,3 +1,4 @@
+import logging
 import time
 import math
 import json
@@ -5,6 +6,8 @@ import re
 import traceback
 from pathlib import Path
 from typing import Annotated, Any, Dict, List
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from app.limiter import limiter
@@ -630,7 +633,7 @@ def create_playlist_from_youtube(
             except (YouTubeThumbnailError, SpotifyCoverUploadError, Exception) as exc:
                 cover_upload_status = "failed"
                 cover_upload_error = str(exc)
-                print("cover upload failed =", str(exc))
+                logger.warning("cover upload failed: %s", str(exc))
 
         total_elapsed_ms = int((time.perf_counter() - total_started_at) * 1000)
         timings = {
@@ -693,26 +696,20 @@ def analyze_youtube_for_playlist(
         if demo_payload:
             return _json_safe(demo_payload)
 
-    print("[playlist/analyze-youtube] request payload =", payload)
-    print("[playlist/analyze-youtube] analysis start mode =", mode)
+    logger.info("[playlist/analyze-youtube] analysis start mode=%s", mode)
     access_token = _require_spotify_access_token(request, session_service)
     analysis_started_at = time.perf_counter()
     try:
         youtube_result = run_youtube_pipeline(youtube_url, mode=mode)
     except Exception as exc:
-        print("[playlist/analyze-youtube] pipeline error:", type(exc).__name__, str(exc))
+        logger.error("[playlist/analyze-youtube] pipeline error: %s: %s", type(exc).__name__, str(exc))
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"분석 파이프라인 오류: {type(exc).__name__}: {str(exc)}") from exc
     analysis_elapsed_ms = int((time.perf_counter() - analysis_started_at) * 1000)
     songs = _fuzzy_dedup_songs(_dedupe_pipeline_songs(youtube_result.get("songs", [])))
     for song in songs:
         song["source_mode"] = mode
-    print(
-        "[playlist/analyze-youtube] analysis end selected_stage=",
-        youtube_result.get("selected_stage"),
-        "songs=",
-        len(songs),
-    )
+    logger.info("[playlist/analyze-youtube] analysis end selected_stage=%s songs=%d", youtube_result.get("selected_stage"), len(songs))
 
     if not songs:
         total_elapsed_ms = int((time.perf_counter() - total_started_at) * 1000)
@@ -730,10 +727,7 @@ def analyze_youtube_for_playlist(
             total_elapsed_ms=total_elapsed_ms,
             message=no_songs_message,
         )
-        print("[playlist/analyze-youtube] return partial response keys =", list(response_payload.keys()))
-        print("[playlist/analyze-youtube] before json_safe (no songs)")
         safe_payload = _json_safe(response_payload)
-        print("[playlist/analyze-youtube] after json_safe (no songs)")
         return safe_payload
 
     if skip_spotify_matching:
@@ -751,18 +745,12 @@ def analyze_youtube_for_playlist(
             total_elapsed_ms=total_elapsed_ms,
             message=ocr_message,
         )
-        print(
-            "[playlist/analyze-youtube] skip spotify matching, returning OCR/text response songs =",
-            len(songs),
-        )
-        print("[playlist/analyze-youtube] skip response ready keys =", list(response_payload.keys()))
-        print("[playlist/analyze-youtube] before json_safe (skip matching)")
+        logger.info("[playlist/analyze-youtube] skip spotify matching songs=%d", len(songs))
         safe_payload = _json_safe(response_payload)
-        print("[playlist/analyze-youtube] after json_safe (skip matching)")
         return safe_payload
 
     try:
-        print("[playlist/analyze-youtube] spotify matching start")
+        logger.info("[playlist/analyze-youtube] spotify matching start")
         spotify_started_at = time.perf_counter()
         results = analyze_spotify_candidates(
             access_token=access_token,
@@ -782,7 +770,7 @@ def analyze_youtube_for_playlist(
                 _seen_uris.add(_uri)
             _deduped.append(_item)
         results = _deduped
-        print("[playlist/analyze-youtube] spotify matching end results =", len(results))
+        logger.info("[playlist/analyze-youtube] spotify matching end results=%d", len(results))
     except SpotifyServiceError as exc:
         total_elapsed_ms = int((time.perf_counter() - total_started_at) * 1000)
         partial_results = [_source_only_candidate(song) for song in songs]
@@ -801,13 +789,11 @@ def analyze_youtube_for_playlist(
             message="OCR/텍스트 곡 추출은 완료됐지만 Spotify 후보 검색에 실패했습니다.",
             spotify_error=str(exc),
         )
-        print("[playlist/analyze-youtube] spotify matching failed, returning partial response =", str(exc))
-        print("[playlist/analyze-youtube] before json_safe (spotify error)")
+        logger.warning("[playlist/analyze-youtube] spotify matching failed: %s", str(exc))
         safe_payload = _json_safe(response_payload)
-        print("[playlist/analyze-youtube] after json_safe (spotify error)")
         return safe_payload
     except Exception as exc:
-        print("[playlist/analyze-youtube] unexpected error:", type(exc).__name__, str(exc))
+        logger.error("[playlist/analyze-youtube] unexpected error: %s: %s", type(exc).__name__, str(exc))
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"{type(exc).__name__}: {str(exc)}") from exc
 
@@ -825,21 +811,15 @@ def analyze_youtube_for_playlist(
         total_elapsed_ms=total_elapsed_ms,
         message="Spotify 매칭 후보를 찾았습니다.",
     )
-    print(
-        "[playlist/analyze-youtube] response summary =",
-        {
-            "mode": mode,
-            "selected_stage": response_payload.get("selected_stage"),
-            "songs": len(response_payload.get("songs", [])),
-            "results": len(response_payload.get("results", [])),
-            "matched_tracks": len(response_payload.get("matched_tracks", [])),
-            "unmatched_tracks": len(response_payload.get("unmatched_tracks", [])),
-        },
+    logger.info(
+        "[playlist/analyze-youtube] done mode=%s stage=%s songs=%d results=%d matched=%d unmatched=%d",
+        mode, response_payload.get("selected_stage"),
+        len(response_payload.get("songs", [])),
+        len(response_payload.get("results", [])),
+        len(response_payload.get("matched_tracks", [])),
+        len(response_payload.get("unmatched_tracks", [])),
     )
-    print("[playlist/analyze-youtube] return response keys =", list(response_payload.keys()))
-    print("[playlist/analyze-youtube] before json_safe (full response)")
     safe_payload = _json_safe(response_payload)
-    print("[playlist/analyze-youtube] after json_safe (full response)")
     return safe_payload
 
 
@@ -916,7 +896,7 @@ def create_playlist_from_selected_tracks(
             except (YouTubeThumbnailError, SpotifyCoverUploadError, Exception) as exc:
                 result["cover_upload_status"] = "failed"
                 result["cover_upload_error"] = str(exc)
-                print(f"[cover_upload] failed: {type(exc).__name__}: {exc}")
+                logger.warning("[cover_upload] failed: %s: %s", type(exc).__name__, exc)
         return result
     except SpotifyServiceError as exc:
         raise HTTPException(status_code=_spotify_http_status(exc), detail=str(exc)) from exc

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 import math
 import shutil
 import tempfile
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 from typing import Dict
 
 from app.ocr.ocr_pipeline import merge_near_duplicate_songs, run_ocr_pipeline
@@ -36,7 +39,7 @@ def _get_youtube_info(youtube_url: str) -> Dict:
                 "video_id": info.get("id") or "",
             }
     except Exception as exc:
-        print("[fallback] youtube_info_failed =", str(exc))
+        logger.warning("[fallback] youtube_info_failed=%s", str(exc))
         return {"duration": 0, "title": ""}
 
 
@@ -47,22 +50,20 @@ def extract_songs_with_ocr(youtube_url: str) -> Dict:
     analysis_result: Dict = {}
 
     try:
-        print("[ocr] start extract_songs_with_ocr url =", youtube_url)
+        logger.info("[ocr] start extract_songs_with_ocr url=%s", youtube_url)
         info = _get_youtube_info(youtube_url)
         duration = int(info.get("duration") or 0)
         expected_frame_count = math.ceil(duration / OCR_INTERVAL_SECONDS) if duration > 0 else None
 
-        print(
-            "[ocr] sampling plan"
-            f" duration={duration}s"
-            f" interval_sec={OCR_INTERVAL_SECONDS}"
-            f" expected_frame_count={expected_frame_count}"
+        logger.info(
+            "[ocr] sampling plan duration=%ds interval_sec=%d expected_frame_count=%s",
+            duration, OCR_INTERVAL_SECONDS, expected_frame_count,
         )
 
         video_path = download_youtube_video(youtube_url, output_dir=str(work_dir / "downloads"))
-        print("[ocr] download end video_path =", video_path)
+        logger.info("[ocr] download end video_path=%s", video_path)
 
-        print("[ocr] frame+vision start")
+        logger.info("[ocr] frame+vision start")
         ocr_result = run_ocr_pipeline(
             video_path=video_path,
             work_dir=str(work_dir / "ocr"),
@@ -72,13 +73,9 @@ def extract_songs_with_ocr(youtube_url: str) -> Dict:
 
         actual_frame_count = int(ocr_result.get("frame_count") or 0)
         raw_text_count = int(ocr_result.get("raw_text_count") or 0)
-        print(
-            "[ocr] frame+vision end"
-            f" duration={duration}s"
-            f" interval_sec={OCR_INTERVAL_SECONDS}"
-            f" expected_frame_count={expected_frame_count}"
-            f" actual_frame_count={actual_frame_count}"
-            f" raw_text_count={raw_text_count}"
+        logger.info(
+            "[ocr] frame+vision end duration=%ds interval_sec=%d expected=%s actual=%d raw_text=%d",
+            duration, OCR_INTERVAL_SECONDS, expected_frame_count, actual_frame_count, raw_text_count,
         )
 
         sampled_frames = actual_frame_count
@@ -89,12 +86,12 @@ def extract_songs_with_ocr(youtube_url: str) -> Dict:
         # combined_text: 전 프레임 raw 텍스트 합산 — 범위는 넓지만 OCR 변형 포함
         # selected_text: 단일 최고점 블록 — 곡 누락 위험
         vision_text = merged_viable_text or raw_vision_text or selected_text
-        print("[ocr] vision_text length =", len(vision_text))
-        print("[ocr] parser start")
+        logger.info("[ocr] vision_text length=%d", len(vision_text))
+        logger.info("[ocr] parser start")
         analysis_result = analyze_text_block(vision_text, stage="vision")
-        print("[ocr] parser end method =", analysis_result.get("method"), "success =", analysis_result.get("success"))
+        logger.info("[ocr] parser end method=%s success=%s", analysis_result.get("method"), analysis_result.get("success"))
         songs = merge_near_duplicate_songs(analysis_result.get("songs", []))
-        print("[ocr] songs count =", len(songs))
+        logger.info("[ocr] songs count=%d", len(songs))
 
         has_songs = bool(songs)
         insufficient_text = len(vision_text) < _INSUFFICIENT_TEXT_CHARS or raw_text_count < _INSUFFICIENT_RAW_COUNT
@@ -174,10 +171,10 @@ def extract_songs_with_ocr(youtube_url: str) -> Dict:
                 },
             },
         }
-        print("[ocr] return payload keys =", list(response_payload.keys()), "songs =", len(songs))
+        logger.info("[ocr] return payload songs=%d", len(songs))
         return response_payload
     except Exception as exc:
-        print("[fallback] ocr_failed =", str(exc))
+        logger.error("[fallback] ocr_failed=%s", str(exc))
         return {
             "video_id": "",
             "youtube_title": "",

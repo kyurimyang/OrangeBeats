@@ -1,7 +1,10 @@
+import logging
 import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List
+
+logger = logging.getLogger(__name__)
 
 from app.services.spotify_api import add_tracks_to_playlist, create_playlist, get_tracks_by_ids
 from app.services.spotify_common import _is_suspicious_song, build_match_cache_key
@@ -88,10 +91,7 @@ def _resolve_single_artist_context(
     try:
         resolved = resolve_spotify_artist_id(access_token, artist_name, market=market)
     except SpotifyServiceError as exc:
-        print(
-            "[spotify] single_artist_context: artist resolve failed, continuing without filter:",
-            str(exc),
-        )
+        logger.warning("[spotify] single_artist_context: artist resolve failed, continuing without filter: %s", str(exc))
         return {}
     if not resolved.get("id"):
         return {}
@@ -249,7 +249,7 @@ def enrich_results_album_images(access_token: str, results: List[Dict[str, Any]]
     try:
         fetched = get_tracks_by_ids(access_token, unique_ids, market=market)
     except SpotifyServiceError as exc:
-        print("[enrich_results_album_images] get_tracks_by_ids failed:", str(exc))
+        logger.warning("[enrich_results_album_images] get_tracks_by_ids failed: %s", str(exc))
     else:
         for tid, track in zip(unique_ids, fetched):
             if not track:

@@ -1,3 +1,4 @@
+import logging
 import math
 import os
 import re
@@ -6,6 +7,8 @@ from pathlib import Path
 from typing import List, Optional
 
 from app.utils.ffmpeg import resolve_ffmpeg_binary
+
+logger = logging.getLogger(__name__)
 
 _SHOWINFO_PTS_RE = re.compile(r"pts_time:(\d+(?:\.\d+)?)")
 
@@ -68,7 +71,7 @@ def detect_scene_change_timestamps(
                     break
         return sorted(timestamps)
     except Exception as exc:
-        print(f"[frame-extractor] scene detection failed: {exc}")
+        logger.warning("[frame-extractor] scene detection failed: %s", exc)
         return []
 
 
@@ -168,23 +171,20 @@ def extract_frames(
     expected_frame_count = math.ceil(duration / interval_sec) if duration > 0 else None
     effective_max = max_frames if max_frames is not None else expected_frame_count
 
-    print(
-        f"[frame-extractor] duration={duration:.1f}s"
-        f" interval_sec={interval_sec}"
-        f" expected_frame_count={expected_frame_count}"
-        f" max_frames={max_frames}"
-        f" use_scene_detection={use_scene_detection}"
+    logger.info(
+        "[frame-extractor] duration=%.1fs interval_sec=%d expected_frame_count=%s max_frames=%s use_scene_detection=%s",
+        duration, interval_sec, expected_frame_count, max_frames, use_scene_detection,
     )
 
     scene_timestamps: List[float] = []
     if use_scene_detection and duration > 0:
-        print(f"[frame-extractor] scene detection start threshold={scene_threshold}")
+        logger.info("[frame-extractor] scene detection start threshold=%s", scene_threshold)
         scene_timestamps = detect_scene_change_timestamps(
             video_path,
             threshold=scene_threshold,
             max_scenes=max_scene_frames,
         )
-        print(f"[frame-extractor] scene detection end scenes={len(scene_timestamps)}")
+        logger.info("[frame-extractor] scene detection end scenes=%d", len(scene_timestamps))
 
     try:
         timestamps = _build_sample_timestamps(duration, interval_sec, max_frames, scene_timestamps)
@@ -205,10 +205,8 @@ def extract_frames(
         if filename.lower().endswith(".jpg")
     )
 
-    print(
-        f"[frame-extractor] actual_frame_count={len(frames)}"
-        f" expected_frame_count={expected_frame_count}"
-        f" effective_max={effective_max}"
-        f" scene_frames_added={len(scene_timestamps)}"
+    logger.info(
+        "[frame-extractor] actual_frame_count=%d expected_frame_count=%s effective_max=%s scene_frames_added=%d",
+        len(frames), expected_frame_count, effective_max, len(scene_timestamps),
     )
     return frames

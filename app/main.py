@@ -1,6 +1,7 @@
 # python -m uvicorn app.main:app --reload
 # cd frontend/site && npm run build
 # .\.venv\Scripts\python.exe -m uvicorn app.main:app --port 8000
+import logging
 import sys
 import traceback
 from pathlib import Path
@@ -9,6 +10,9 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+from app.logging_config import configure_logging
+configure_logging()
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -24,6 +28,8 @@ from app.routers import feedback, playlist, qa, spotify, youtube
 from app.services.spotify_session_service import SpotifySessionService
 from app.sessions.file_store import FileOAuthStateStore, FileSpotifyTokenStore
 
+logger = logging.getLogger(__name__)
+
 app = FastAPI(title="Orange Beats")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -32,7 +38,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 @app.exception_handler(Exception)
 async def _unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     tb = traceback.format_exc()
-    print(f"[500] {request.method} {request.url} | {type(exc).__name__}: {exc}\n{tb}")
+    logger.error("[500] %s %s | %s: %s\n%s", request.method, request.url, type(exc).__name__, exc, tb)
     return JSONResponse(status_code=500, content={"detail": "서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요."})
 
 

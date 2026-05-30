@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 try:
     from openai import OpenAI
@@ -230,7 +233,7 @@ def extract_songs_with_llm(text_blocks: List[str]) -> str:
         return '{"songs": []}'
 
     if not OPENAI_API_KEY or client is None:
-        print("OPENAI_API_KEY가 없습니다.")
+        logger.warning("OPENAI_API_KEY가 없습니다.")
         return '{"songs": []}'
 
     try:
@@ -242,17 +245,17 @@ def extract_songs_with_llm(text_blocks: List[str]) -> str:
         )
 
         content = response.choices[0].message.content
-        print("LLM raw response =", content)
+        logger.debug("LLM raw response=%s", content)
         return content if content else '{"songs": []}'
 
     except Exception as e:
-        print("OpenAI 호출 오류 =", str(e))
+        logger.warning("OpenAI 호출 오류=%s", str(e))
         return '{"songs": []}'
 
 
 def detect_direction_with_llm(pairs: List[Dict[str, str]]) -> Optional[Dict[str, Any]]:
     if not OPENAI_API_KEY or client is None:
-        print("[direction-llm] skipped: OpenAI client unavailable")
+        logger.warning("[direction-llm] skipped: OpenAI client unavailable")
         return None
 
     cleaned_pairs = []
@@ -278,11 +281,11 @@ def detect_direction_with_llm(pairs: List[Dict[str, str]]) -> Optional[Dict[str,
         )
 
         content = response.choices[0].message.content or ""
-        print("[direction-llm] raw =", content)
+        logger.debug("[direction-llm] raw=%s", content)
 
         parsed = _extract_json_object(content)
         if not parsed:
-            print("[direction-llm] invalid_json")
+            logger.warning("[direction-llm] invalid_json")
             return None
 
         direction = str(parsed.get("global_direction") or "mixed").lower().strip()
@@ -299,14 +302,14 @@ def detect_direction_with_llm(pairs: List[Dict[str, str]]) -> Optional[Dict[str,
             "confidence": confidence,
             "reason": reason,
         }
-        print(
-            f"[direction-llm] global_direction={direction} "
-            f"confidence={confidence} reason='{reason}'"
+        logger.info(
+            "[direction-llm] global_direction=%s confidence=%s reason='%s'",
+            direction, confidence, reason,
         )
         return result
 
     except Exception as e:
-        print("[direction-llm] error =", str(e))
+        logger.warning("[direction-llm] error=%s", str(e))
         return None
 
 
@@ -350,7 +353,7 @@ def rerank_spotify_candidates_with_llm(
         )
 
         content = response.choices[0].message.content or ""
-        print("Spotify rerank LLM raw =", content)
+        logger.debug("Spotify rerank LLM raw=%s", content)
 
         parsed = _extract_json_object(content)
         if not parsed:
@@ -375,6 +378,6 @@ def rerank_spotify_candidates_with_llm(
         }
 
     except Exception as e:
-        print("Spotify rerank LLM 오류 =", str(e))
+        logger.warning("Spotify rerank LLM 오류=%s", str(e))
         return None
 

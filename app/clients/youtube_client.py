@@ -1,12 +1,15 @@
 # Youtube API 호출
 # Youtube에서 텍스트 긁어오기
 
+import logging
 import time
 from collections import OrderedDict
 from urllib.parse import parse_qs, urlparse
 
 import requests
 from fastapi import HTTPException
+
+logger = logging.getLogger(__name__)
 
 from app.config import YOUTUBE_API_KEY
 
@@ -164,7 +167,7 @@ def collect_text_sources(url: str) -> dict:
     if cached:
         data, cached_at = cached
         if time.time() - cached_at < _CACHE_TTL_SECONDS:
-            print(f"[youtube_client] cache hit for {url}")
+            logger.debug("[youtube_client] cache hit for %s", url)
             _TEXT_SOURCE_CACHE.move_to_end(url)
             return data
 

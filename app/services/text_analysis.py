@@ -1,4 +1,8 @@
+import logging
+
 from app.clients.openai_client import extract_songs_with_llm
+
+logger = logging.getLogger(__name__)
 from app.parsers.song_parser import (
     assess_text_stage_validity,
     count_text_signals,
@@ -77,10 +81,9 @@ def _annotate_song_evidence(
                 "",
             )
             if not raw_line:
-                print(
-                    f"[annotate-evidence] llm_song_dropped source={source_name} "
-                    f"title='{title}' artist='{artist}' "
-                    f"llm_raw='{original_raw_line}'"
+                logger.debug(
+                    "[annotate-evidence] llm_song_dropped source=%s title='%s' artist='%s' llm_raw='%s'",
+                    source_name, title, artist, original_raw_line,
                 )
                 continue
         if not raw_line:
@@ -225,7 +228,7 @@ def analyze_text_block(
         if result['success']:
             return result
     except Exception as exc:
-        print("[text-analysis] llm_first_failed fallback=rule_based error =", str(exc))
+        logger.warning("[text-analysis] llm_first_failed fallback=rule_based error = %s", exc)
 
     return _run_rule_parse(text, stage, inferred_artist, rule_signals)
 

@@ -1,7 +1,10 @@
+import logging
 import math
 import subprocess
 from pathlib import Path
 from typing import List
+
+logger = logging.getLogger(__name__)
 
 from app.utils.ffmpeg import resolve_ffmpeg_binary
 
@@ -54,6 +57,6 @@ def create_audio_segments(audio_path: Path, output_dir: Path, duration_seconds: 
                 segments.append(segment_path)
         except subprocess.CalledProcessError as exc:
             error_message = exc.stderr.decode("utf-8", errors="ignore")
-            print("[acr] segment_failed =", error_message)
+            logger.warning("[acr] segment_failed = %s", error_message)
 
     return segments

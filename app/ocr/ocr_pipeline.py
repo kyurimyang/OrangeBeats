@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import tempfile
+
+logger = logging.getLogger(__name__)
 import difflib
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -310,7 +313,7 @@ def run_ocr_pipeline(
     seen_texts: set[str] = set()
 
     try:
-        print("[ocr-pipeline] start interval_sec =", interval_sec, "max_frames =", max_frames)
+        logger.info("[ocr-pipeline] start interval_sec=%d max_frames=%s", interval_sec, max_frames)
         base_dir.mkdir(parents=True, exist_ok=True)
 
         resolved_video_path = video_path
@@ -326,7 +329,7 @@ def run_ocr_pipeline(
             scene_threshold=scene_threshold,
             max_scene_frames=max_scene_frames,
         )
-        print("[ocr-pipeline] frame extraction end frame_count =", len(frames))
+        logger.info("[ocr-pipeline] frame extraction end frame_count=%d", len(frames))
 
         # 단색 프레임 사전 필터 (Vision API 호출 전 로컬 픽셀 분산 검사)
         blank_skipped = 0
@@ -336,10 +339,10 @@ def run_ocr_pipeline(
                 blank_skipped += 1
             else:
                 vision_frames.append((index, frame_path))
-        print(f"[ocr-pipeline] blank_frame_skipped={blank_skipped} vision_target={len(vision_frames)}")
+        logger.info("[ocr-pipeline] blank_frame_skipped=%d vision_target=%d", blank_skipped, len(vision_frames))
 
         # Vision API 병렬 호출
-        print(f"[ocr-pipeline] vision OCR start workers={VISION_MAX_WORKERS}")
+        logger.info("[ocr-pipeline] vision OCR start workers=%d", VISION_MAX_WORKERS)
         completed = 0
         with ThreadPoolExecutor(max_workers=VISION_MAX_WORKERS) as pool:
             future_map = {
@@ -351,9 +354,9 @@ def run_ocr_pipeline(
                 completed += 1
                 if err:
                     errors.append({"frame_path": frame_path, "error": err})
-                    print(f"[ocr-pipeline] vision frame failed frame_index={index} error={err}")
+                    logger.warning("[ocr-pipeline] vision frame failed frame_index=%d error=%s", index, err)
                 else:
-                    print(f"[ocr-pipeline] vision frame done {completed}/{len(vision_frames)} frame_index={index} text_len={len(text)}")
+                    logger.debug("[ocr-pipeline] vision frame done %d/%d frame_index=%d text_len=%d", completed, len(vision_frames), index, len(text))
                     if text:
                         _append_unique_text(
                             raw_texts,
@@ -364,14 +367,15 @@ def run_ocr_pipeline(
                                 "text": text,
                             },
                         )
-        print("[ocr-pipeline] vision OCR end unique_text_count =", len(raw_texts))
+        logger.info("[ocr-pipeline] vision OCR end unique_text_count=%d", len(raw_texts))
         combined_text = build_vision_text(raw_texts)
         block_selection = select_representative_ocr_block(raw_texts)
         selected_text = block_selection.get("selected_text") or combined_text
         merged_viable_text = block_selection.get("merged_viable_text") or ""
-        print("[ocr-pipeline] combined_text length =", len(combined_text))
-        print("[ocr-pipeline] selected_text length =", len(selected_text))
-        print("[ocr-pipeline] merged_viable_text length =", len(merged_viable_text))
+        logger.debug(
+            "[ocr-pipeline] text lengths combined=%d selected=%d merged_viable=%d",
+            len(combined_text), len(selected_text), len(merged_viable_text),
+        )
 
         return {
             "success": True,

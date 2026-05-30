@@ -1,8 +1,11 @@
+import logging
 import os
 import secrets
 import time
 from typing import Annotated, Dict, List
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import RedirectResponse
@@ -87,12 +90,10 @@ def spotify_login(
 
     login_url = get_spotify_login_url(state=state, redirect_uri=callback_redirect_uri)
 
-    print("=== /spotify/login called ===")
-    print("session_id =", session_id)
-    print("generated state =", state)
-    print("frontend_origin =", redirect_origin)
-    print("callback_redirect_uri =", callback_redirect_uri)
-    print("login_url =", login_url)
+    logger.info(
+        "/spotify/login session_id=%s state=%s frontend_origin=%s callback_redirect_uri=%s login_url=%s",
+        session_id, state, redirect_origin, callback_redirect_uri, login_url,
+    )
 
     return {
         "login_url": login_url,
@@ -107,22 +108,21 @@ def spotify_callback(
     code: str | None = Query(default=None),
     error: str | None = Query(default=None),
 ):
-    print("=== /spotify/callback called ===")
-    print("callback state =", state)
+    logger.info("/spotify/callback state=%s", state)
 
     auth_state = session_service.pop_auth_state(state)
     frontend_redirect = _resolve_frontend_origin(auth_state.frontend_origin if auth_state else None)
     callback_redirect_uri = auth_state.redirect_uri if auth_state else None
 
     if not auth_state:
-        print("invalid state")
+        logger.warning("/spotify/callback invalid state=%s", state)
         return RedirectResponse(
             url=_build_frontend_redirect(frontend_redirect, "failed", "invalid_state"),
             status_code=302,
         )
 
     if error or not code:
-        print("spotify auth error =", error)
+        logger.warning("/spotify/callback auth error=%s", error)
         return RedirectResponse(
             url=_build_frontend_redirect(frontend_redirect, "failed", error or "no_code"),
             status_code=302,
@@ -130,7 +130,7 @@ def spotify_callback(
 
     try:
         token_data = exchange_code_for_token(code, redirect_uri=callback_redirect_uri)
-        print("granted scope =", token_data.get("scope"))
+        logger.info("/spotify/callback granted scope=%s", token_data.get("scope"))
         session_service.save_token_data(auth_state.session_id, token_data)
 
         response = RedirectResponse(
@@ -149,14 +149,14 @@ def spotify_callback(
         return response
 
     except SpotifyServiceError as exc:
-        print("SpotifyServiceError =", str(exc))
+        logger.warning("/spotify/callback SpotifyServiceError=%s", str(exc))
         return RedirectResponse(
             url=_build_frontend_redirect(frontend_redirect, "failed", "spotify_service_error"),
             status_code=302,
         )
 
     except Exception as exc:
-        print("Unexpected callback error =", str(exc))
+        logger.error("/spotify/callback unexpected error=%s", str(exc))
         return RedirectResponse(
             url=_build_frontend_redirect(frontend_redirect, "failed", "unknown_error"),
             status_code=302,
@@ -231,16 +231,12 @@ def create_spotify_playlist(
     except SpotifyServiceError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
 
-    print("=== /spotify/create-playlist called ===")
-    print("payload =", payload)
-    print("token exists =", bool(access_token))
+    logger.info("/spotify/create-playlist token_exists=%s", bool(access_token))
 
     playlist_name = (payload.get("playlist_name") or "Spotify Playlist").strip()
     songs: List[Dict[str, str]] = payload.get("songs", [])
 
-    print("playlist_name =", playlist_name)
-    print("songs count =", len(songs))
-    print("songs sample =", songs[:3])
+    logger.info("/spotify/create-playlist playlist_name=%s songs_count=%d", playlist_name, len(songs))
 
     if not songs:
         raise HTTPException(status_code=400, detail="songs가 비어 있습니다.")
@@ -260,7 +256,7 @@ def create_spotify_playlist(
         }
 
     except SpotifyServiceError as exc:
-        print("SpotifyServiceError =", str(exc))
+        logger.warning("/spotify/create-playlist SpotifyServiceError=%s", str(exc))
         raise HTTPException(status_code=_spotify_http_status(exc), detail=str(exc))
 
 
