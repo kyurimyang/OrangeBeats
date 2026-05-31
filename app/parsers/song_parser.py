@@ -33,6 +33,7 @@ TRAILING_TIMESTAMP_LINE_REGEX = re.compile(r"^(?P<body>.{2,60}?)\s+(?P<ts>\d{1,2
 TIMESTAMP_PREFIX_ONLY_REGEX = re.compile(
     rf"^\s*{TIMESTAMP_LEADING_DECORATION}\d{{1,2}}:\d{{2}}(?::\d{{2}})?\s+"
 )
+BARE_TIMESTAMP_LINE_REGEX = re.compile(r"^\s*\d{1,2}:\d{2}(?::\d{2})?\s*$")
 NUMBERED_HYPHEN_TRACK_REGEX = re.compile(r"^\d{1,3}-(.+?)-(.+)$")
 TRACK_NUMBER_ONLY_REGEX = re.compile(r"^\s*(?:\d{1,3}|[A-Za-z])[\.)]?\s*$")
 TITLE_TRACK_NUMBER_PREFIX_REGEX = re.compile(r"^\s*(?:\d{1,3}|[A-Za-z])\s*[\.)|]\s+")
@@ -1327,6 +1328,59 @@ def finalize_pair(left: str, right: str, global_direction: str = "artist_title")
     return _select_best_case(left, right, global_direction)
 
 
+def _try_parse_three_line_blocks(lines: list[str]) -> list[dict]:
+    """타임스탬프 / 제목 / 아티스트 순으로 각 줄이 분리된 3줄 블록 형식을 파싱한다.
+
+    예:
+        0:00
+        젊은이
+        구남과여라이딩스텔라
+
+        4:30
+        2002년의 시간들
+        언니네 이발관
+    """
+    non_blank = [l.strip() for l in lines if l.strip()]
+    if len(non_blank) < 6:
+        return []
+
+    i = 0
+    blocks = []
+    while i < len(non_blank):
+        ts = non_blank[i]
+        if not BARE_TIMESTAMP_LINE_REGEX.fullmatch(ts):
+            return []
+        if i + 2 >= len(non_blank):
+            break
+        first = non_blank[i + 1]
+        second = non_blank[i + 2]
+        if BARE_TIMESTAMP_LINE_REGEX.fullmatch(first) or BARE_TIMESTAMP_LINE_REGEX.fullmatch(second):
+            return []
+        blocks.append({"ts": ts, "first": first, "second": second})
+        i += 3
+
+    if len(blocks) < 2:
+        return []
+
+    results: list[dict] = []
+    for block in blocks:
+        # 3줄 블록은 제목→아티스트 순(title_artist)이 지배적
+        finalized = finalize_pair(block["first"], block["second"], "title_artist")
+        artist = finalized.get("artist", "")
+        title = finalized.get("title", "")
+        if not title or not artist:
+            continue
+        meta: dict = {
+            "raw": f"{block['ts']} {block['first']}",
+            "timestamp": block["ts"],
+            "evidence_type": "timestamp_pair",
+            "confidence": "high",
+        }
+        _append_song(results, artist=artist, title=title, meta=meta)
+
+    return results
+
+
 def _safe_log_value(value: str) -> str:
     return str(value or "").replace("'", "\\'")
 
@@ -1752,6 +1806,13 @@ def parse_unstructured_lines_to_json(text: str) -> dict:
             if parts.get("_timestamp") or parts.get("_numbered_track")
         ]
 
+    # 폴백: 구분자 없는 '타임스탬프/제목/아티스트' 3줄 블록 형식 처리
+    if not pair_candidates:
+        raw_lines = [line.strip() for line in text.splitlines() if line.strip()]
+        three_line_results = _try_parse_three_line_blocks(raw_lines)
+        if len(three_line_results) >= 2:
+            return {"songs": deduplicate_songs(three_line_results)}
+
     pair_candidates_with_sep = [
         p for p in pair_candidates
         if not p.get("_title_only") and not p.get("_numbered_track")
@@ -2021,6 +2082,7 @@ def count_text_signals(text: str) -> dict:
     if not text:
         return {
             "timestamp_count": 0,
+            "bare_timestamp_count": 0,
             "pattern_count": 0,
             "candidate_line_count": 0,
             "line_count": 0,
@@ -2029,7 +2091,8 @@ def count_text_signals(text: str) -> dict:
         }
 
     lines = [line.strip() for line in text.splitlines() if line.strip()]
-    timestamp_count = sum(1 for line in lines if TIMESTAMP_PREFIX_ONLY_REGEX.search(line))
+    bare_timestamp_count = sum(1 for line in lines if BARE_TIMESTAMP_LINE_REGEX.fullmatch(line))
+    timestamp_count = sum(1 for line in lines if TIMESTAMP_PREFIX_ONLY_REGEX.search(line)) + bare_timestamp_count
     pattern_count = sum(1 for line in lines if PAIR_REGEX.search(line))
     candidate_line_count = sum(1 for line in lines if _is_valid_music_line(line) and (TIMESTAMP_PREFIX_ONLY_REGEX.search(line) or PAIR_REGEX.search(line)))
     candidate_line_ratio = candidate_line_count / max(len(lines), 1)
@@ -2041,6 +2104,7 @@ def count_text_signals(text: str) -> dict:
     )
     return {
         "timestamp_count": timestamp_count,
+        "bare_timestamp_count": bare_timestamp_count,
         "pattern_count": pattern_count,
         "candidate_line_count": candidate_line_count,
         "line_count": len(lines),

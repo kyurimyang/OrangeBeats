@@ -206,6 +206,14 @@ def _is_strong_delimiter_signal(rule_signals: dict) -> bool:
     return pattern_count >= 3 and candidate_line_ratio >= 0.60 and timestamp_count < 2
 
 
+def _is_three_line_block_format(rule_signals: dict) -> bool:
+    """타임스탬프 / 제목 / 아티스트 각 줄 분리(3줄 블록) 형식을 감지한다.
+    이 포맷은 규칙 파서가 확실히 처리 가능하므로 rule-first fast path를 활성화한다."""
+    bare_timestamp_count = int(rule_signals.get("bare_timestamp_count") or 0)
+    return bare_timestamp_count >= 2
+
+
+
 def analyze_text_block(
     text: str,
     *,
@@ -216,9 +224,9 @@ def analyze_text_block(
     text = text or ""
     rule_signals = count_text_signals(text)
 
-    # Clean timestamp tracklists are deterministic enough for the rule parser.
-    # Other structured text goes through LLM first, then rule fallback.
-    if _is_clean_timestamp_fast_path(rule_signals):
+    # 규칙으로 확실히 처리 가능한 경우 rule first → 실패 시 LLM fallback.
+    # 그 외 텍스트는 LLM first → rule fallback.
+    if _is_clean_timestamp_fast_path(rule_signals) or _is_three_line_block_format(rule_signals):
         result = _run_rule_parse(text, stage, inferred_artist, rule_signals)
         if result['success']:
             return result
