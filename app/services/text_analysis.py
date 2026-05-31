@@ -147,16 +147,22 @@ def _run_llm_parse(text: str, llm_blocks: list[str] | None, stage: str, inferred
         llm_result['songs'], source_text=text, source_name=stage, method='llm',
     )
     validity = assess_text_stage_validity(text, llm_result['songs'])
+    songs = llm_result['songs']
+    logger.info(
+        "[text-analysis] llm_parse stage=%s songs=%d success=%s songs_list=%s",
+        stage, len(songs), validity['success'],
+        [(s.get('artist', ''), s.get('title', '')) for s in songs],
+    )
     return {
         'stage': stage,
         'success': validity['success'],
         'method': 'llm',
         'signals': rule_signals,
-        'metrics': _build_song_metrics(llm_result['songs']),
+        'metrics': _build_song_metrics(songs),
         'failure_reason': '' if validity['success'] else validity['failure_reason'],
         'is_partial_but_valid': validity['is_partial_but_valid'],
         'validity_reason': validity['validity_reason'],
-        'songs': llm_result['songs'],
+        'songs': songs,
     }
 
 
@@ -167,16 +173,22 @@ def _run_rule_parse(text: str, stage: str, inferred_artist: str, rule_signals: d
         rule_result['songs'], source_text=text, source_name=stage, method='rule_based',
     )
     validity = assess_text_stage_validity(text, rule_result['songs'])
+    songs = rule_result['songs']
+    logger.info(
+        "[text-analysis] rule_parse stage=%s songs=%d success=%s songs_list=%s",
+        stage, len(songs), validity['success'],
+        [(s.get('artist', ''), s.get('title', '')) for s in songs],
+    )
     return {
         'stage': stage,
         'success': validity['success'],
         'method': 'rule_based',
         'signals': rule_signals,
-        'metrics': _build_song_metrics(rule_result['songs']),
+        'metrics': _build_song_metrics(songs),
         'failure_reason': '' if validity['success'] else validity['failure_reason'],
         'is_partial_but_valid': validity['is_partial_but_valid'],
         'validity_reason': validity['validity_reason'],
-        'songs': rule_result['songs'],
+        'songs': songs,
     }
 
 
