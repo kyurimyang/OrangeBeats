@@ -101,7 +101,8 @@ export default function ResultAnalysisModesPage() {
           <header className="result-analysis-page__intro" data-node-id="161:1511">
             <p className="result-analysis-page__intro-line">두가지 방법이 있어요.</p>
             <p className="result-analysis-page__intro-line">
-              영상에 따라 더 잘 맞는 분석 방법이 달라, 적합한 분석 방식을 선택해주세요.
+              <span className="result-analysis-page__intro-clause">영상에 따라 더 잘 맞는 분석 방법이 달라,</span>{" "}
+              <span className="result-analysis-page__intro-clause">적합한 분석 방식을 선택해주세요.</span>
             </p>
           </header>
 
@@ -125,7 +126,7 @@ export default function ResultAnalysisModesPage() {
             <p className="result-analysis-card__lead" data-node-id="164:1708">
               <span className="result-analysis-card__lead-line">
                 <span className="result-analysis-card__lead-strong">영상 속 자막·타임스탬프·곡명</span>을
-              </span>
+              </span>{" "}
               <span className="result-analysis-card__lead-line">읽어 노래를 찾습니다.</span>
             </p>
             <p className="result-analysis-card__desc" data-node-id="314:257">
@@ -187,7 +188,7 @@ export default function ResultAnalysisModesPage() {
             <p className="result-analysis-card__lead" data-node-id="314:271">
               <span className="result-analysis-card__lead-line">
                 <span className="result-analysis-card__lead-strong">영상의 오디오</span>를 직접 분석해
-              </span>
+              </span>{" "}
               <span className="result-analysis-card__lead-line">노래를 찾습니다.</span>
             </p>
             <p className="result-analysis-card__desc" data-node-id="314:272">
