@@ -573,6 +573,10 @@ a.figma-spotify-connect {
   line-height: 1.35;
   letter-spacing: -0.5px;
   text-align: center;
+  /* 한국어가 단어 중간에서 끊기지 않게 띄어쓰기 단위로만 줄바꿈 */
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  text-wrap: pretty;
 }
 
 .home-copy p {
@@ -602,6 +606,16 @@ a.figma-spotify-connect {
 .home-copy--step-1 {
   max-width: 1440px;
   min-height: 35px;
+  /* ol 자체가 .home-copy 이므로 .home-copy__list와 동일하게 번호 위치 맞춤
+     (기본 ol 좌측 패딩 40px + outside 마커 제거) */
+  padding: 0;
+  list-style: decimal;
+  list-style-position: inside;
+}
+
+.home-copy--step-1 li {
+  margin: 0;
+  padding: 0;
 }
 
 .home-copy--step-2 {
@@ -3069,6 +3083,17 @@ a.figma-spotify-connect {
   }
 }
 
+/* 모바일: LP판 애니메이션을 화면 px에 맞춰 더 작게 (내부 요소는 % 기반이라 함께 축소됨) */
+@media (max-width: 640px) {
+  .playlist-create-loading__vinyl-scene {
+    width: min(240px, 60vw);
+  }
+
+  .playlist-create-loading__stage {
+    padding-top: clamp(20px, 4vh, 40px);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .playlist-create-loading__vinyl-scene,
   .playlist-create-loading__glow,
@@ -3246,6 +3271,10 @@ a.figma-spotify-connect {
   background: #000000;
   color: #ffffff;
   overflow-x: clip;
+  /* 한국어 텍스트가 단어 중간에서 끊기지 않게 띄어쓰기 단위로만 줄바꿈 */
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  text-wrap: pretty;
 }
 
 .result-analysis-page__main {
@@ -3299,7 +3328,19 @@ a.figma-spotify-connect {
   line-height: clamp(32px, 4.6vw, 50px);
   letter-spacing: -0.5px;
   color: #ffffff;
+  text-wrap: balance;
   white-space: inherit;
+}
+
+/* 인트로 두 번째 줄: 넓은 화면은 한 줄(inline), 좁은 화면은 쉼표 뒤에서 줄바꿈 */
+.result-analysis-page__intro-clause {
+  display: inline;
+}
+
+@media (max-width: 1100px) {
+  .result-analysis-page__intro-clause {
+    display: block;
+  }
 }
 
 .result-analysis-page__run-error {
@@ -3593,7 +3634,7 @@ a.figma-spotify-connect {
     width: auto;
     max-width: none;
     min-height: 0;
-    padding: clamp(28px, 5vw, 48px) clamp(12px, 2.5vw, 20px) clamp(20px, 4vw, 28px);
+    padding: clamp(28px, 5vw, 48px) clamp(18px, 4.5vw, 36px) clamp(20px, 4vw, 28px);
     gap: clamp(24px, 4vw, 40px);
   }
 
@@ -3618,6 +3659,16 @@ a.figma-spotify-connect {
     white-space: normal;
   }
 
+  /* 좁은 카드에서는 강제 2줄(span) 대신 한 문단으로 자연스럽게 가운데 줄바꿈 */
+  .result-analysis-card__lead {
+    display: block;
+    text-wrap: balance;
+  }
+
+  .result-analysis-card__lead-line {
+    display: inline;
+  }
+
   .result-analysis-card__desc,
   .result-analysis-card--acr .result-analysis-card__desc {
     width: 100%;
@@ -3625,24 +3676,27 @@ a.figma-spotify-connect {
     font-size: clamp(18px, 3.4vw, 25px);
   }
 
+  /* 불릿 박스: 내용물을 가로·세로 모두 가운데 정렬 (아래 여백 제거) */
   .result-analysis-card__listbox {
     width: min(303px, 100%);
     height: auto;
     min-height: 129px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
-  .result-analysis-card__list {
+  .result-analysis-card__list,
+  .result-analysis-card--acr .result-analysis-card__list {
     position: relative;
     top: auto;
     left: auto;
     right: auto;
-    padding: 24px 16px 24px 36px;
+    width: fit-content;
+    max-width: 100%;
+    margin: 0;
+    padding: 0 0 0 1.4em;
     font-size: clamp(16px, 3vw, 20px);
-  }
-
-  .result-analysis-card--acr .result-analysis-card__list {
-    left: auto;
-    padding-left: 40px;
   }
 
   .result-analysis-card__note {
@@ -3737,28 +3791,33 @@ a.figma-spotify-connect {
   }
 
   .result-list-page__actions {
-    flex-direction: column;
+    flex-direction: row;
+    flex-wrap: nowrap;
     align-items: stretch;
+    justify-content: center;
     align-self: center;
-    width: fit-content;
+    width: 100%;
     max-width: calc(100vw - 32px);
     margin-inline: auto;
-    gap: 14px;
+    gap: clamp(10px, 3vw, 40px);
   }
 
   .result-list-page__actions .figma-playlist-create,
   .result-list-page__actions .figma-rematch,
   .result-list-page__actions button.figma-rematch.figma-rematch--pressed {
-    width: 100%;
-    max-width: 100%;
-    padding: clamp(12px, 3.5vw, 22px) clamp(16px, 5vw, 49px);
+    flex: 0 1 auto;
+    width: auto;
+    max-width: none;
+    min-width: 0;
+    padding: clamp(10px, 2.6vw, 22px) clamp(12px, 3.4vw, 49px);
     gap: 8px;
     box-sizing: border-box;
   }
 
   .result-list-page__actions .figma-playlist-create__label,
   .result-list-page__actions .figma-rematch__label {
-    font-size: clamp(16px, 4.6vw, calc(28px * var(--result-scale, 1)));
+    font-size: clamp(13px, 3.4vw, calc(28px * var(--result-scale, 1)));
+    white-space: nowrap;
   }
 
   .playlist-url-page__main {
@@ -4983,63 +5042,93 @@ a.figma-spotify-connect {
 }
 
 @media (max-width: 768px) {
-  /* ── Header (공통) ── */
+  /* ── Header (공통) ──
+     데스크톱 비율(로고 233px, 폰트 16px, nav 36/31/84px, 간격 48/52px)을
+     그대로 유지한 채, 줄바꿈 없이 화면 폭에 맞춰 한 줄로 축소한다.
+     모든 치수는 100vw/820 배율로 환산(=화면이 작아져도 비율 동일). */
   .site-header {
     height: auto;
   }
 
   .site-header__inner {
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: center;
     height: auto;
-    min-height: 56px;
-    padding: 10px 16px 12px;
-    gap: 10px 16px;
+    min-height: 0;
+    padding: 2.93vw 2.93vw;
+    gap: 0;
   }
 
   .site-header__start {
-    flex: 1 1 auto;
-    flex-wrap: wrap;
+    flex: 0 1 auto;
+    flex-wrap: nowrap;
     align-items: center;
-    gap: 10px 14px;
+    gap: min(3vw, 48px);
     min-width: 0;
   }
 
+  /* 로고: 데스크톱과 동일한 확대·크롭(아래 base 규칙)을 그대로 사용해
+     글자가 박스를 꽉 채우게 하고, 박스만 vw로 축소한다. */
   .site-header__logo {
-    width: min(168px, 42vw);
+    width: 24vw;
+    max-width: 200px;
     height: auto;
     aspect-ratio: 233 / 42;
-    overflow: visible;
+    overflow: hidden;
+    flex: 0 0 auto;
   }
 
-  .site-header__logo img {
-    position: static;
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    left: auto;
-    top: auto;
+  .site-header__spotify {
+    flex: 0 0 auto;
   }
 
   .site-header__spotify-trigger,
   .site-header__spotify-connect {
-    font-size: 14px;
-    line-height: 24px;
-    height: 24px;
+    font-size: min(2.4vw, 16px);
+    line-height: 1.4;
+    height: auto;
+    gap: min(1.2vw, 8px);
+    flex: 0 0 auto;
   }
 
+  .site-header__spotify-trigger-label,
   .site-header__spotify-connect-label {
-    line-height: 24px;
+    line-height: 1.4;
+  }
+
+  .site-header__spotify-chevron {
+    border-left-width: min(0.75vw, 5px);
+    border-right-width: min(0.75vw, 5px);
+    border-top-width: min(0.9vw, 6px);
+  }
+
+  .site-header__spotify-mark {
+    width: min(2.7vw, 18px);
+    height: min(2.7vw, 18px);
+  }
+
+  .site-header__spotify-mark svg {
+    width: min(1.65vw, 11px);
+    height: min(1.65vw, 11px);
   }
 
   .site-header__nav {
-    flex: 1 1 100%;
-    order: 3;
-    justify-content: center;
-    flex-wrap: wrap;
-    gap: clamp(12px, 3.5vw, 24px);
-    padding: 4px 0 0;
-    margin-left: 0;
+    flex: 0 0 auto;
+    order: 0;
+    justify-content: flex-end;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: min(4vw, 52px);
+    padding: 0;
+    margin-left: auto;
+  }
+
+  .site-header__nav .figma-footer-link {
+    font-size: min(2.4vw, 16px);
+    line-height: 1.4;
+    width: auto;
+    height: auto;
+    white-space: nowrap;
   }
 
   /* ── /result — 곡 목록 ── */
@@ -5059,28 +5148,35 @@ a.figma-spotify-connect {
     white-space: normal;
   }
 
+  /* 액션 버튼 2개: 데스크톱처럼 가로 1줄 유지 + 비율 축소 (세로 쌓기 금지) */
   .result-list-page__actions {
-    flex-direction: column;
+    flex-direction: row;
+    flex-wrap: nowrap;
     align-items: stretch;
+    justify-content: center;
     align-self: center;
-    width: fit-content;
-    max-width: calc(100vw - 32px);
+    width: 100%;
+    max-width: calc(100vw - 24px);
     margin-inline: auto;
-    gap: 12px;
+    gap: clamp(8px, 3vw, 40px);
   }
 
   .result-list-page__actions .figma-playlist-create,
   .result-list-page__actions .figma-rematch,
   .result-list-page__actions button.figma-rematch.figma-rematch--pressed {
-    width: 100%;
-    max-width: 100%;
+    flex: 0 1 auto;
+    width: auto;
+    max-width: none;
+    min-width: 0;
+    padding: clamp(9px, 2.4vw, 22px) clamp(10px, 3vw, 49px);
     justify-content: center;
     box-sizing: border-box;
   }
 
   .result-list-page__actions .figma-playlist-create__label,
   .result-list-page__actions .figma-rematch__label {
-    white-space: normal;
+    font-size: clamp(12px, 3.3vw, calc(28px * var(--result-scale, 1)));
+    white-space: nowrap;
     text-align: center;
   }
 
@@ -5282,17 +5378,23 @@ a.figma-spotify-connect {
 /* /create URL — 모바일 레이아웃은 640px 이하만 (641~ 분할 화면은 데스크톱 가로 입력 유지) */
 @media (max-width: 640px) {
   .playlist-url-page__main {
-    padding: 20px 16px 56px;
-    justify-content: flex-start;
-    padding-top: clamp(32px, 8vh, 64px);
+    padding: 24px 16px 48px;
+    justify-content: center;
   }
 
+  /* 제목: 단어 중간(입력해주/세요)에서 끊기지 않게 띄어쓰기 단위로만 줄바꿈.
+     폰트를 약간 줄여 대부분의 폰에서 한 줄로 들어오게 함. */
   .playlist-url-page__heading {
     margin-bottom: 28px;
-    font-size: clamp(20px, 5.2vw, 26px);
-    padding: 0 4px;
+    font-size: clamp(15px, 4.3vw, 24px);
+    line-height: 1.3;
+    padding: 0 8px;
+    word-break: keep-all;
+    text-wrap: balance;
   }
 
+  /* URL 입력창: 데스크톱 가로 레이아웃(얇은 바 + 글로우)을 그대로 비율 축소.
+     리플로우(세로 쌓기) 대신 input·버튼을 absolute로 유지해 글로우가 안 깨짐. */
   .playlist-url-page .figma-url-input,
   .figma-url-input {
     width: 100%;
@@ -5301,37 +5403,52 @@ a.figma-spotify-connect {
 
   .figma-url-input__shell {
     width: 100%;
+    padding: clamp(3px, 1vw, 5px) clamp(4px, 1.2vw, 6px);
+    border-radius: clamp(20px, 7vw, 30px);
   }
 
   .figma-url-input__field {
+    position: relative;
     width: 100%;
     max-width: 100%;
-    height: auto;
-    min-height: 52px;
-    flex-wrap: wrap;
+    height: clamp(54px, 16vw, 90px);
+    min-height: 0;
+    flex-wrap: nowrap;
     align-items: center;
-    padding: 10px 12px 10px 16px;
+    padding: 0;
+    border-radius: clamp(17px, 6vw, 26px);
     box-sizing: border-box;
   }
 
   .figma-url-input__native {
-    position: static;
-    flex: 1 1 auto;
-    min-width: 0;
-    width: 100%;
-    height: auto;
-    min-height: 36px;
-    left: auto;
-    right: auto;
-    padding: 4px 0;
-    font-size: clamp(15px, 4vw, 18px);
+    position: absolute;
+    left: clamp(16px, 4.5vw, 42px);
+    right: clamp(108px, 33vw, 200px);
+    top: 0;
+    bottom: 0;
+    width: auto;
+    height: 100%;
+    min-height: 0;
+    padding: 0;
+    font-size: clamp(13px, 3.8vw, 20px);
   }
 
   .figma-url-input__action {
-    position: static;
-    flex-shrink: 0;
-    margin-top: 0;
-    margin-left: auto;
+    position: absolute;
+    top: 50%;
+    right: clamp(8px, 2.6vw, 20px);
+    transform: translateY(-50%);
+    margin: 0;
+  }
+
+  .figma-playlist-create.figma-url-input__action {
+    width: clamp(92px, 28vw, 177.7px);
+    height: clamp(36px, 11vw, 50px);
+    padding: 0 clamp(10px, 3vw, 25px);
+  }
+
+  .figma-url-input__action .figma-playlist-create__label {
+    font-size: clamp(13px, 3.6vw, 20px);
   }
 
   .figma-url-input--default,
@@ -5360,38 +5477,15 @@ a.figma-spotify-connect {
 }
 
 @media (max-width: 480px) {
-  .site-header__inner {
-    padding: 8px 12px 10px;
-  }
-
-  .site-header__nav {
-    gap: 10px 16px;
-  }
-
-  .site-header__nav .figma-footer-link {
-    font-size: 14px;
-  }
-
+  /* 헤더는 768px 블록의 vw 기반 한 줄 축소 규칙을 그대로 따른다. */
   .playlist-url-page__radios {
     flex-direction: column;
     align-items: stretch;
     gap: 12px;
   }
 
-  .figma-url-input__field {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .figma-url-input__action {
-    margin-left: 0;
-    width: 100%;
-  }
-
-  .figma-url-input__action.figma-playlist-create {
-    width: 100%;
-    justify-content: center;
-  }
+  /* URL 입력창은 640px 블록의 가로 비율 축소 레이아웃을 그대로 유지
+     (세로 쌓기/버튼 전체폭 오버라이드 제거 — 글로우 유지) */
 
   .result-list-panel__header {
     flex-wrap: wrap;
