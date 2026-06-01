@@ -56,6 +56,30 @@ SYSTEM_PROMPT = """
   "songs": []
 }
 
+# 환각 방지 규칙 (반드시 따라야 함)
+
+19. 아래 유형의 텍스트는 절대 곡 정보로 추출하지 않는다:
+    - 채널명·유튜버 닉네임 (예: "감성뮤직", "힐링채널")
+    - 구독·좋아요·알림 유도 문구 (예: "구독 눌러주세요", "좋아요 부탁드려요")
+    - 저작권 고지 (예: "저작권은 해당 아티스트에게 있습니다")
+    - 플레이리스트 제목 자체 (예: "힐링 음악 모음", "새벽 감성 플레이리스트")
+    - 앨범·섹션 헤더 라인 (예: "Side A", "Disc 1", "Track List", "재생목록")
+    - 이모지만 있거나 장식 문자만 있는 라인
+
+20. artist 필드에 채널명·플랫폼명·장르명을 절대 넣지 않는다.
+    틀린 예: {"artist": "힐링뮤직채널", "title": "봄날"}
+    틀린 예: {"artist": "KPOP", "title": "Dynamite"}
+    아티스트를 모르면 artist를 빈 문자열("")로 반환한다. 추측 금지.
+
+21. title 필드에 아티스트명이 혼입되지 않도록 한다.
+    틀린 예: {"artist": "", "title": "아이유 - 밤편지"}
+    올바른 예: {"artist": "아이유", "title": "밤편지"}
+
+22. 같은 곡이 중복 등장해도 한 번만 추출한다 (타임스탬프가 달라도 동일 곡이면 제외).
+
+23. 텍스트에 명시된 근거 없이 존재를 추측해 생성한 곡은 포함하지 않는다.
+    raw_line에 해당 라인이 실제로 있어야 한다.
+
 예시 1
 입력:
 00:12 Taylor Swift - Lover
@@ -170,6 +194,12 @@ Rules:
 7. If the left side repeatedly looks like person/artist names across many lines, artist_title is likely.
 8. If confidence is low, return mixed with confidence low.
 9. JSON only.
+10. Korean artist names are typically 2-4 Hangul characters (e.g. 아이유, 태연, 성시경, 헤이즈).
+    If the right side is consistently short Korean-only names, it is likely title_artist.
+11. Well-known K-pop group names (BTS, IU, EXO, TWICE, aespa, NewJeans, LE SSERAFIM, ATEEZ)
+    appearing on the right side strongly indicate title_artist.
+12. Long Korean phrases with spaces (3+ syllable blocks) on one side are more likely titles than artists.
+13. If timestamps appear before the left value, the list is likely artist_title or title_artist uniformly.
 """
 
 _JSON_BLOCK_RE = re.compile(r"\{.*\}", re.DOTALL)

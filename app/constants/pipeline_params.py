@@ -80,6 +80,22 @@ NON_MUSIC_LINE_PATTERNS = [
     r"@[\w가-힣一-鿿぀-ヿ]+\s*$",
     # Lines made of mathematical/decorative Unicode (styled YouTube headers like 𝑷𝒍𝒂𝒚𝒍𝒊𝒔𝒕)
     r"[\U0001D400-\U0001D7FF]",
+    # 한국어 안내/유도 문구
+    r"^\s*[▶►▷]\s*구독",
+    r"^\s*[▶►▷]\s*좋아요",
+    r"^\s*[▶►▷]\s*알림",
+    r"^\s*✔\s*저작권",
+    r"^\s*📌",
+    r"^\s*⬇",
+    r"^\s*이\s*영상의\s*모든\s*(?:음악|노래|곡)",
+    r"^\s*본\s*영상에\s*사용(?:된|되는|한)",
+    r"^\s*저작권은\s*(?:해당|원)",
+    r"^\s*(?:구독|좋아요|알림설정)\s*(?:눌러|부탁|해주)",
+    r"^\s*(?:앨범|album)\s*[:：]\s*$",
+    r"^\s*(?:track\s*list|트랙\s*리스트|tracklist)\s*$",
+    r"^\s*(?:재생목록|플레이리스트)\s*[:：]?\s*$",
+    r"^\s*(?:업로드|upload|posted)\s*(?:by|:)",
+    r"^\s*제\s*\d+\s*(?:편|화|회)\s*$",
 ]
 
 GLOBAL_DIRECTION_SAMPLE_SIZE = 5
@@ -152,6 +168,43 @@ CORE_ARTIST_ALIAS_MAP.update({
     "브라운아이드걸스": ["Brown Eyed Girls"],
     "화사": ["Hwasa", "HWASA"],
     "윤미래": ["Yoonmirae", "T"],
+    # 4세대 아이돌 (Spotify 영문명으로만 검색됨)
+    "뉴진스": ["NewJeans"],
+    "르세라핌": ["LE SSERAFIM"],
+    "스트레이키즈": ["Stray Kids"],
+    "에이티즈": ["ATEEZ"],
+    "있지": ["ITZY"],
+    "오마이걸": ["OH MY GIRL"],
+    "에버글로우": ["EVERGLOW"],
+    "케플러": ["Kep1er"],
+    "아이브": ["IVE"],
+    "엔믹스": ["NMIXX"],
+    "케이시": ["Kassy"],
+    "위아이": ["WEi"],
+    "퀸덤퍼즐": ["Queendom Puzzle"],
+    # 발라드/가요 (로마자 표기 혼용)
+    "박효신": ["Park Hyo Shin", "Park Hyoshin"],
+    "이선희": ["Lee Sun Hee", "Lee Sunhee"],
+    "임재범": ["Lim Jae Beom", "Im Jaebeom"],
+    "김범수": ["Kim Bum Soo", "Kim Bumsoo"],
+    "케이윌": ["K.Will", "K Will"],
+    "포맨": ["4MEN"],
+    "나얼": ["Naul"],
+    "이적": ["Lee Juck"],
+    "빅마마": ["Big Mama", "BIGMAMA"],
+    "버즈": ["Buzz"],
+    "god": ["G.O.D"],
+    "노을": ["Noel"],
+    "박완규": ["Park Wan Kyu"],
+    "신승훈": ["Shin Seung Hun"],
+    "조성모": ["Jo Sung Mo"],
+    # 대소문자 표기 혼용 아티스트
+    "샤이니": ["SHINee", "Shinee", "SHINEE"],
+    "빅뱅": ["BIGBANG", "Big Bang"],
+    "투피엠": ["2PM"],
+    "투에이엠": ["2AM"],
+    "씨엔블루": ["CNBLUE", "CN Blue"],
+    "에프티아일랜드": ["FTIsland", "FTISLAND", "FT Island"],
 })
 
 CORE_TITLE_ALIAS_MAP = {
@@ -162,4 +215,16 @@ CORE_TITLE_ALIAS_MAP = {
     "오늘따라": ["TODAY"],
     "사랑의 인사": ["Lovely Sweet Heart"],
     "내가 제일 잘 나가": ["I Am The Best"],
+    # Spotify에 영문 제목으로만 등록된 한국어 명곡
+    "봄날": ["Spring Day"],
+    "밤편지": ["Through the Night"],
+    "좋은 날": ["Good Day"],
+    "팔레트": ["Palette"],
+    "에잇": ["eight"],
+    "eight": ["에잇"],
+    "사랑이 잘": ["Can You See My Heart"],
+    "어디에도": ["Nowhere"],
+    "홀씨": ["Dandelion"],
+    "칠월 칠일": ["Milky Way"],
+    "동화": ["Fairy Tale"],
 }

@@ -22,6 +22,17 @@ from app.constants.pipeline_params import (
 )
 
 TIMESTAMP_LEADING_DECORATION = r"(?:[-*#>\u2022\u00b7\u2023\u2013\u2014]\s*)?"
+
+_PLACEHOLDER_ARTISTS = {
+    "various", "various artists", "unknown", "unknown artist",
+    "n/a", "na", "\uc5c6\uc74c", "\ubaa8\ub984", "\uc5ec\ub7ec \uc544\ud2f0\uc2a4\ud2b8", "\uc5ec\ub7ec\uc544\ud2f0\uc2a4\ud2b8",
+    "multiple artists", "compilation", "artist", "\uc544\ud2f0\uc2a4\ud2b8",
+}
+
+_EMOJI_RE = re.compile(
+    r"[\U0001F300-\U0001FAFF\u2600-\u26ff\u2700-\u27bf\u231a-\u231b\u23e9-\u23f3]"
+)
+_BRACKET_TIMESTAMP_RE = re.compile(r"^\[(\d{1,2}:\d{2}(?::\d{2})?)\]")
 TIME_PREFIX_REGEX = re.compile(
     rf"^\s*{TIMESTAMP_LEADING_DECORATION}(?:\d{{1,2}}:\d{{2}}(?::\d{{2}})?)\s*[-|~>*]*\s*"
 )
@@ -1625,7 +1636,7 @@ def _append_song(results: list[dict], artist: str, title: str, meta: dict | None
     if not _is_meaningful_text(title):
         return
 
-    artist_ok = _is_meaningful_text(artist)
+    artist_ok = _is_meaningful_text(artist) and artist.strip().lower() not in _PLACEHOLDER_ARTISTS
     title_ok = _is_meaningful_text(title)
 
     completeness_score = 0.0
@@ -1727,11 +1738,19 @@ def _split_missing_artist_from_comma_title(artist: str, title: str) -> tuple[str
     return artist, title
 
 
+def _normalize_line_format(line: str) -> str:
+    """이모지·대괄호 타임스탬프·전각 구분자를 정규화해 파서 패턴이 인식할 수 있게 만든다."""
+    line = _EMOJI_RE.sub("", line)
+    line = _BRACKET_TIMESTAMP_RE.sub(r"\1", line)
+    line = line.replace("ㅣ", "|").replace("｜", "|")
+    return line.strip()
+
+
 def parse_unstructured_lines_to_json(text: str) -> dict:
     if not text:
         return {"songs": []}
 
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    lines = [_normalize_line_format(line.strip()) for line in text.splitlines() if line.strip()]
     pair_candidates = []
 
     for line in lines:

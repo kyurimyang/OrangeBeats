@@ -138,10 +138,6 @@ def _single_artist_filter_decision(song: Dict[str, Any], single_artist_context: 
 
 
 def _match_worker_count(song_count: int) -> int:
-    if song_count >= 40:
-        return 2
-    if song_count >= 20:
-        return 3
     return _MAX_MATCH_WORKERS
 
 

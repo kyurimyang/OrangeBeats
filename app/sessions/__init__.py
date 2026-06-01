@@ -1,10 +1,10 @@
-from app.sessions.file_store import FileOAuthStateStore, FileSpotifyTokenStore
+from app.sessions.file_store import SupabaseOAuthStateStore, SupabaseSpotifyTokenStore
 from app.sessions.memory import InMemoryOAuthStateStore, InMemorySpotifyTokenStore
 from app.sessions.models import OAuthStateRecord, SpotifyTokenRecord
 
 __all__ = [
-    "FileOAuthStateStore",
-    "FileSpotifyTokenStore",
+    "SupabaseOAuthStateStore",
+    "SupabaseSpotifyTokenStore",
     "InMemoryOAuthStateStore",
     "InMemorySpotifyTokenStore",
     "OAuthStateRecord",

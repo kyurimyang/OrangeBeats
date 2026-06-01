@@ -73,6 +73,19 @@ def _youtube_get(path: str, params: dict) -> dict:
     except requests.RequestException:
         raise HTTPException(status_code=500, detail="YouTube 요청 실패")
 
+    if response.status_code == 403:
+        try:
+            errors = response.json().get("error", {}).get("errors", [])
+            reason = errors[0].get("reason", "") if errors else ""
+        except Exception:
+            reason = ""
+        if reason == "quotaExceeded":
+            raise HTTPException(
+                status_code=503,
+                detail="YouTube API 일일 할당량이 초과됐습니다. 매일 오전 9시(한국 시간)에 초기화됩니다.",
+            )
+        raise HTTPException(status_code=403, detail="YouTube API 접근이 거부됐습니다.")
+
     if response.status_code >= 400:
         raise HTTPException(status_code=response.status_code, detail="YouTube API 오류")
 

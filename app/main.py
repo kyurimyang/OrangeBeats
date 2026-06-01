@@ -26,7 +26,7 @@ from app.config import get_allowed_frontend_origins
 from app.limiter import limiter
 from app.routers import feedback, playlist, qa, spotify, youtube
 from app.services.spotify_session_service import SpotifySessionService
-from app.sessions.file_store import FileOAuthStateStore, FileSpotifyTokenStore
+from app.sessions.file_store import SupabaseOAuthStateStore, SupabaseSpotifyTokenStore
 
 logger = logging.getLogger(__name__)
 
@@ -43,8 +43,8 @@ async def _unhandled_exception_handler(request: Request, exc: Exception) -> JSON
 
 
 app.state.spotify_session_service = SpotifySessionService(
-    token_store=FileSpotifyTokenStore(),
-    state_store=FileOAuthStateStore(),
+    token_store=SupabaseSpotifyTokenStore(),
+    state_store=SupabaseOAuthStateStore(),
 )
 
 app.add_middleware(

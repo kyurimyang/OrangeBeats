@@ -5,7 +5,7 @@ from app.clients.supabase_client import get_supabase
 from app.sessions.models import OAuthStateRecord, SpotifyTokenRecord
 
 
-class FileSpotifyTokenStore:
+class SupabaseSpotifyTokenStore:
     def get(self, session_id: str) -> Optional[SpotifyTokenRecord]:
         result = (
             get_supabase()
@@ -33,7 +33,7 @@ class FileSpotifyTokenStore:
         get_supabase().table("spotify_tokens").delete().eq("session_id", session_id).execute()
 
 
-class FileOAuthStateStore:
+class SupabaseOAuthStateStore:
     def save(self, record: OAuthStateRecord) -> None:
         self._prune()
         data = {

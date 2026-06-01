@@ -1,4 +1,5 @@
 import logging
+from concurrent.futures import ThreadPoolExecutor
 
 from app.clients.openai_client import extract_songs_with_llm
 
@@ -166,9 +167,9 @@ def _run_llm_parse(text: str, llm_blocks: list[str] | None, stage: str, inferred
     }
 
 
-def _run_rule_parse(text: str, stage: str, inferred_artist: str, rule_signals: dict) -> dict:
+def _run_rule_parse(text: str, stage: str, inferred_artist: str, rule_signals: dict, skip_direction: bool = False) -> dict:
     rule_result = parse_unstructured_lines_to_json(text)
-    rule_result = normalize_song_candidates(rule_result, inferred_artist=inferred_artist)
+    rule_result = normalize_song_candidates(rule_result, inferred_artist=inferred_artist, skip_direction_detection=skip_direction)
     rule_result['songs'] = _annotate_song_evidence(
         rule_result['songs'], source_text=text, source_name=stage, method='rule_based',
     )
@@ -236,21 +237,36 @@ def analyze_text_block(
     text = text or ""
     rule_signals = count_text_signals(text)
 
-    # 규칙으로 확실히 처리 가능한 경우 rule first → 실패 시 LLM fallback.
-    # 그 외 텍스트는 LLM first → rule fallback.
-    if _is_clean_timestamp_fast_path(rule_signals) or _is_three_line_block_format(rule_signals):
+    # 규칙으로 확실히 처리 가능한 신호가 있으면 rule first → 실패 시 LLM fallback.
+    # 그 외 텍스트는 LLM first와 rule parse를 병렬 실행 → LLM 성공 시 반환, 실패 시 이미 완료된 rule 결과 사용.
+    is_rule_fast = (
+        _is_clean_timestamp_fast_path(rule_signals)
+        or _is_three_line_block_format(rule_signals)
+        or _is_strong_delimiter_signal(rule_signals)
+    )
+
+    if is_rule_fast:
         result = _run_rule_parse(text, stage, inferred_artist, rule_signals)
         if result['success']:
             return result
+        try:
+            result = _run_llm_parse(text, llm_blocks, stage, inferred_artist, rule_signals)
+            if result['success']:
+                return result
+        except Exception as exc:
+            logger.warning("[text-analysis] llm_fallback_failed error=%s", exc)
+        return _run_rule_parse(text, stage, inferred_artist, rule_signals)
 
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        llm_future  = ex.submit(_run_llm_parse, text, llm_blocks, stage, inferred_artist, rule_signals)
+        rule_future = ex.submit(_run_rule_parse, text, stage, inferred_artist, rule_signals, True)
     try:
-        result = _run_llm_parse(text, llm_blocks, stage, inferred_artist, rule_signals)
-        if result['success']:
-            return result
+        llm_result = llm_future.result()
+        if llm_result['success']:
+            return llm_result
     except Exception as exc:
-        logger.warning("[text-analysis] llm_first_failed fallback=rule_based error = %s", exc)
-
-    return _run_rule_parse(text, stage, inferred_artist, rule_signals)
+        logger.warning("[text-analysis] llm_first_failed fallback=rule_based error=%s", exc)
+    return rule_future.result()
 
 
 def analyze_description(description: str, inferred_artist: str = "") -> dict:
@@ -342,10 +358,13 @@ def analyze_comments_prioritized(comments: list[str | dict], inferred_artist: st
         if not signals.get('has_tracklist_structure'):
             continue
 
+        music_blocks = [b for b in blocks if _comment_has_track_pattern(b)]
+        llm_blocks = (music_blocks or blocks)[:20]
+
         result = analyze_text_block(
             combined,
             stage='comments',
-            llm_blocks=blocks[:20],
+            llm_blocks=llm_blocks,
             inferred_artist=inferred_artist,
         )
         result['source_priority_used'] = source_priority

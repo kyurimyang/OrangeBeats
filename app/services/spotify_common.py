@@ -90,6 +90,39 @@ ARTIST_ALIAS_MAP: Dict[str, List[str]] = {
     '유다빈 밴드': ['YdBB', 'Yudabinband'],
     '성시경': ['Sung Si Kyung', 'sung si kyung'],
     '정준일': ['JOONIL JUNG', 'Joonil Jung', 'joonil jung'],
+    # 4세대 아이돌
+    '뉴진스': ['NewJeans', 'New Jeans'],
+    '르세라핌': ['LE SSERAFIM', 'Le Sserafim'],
+    '스트레이키즈': ['Stray Kids', 'SKZ'],
+    '에이티즈': ['ATEEZ', 'Ateez'],
+    '있지': ['ITZY', 'Itzy'],
+    '오마이걸': ['OH MY GIRL', 'Oh My Girl'],
+    '에버글로우': ['EVERGLOW', 'Everglow'],
+    '케플러': ['Kep1er'],
+    '아이브': ['IVE'],
+    '엔믹스': ['NMIXX'],
+    # 발라드 / 가요
+    '박효신': ['Park Hyo Shin', 'Park Hyoshin'],
+    '이선희': ['Lee Sun Hee', 'Lee Sunhee'],
+    '임재범': ['Lim Jae Beom', 'Im Jaebeom'],
+    '김범수': ['Kim Bum Soo', 'Kim Bumsoo'],
+    '케이윌': ['K.Will', 'K Will'],
+    '포맨': ['4MEN'],
+    '나얼': ['Naul'],
+    '이적': ['Lee Juck'],
+    '빅마마': ['Big Mama', 'BIGMAMA'],
+    '버즈': ['Buzz'],
+    'god': ['G.O.D', 'g.o.d'],
+    '노을': ['Noel'],
+    '박완규': ['Park Wan Kyu'],
+    '신승훈': ['Shin Seung Hun'],
+    '조성모': ['Jo Sung Mo'],
+    # 대소문자 표기 혼용
+    '빅뱅': ['BIGBANG', 'Big Bang'],
+    '투피엠': ['2PM'],
+    '투에이엠': ['2AM'],
+    '씨엔블루': ['CNBLUE', 'CN Blue'],
+    '에프티아일랜드': ['FTIsland', 'FTISLAND', 'FT Island'],
 }
 
 ARTIST_ALIAS_MAP.update(CORE_ARTIST_ALIAS_MAP)
@@ -112,6 +145,18 @@ TITLE_ALIAS_MAP.update({
     "양화대교": ["Yanghwa BRDG", "yanghwa bridge", "yanghwabrdg"],
     "신한은행": ["SHINHAN BANK", "shinhan bank", "shinhanbank"],
     "화장 지웠어": ["No Make Up", "nomakeup"],
+    # Spotify 영문 제목으로만 등록된 케이스
+    "봄날": ["Spring Day"],
+    "밤편지": ["Through the Night"],
+    "좋은 날": ["Good Day"],
+    "팔레트": ["Palette"],
+    "에잇": ["eight"],
+    "eight": ["에잇"],
+    "사랑이 잘": ["Can You See My Heart"],
+    "어디에도": ["Nowhere"],
+    "홀씨": ["Dandelion"],
+    "칠월 칠일": ["Milky Way"],
+    "동화": ["Fairy Tale"],
 })
 
 SUSPICIOUS_KEYWORDS = {
