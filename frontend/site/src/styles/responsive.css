@@ -349,20 +349,23 @@
   }
 }
 
-/* 진짜 모바일(≤640px)만 2행 — 로고는 과도 축소 방지 */
+/* 진짜 모바일(≤640px) — 1행 유지.
+   로고는 데스크톱과 동일한 확대·크롭을 써서 글자가 박스를 꽉 채우게 한다.
+   (object-fit:contain은 PNG 여백째 들어가 글자가 작아지고 Spotify와 간격이 벌어짐) */
 @media (max-width: 640px) {
   .site-header__logo {
-    width: min(200px, 58vw) !important;
+    width: min(32vw, 180px) !important;
     height: auto;
     aspect-ratio: 233 / 42;
+    overflow: hidden;
   }
 
   .site-header__logo img {
-    position: static !important;
-    width: 100% !important;
-    height: 100% !important;
-    left: auto !important;
-    top: auto !important;
-    object-fit: contain;
+    position: absolute !important;
+    width: 124.61% !important;
+    height: 327.62% !important;
+    left: -13.94% !important;
+    top: -111.43% !important;
+    object-fit: unset;
   }
 }
