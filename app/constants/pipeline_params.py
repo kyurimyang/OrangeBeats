@@ -26,6 +26,9 @@ SECTION_KEYWORDS = [
     "pinterest", "comment", "comments",
     "instagram", "twitter", "facebook", "tiktok", "tumblr",
     "photo", "image", "cover", "artwork", "thumbnail",
+    # 광고·스킵·협찬 섹션 마커 (구분자 없는 라인에서만 차단)
+    "광고", "스킵", "협찬", "스폰서", "광고구간", "광고시작", "광고끝",
+    "인스타그램",
 ]
 
 NATURAL_SENTENCE_HINTS = [
@@ -96,6 +99,18 @@ NON_MUSIC_LINE_PATTERNS = [
     r"^\s*(?:재생목록|플레이리스트)\s*[:：]?\s*$",
     r"^\s*(?:업로드|upload|posted)\s*(?:by|:)",
     r"^\s*제\s*\d+\s*(?:편|화|회)\s*$",
+    # 광고·스폰서 명시 문구 (영어)
+    r"^\s*sponsored?\s+by\b",
+    r"^\s*this\s+(?:video|content)\s+(?:is|was)\s+(?:sponsored|brought\s+to\s+you)\b",
+    r"^\s*in\s+(?:paid\s+)?partnership\s+with\b",
+    r"^\s*thanks?\s+to\s+(?:our\s+)?sponsor",
+    r"^\s*(?:ad|ads)\s*(?:break|start|end|here)?\s*$",
+    r"^\s*skip\s+(?:intro|this|ad|ads|chapter|sponsor|me)\b",
+    # 광고 건너뛰기 한국어 문구
+    r"^\s*광고\s*(?:시작|끝|구간|스킵|건너뛰기|skip)\b",
+    r"^\s*광고를?\s*건너뛰",
+    r"^\s*(?:ppl|광고주|협찬사)\s*[:：]",
+    r"^\s*협찬\s*[:：]",
 ]
 
 GLOBAL_DIRECTION_SAMPLE_SIZE = 5

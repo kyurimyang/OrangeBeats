@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(del \"=2.0.0\")",
+      "Bash(cd \"c:\\\\Users\\\\firef\\\\OneDrive\\\\바탕 화면\\\\26-1 파란학기\\\\2026-paran-playlist-ai\" && rm \"=2.0.0\" && echo \"deleted\")",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\firef\\\\OneDrive\\\\바탕 화면\\\\26-1 파란학기\\\\2026-paran-playlist-ai\" -Recurse -Filter \"*.py\")",
+      "Bash(curl -s http://localhost:5174/)",
+      "Bash(npx playwright *)",
+      "Bash(del \"c:\\\\Users\\\\firef\\\\OneDrive\\\\바탕 화면\\\\26-1 파란학기\\\\2026-paran-playlist-ai\\\\faq_full.png\" \"c:\\\\Users\\\\firef\\\\OneDrive\\\\바탕 화면\\\\26-1 파란학기\\\\2026-paran-playlist-ai\\\\faq_04_open.png\" \"c:\\\\Users\\\\firef\\\\OneDrive\\\\바탕 화면\\\\26-1 파란학기\\\\2026-paran-playlist-ai\\\\faq_05_open.png\" \"c:\\\\Users\\\\firef\\\\OneDrive\\\\바탕 화면\\\\26-1 파란학기\\\\2026-paran-playlist-ai\\\\faq_07_open.png\")",
+      "Bash(curl -s \"http://localhost:8000/youtube/analyze-text\" -X POST -H \"Content-Type: application/json\" -d '{\"youtube_url\": \"https://youtu.be/LNdcY3e0a20?si=rI1pdUwjhwnbn2hF\"}')"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\firef\\OneDrive\\바탕 화면\\26-1 파란학기\\2026-paran-playlist-ai",
+      "c:\\Users\\firef\\OneDrive\\���� ȭ��\\26-1 �Ķ��б�\\2026-paran-playlist-ai"
+    ]
+  }
+}

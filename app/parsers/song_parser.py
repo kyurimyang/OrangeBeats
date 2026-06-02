@@ -316,12 +316,44 @@ def _clean_text(value: str) -> str:
     return value.strip(" -|/:~").strip()
 
 
+def _strip_unmatched_closing_brackets(value: str) -> str:
+    """Drop closing brackets that have no matching opener (left behind by nested-paren Feat. removal)."""
+    depth_paren = depth_bracket = depth_brace = 0
+    chars = []
+    for ch in value:
+        if ch == "(":
+            depth_paren += 1
+            chars.append(ch)
+        elif ch == ")":
+            if depth_paren > 0:
+                depth_paren -= 1
+                chars.append(ch)
+        elif ch == "[":
+            depth_bracket += 1
+            chars.append(ch)
+        elif ch == "]":
+            if depth_bracket > 0:
+                depth_bracket -= 1
+                chars.append(ch)
+        elif ch == "{":
+            depth_brace += 1
+            chars.append(ch)
+        elif ch == "}":
+            if depth_brace > 0:
+                depth_brace -= 1
+                chars.append(ch)
+        else:
+            chars.append(ch)
+    return "".join(chars)
+
+
 def _clean_pair_side(value: str) -> str:
     """Like _clean_text, but preserves descriptive title parentheticals."""
     value = str(value or "")
     value = value.replace("\u2018", "'").replace("\u2019", "'")
     value = value.replace("\u201c", '"').replace("\u201d", '"')
     value = _strip_title_metadata_phrases(value)
+    value = _strip_unmatched_closing_brackets(value)
     value = TIME_PREFIX_REGEX.sub("", value)
     value = _strip_timestamps(value)
     value = LEADING_DECORATION_REGEX.sub("", value)
