@@ -249,7 +249,7 @@ def _run_youtube_analysis(youtube_url: str, mode: str) -> tuple[Dict, List[Dict[
     if not youtube_result.get("success"):
         raise HTTPException(
             status_code=400,
-            detail=youtube_result.get("error", "YouTube 분석에 실패했습니다."),
+            detail=youtube_result.get("failure_reason") or "YouTube 분석에 실패했습니다.",
         )
 
     songs = _fuzzy_dedup_songs(_dedupe_pipeline_songs(youtube_result.get("songs", [])))
