@@ -36,16 +36,35 @@ Text Parsing  →  Vision OCR  →  ACRCloud
 ```
 
 1. **Text Parsing** — 설명란·댓글 기반 1차 분석 (대부분의 영상 처리)
-2. **Vision OCR** — 텍스트 부족 시 프레임 샘플링 후 화면 텍스트 인식 (GPT Vision)
-3. **ACRCloud** — 텍스트·화면 모두 부족 시 오디오 샘플 기반 음원 식별
+2. **Vision OCR** — Fallback 필요 시 40초 간격 프레임 샘플링 후 화면 텍스트 인식
+3. **ACRCloud** — 텍스트·화면 모두 부족 시 최대 40개 오디오 세그먼트 병렬 음원 식별
 
-파이프라인에서 텍스트 추출 결과 품질을 평가해 Fallback 진입 여부 결정
+**Fallback 진입 조건** (다음 중 하나):
+- 추출된 곡 수 < 3개
+- artist + title 모두 있는 완전한 곡 < 2개
+- 완전한 곡의 비율 < 70% 또는 평균 완성도 < 60%
+
+**Fallback 경로 선택**:
+- 화면에 타임스탬프·트랙리스트 구조 신호 감지 → OCR 우선 권장
+- 텍스트가 짧거나 노이즈만 있는 경우 → ACR 우선 권장
 
 ### LLM 추출 + 규칙 기반 검증
-- LLM(gpt-5.2)으로 `artist/title` 후보 추출
-- LLM은 **후보 추출 역할로 제한**, parser·rule-based logic이 검증·정제·성공 판단 담당
+
+텍스트 분석은 입력 신호 강도에 따라 두 가지 경로로 분기:
+
+- **Rule Fast Path** (타임스탬프 2개 이상, 3줄 블록 형식, 강한 구분자 신호 등): Rule Parser 우선 실행 → 실패 시 LLM Fallback
+- **Mixed Path** (신호 약함): LLM과 Rule Parser 병렬 실행 → LLM 성공 시 우선 채택, 실패 시 Rule 결과 사용
+
+LLM은 **후보 추출 역할로 제한**, parser·rule-based logic이 검증·정제·성공 판단 담당
 - artist/title swap 방지: 영상 전체 곡 목록의 패턴을 먼저 파악하는 **global direction 로직** + rule 투표 + swap_guard
 - 환각 통제: "추측 금지" 프롬프트 + JSON 출력 제약 + NON_MUSIC 필터 (URL, 이메일, 소셜 핸들, 이미지 출처, 섹션 키워드 제외)
+
+### YouTube 음악 섹션(Content ID) 통합
+
+텍스트 분석과 별도로 YouTube Content ID 데이터를 수집해 결과를 보강:
+- 아티스트 정보 누락 곡 → Content ID 메타데이터로 자동 보완
+- 텍스트에서 미추출된 곡 → Content ID에서 자동 추가
+- 텍스트 추출 완전 실패 시 → Content ID가 최후의 폴백 소스로 동작
 
 ### 파싱 모듈화
 - 비정형 텍스트 → JSON 파싱 유틸 분리
@@ -61,6 +80,15 @@ Text Parsing  →  Vision OCR  →  ACRCloud
 - alias / romanization 처리로 한·영 표기 차이, 로마자 표기 대응
 - 매칭완료 / 확인필요 / 매칭실패 상태 분류 및 실패 사유 표시
 - Rate Limit(429) 대응: Retry-After 처리, 검색 결과 캐싱, Throttling, ThreadPoolExecutor 병렬 검색
+
+**매칭 신뢰도 기준:**
+
+| 임계값 | 기준 점수 | 동작 |
+|--------|-----------|------|
+| EARLY_RETURN | 0.85 이상 | 추가 쿼리 없이 즉시 수락 |
+| DIRECT_ACCEPT | 0.80 이상 | 기본 수락 |
+| MIN_TITLE | 0.65 | 곡명 최소 유사도 |
+| MIN_ARTIST | 0.45 | 아티스트 최소 유사도 |
 
 ### 플레이리스트 생성
 - 사용자 후보 확인·선택 후 Spotify API로 플레이리스트 생성
@@ -119,12 +147,14 @@ Text Parsing  →  Vision OCR  →  ACRCloud
 
 ### 공통 파라미터
 
-| 파라미터 | 설명 |
-|----------|------|
-| `MIN_TIMESTAMP`, `MIN_PATTERN`, `MIN_TRACKS` | Fallback 진입 기준 |
-| `COMMENT_LIMIT_DEFAULT`, `COMMENT_LIMIT_MAX` | 댓글 수집 제한 |
-| `AUDIO_SAMPLE_SEC_MIN / MAX` | ACR 오디오 샘플 길이 |
-| `SPOTIFY_HIGH_CONF / MID_CONF` | 매칭 신뢰도 임계값 |
+| 파라미터 | 기본값 | 설명 |
+|----------|--------|------|
+| `COMMENT_LIMIT_DEFAULT` | 30 | 기본 댓글 수집 수 |
+| `COMMENT_LIMIT_MAX` | 50 | 최대 댓글 수집 수 |
+| `OCR_INTERVAL_SECONDS` | 40 | OCR 프레임 샘플링 간격 (초) |
+| `ACR_MAX_SEGMENTS` | 40 | ACR 최대 오디오 세그먼트 수 |
+| `AUDIO_SAMPLE_SEC_MIN / MAX` | — | ACR 오디오 샘플 길이 범위 |
+| `SPOTIFY_HIGH_CONF / MID_CONF` | 0.85 / 0.80 | Spotify 매칭 신뢰도 임계값 |
 
 ---
 
