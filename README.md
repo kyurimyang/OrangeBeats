@@ -2,6 +2,8 @@
 
 > YouTube 믹스/플레이리스트 영상의 비정형 텍스트를 LLM으로 분석해 Spotify 플레이리스트로 자동 변환하는 웹 서비스
 
+![OrangeBeats 메인 화면](docs/screenshot.png)
+
 단순 텍스트 추출을 넘어, **텍스트 → OCR → ACR**로 이어지는 3단계 Fallback 구조로 정보가 부족한 영상에서도 곡 정보를 추출하고, Spotify 매칭·플레이리스트 생성까지 연결한다.
 
 ---
@@ -124,8 +126,8 @@ Text Parsing  →  Vision OCR  →  ACRCloud
 ### 1. 저장소 클론
 
 ```bash
-git clone https://github.com/kyurimyang/2026-paran-playlist-ai.git
-cd 2026-paran-playlist-ai
+git clone https://github.com/kyurimyang/OrangeBeats.git
+cd OrangeBeats
 ```
 
 ### 2. 환경 변수 설정
