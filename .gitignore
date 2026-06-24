@@ -223,3 +223,10 @@ data/ratings.json
 data/qa_posts.json
 credentials/
 tmp/
+
+# IDE
+.vscode/
+.cursor/
+
+# Test scripts
+test_*.py

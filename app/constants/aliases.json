@@ -78,7 +78,10 @@
     "투피엠": ["2PM"],
     "투에이엠": ["2AM"],
     "씨엔블루": ["CNBLUE", "CN Blue"],
-    "에프티아일랜드": ["FTIsland", "FTISLAND", "FT Island"]
+    "에프티아일랜드": ["FTIsland", "FTISLAND", "FT Island"],
+    "나플라": ["nafla", "Nafla", "NAFLA"],
+    "박화요비": ["Park Hwayobi"],
+    "빌리어코스티": ["Billy Acoustie", "billy acoustie"]
   },
   "title": {
     "놀이공원": ["Amusement Park"],
@@ -99,6 +102,8 @@
     "홀씨": ["Dandelion"],
     "칠월 칠일": ["Milky Way"],
     "동화": ["Fairy Tale"],
-    "김철수 씨 이야기": ["Kim Cheolsu Story"]
+    "김철수 씨 이야기": ["Kim Cheolsu Story"],
+    "도레미파솔라시도": ["Doremifasollatido"],
+    "살랑살랑": ["gently"]
   }
 }

@@ -140,3 +140,4 @@ _ALIASES_PATH = _Path(__file__).parent / "aliases.json"
 _aliases = _json.loads(_ALIASES_PATH.read_text(encoding="utf-8"))
 CORE_ARTIST_ALIAS_MAP: dict[str, list[str]] = _aliases["artist"]
 CORE_TITLE_ALIAS_MAP: dict[str, list[str]] = _aliases["title"]
+
